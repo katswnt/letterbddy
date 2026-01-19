@@ -276,11 +276,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log('Processing', urlsToProcess.length, 'URLs for enrichment');
 
       for (const resolved of urlsToProcess) {
+        console.log('Processing URL:', resolved);
         // Phase 2: Get TMDb ID
         if (!movieIndex[resolved].tmdb_movie_id) {
           // Check cache for Letterboxd -> TMDb ID mapping
           if (redisAvailable) {
             const cachedId = await getCachedLetterboxdMapping(resolved);
+            console.log('Cache lookup for', resolved, ':', cachedId);
             if (cachedId) {
               movieIndex[resolved].tmdb_movie_id = cachedId;
               cacheHits++;
@@ -289,7 +291,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // Fetch from Letterboxd if not cached
           if (!movieIndex[resolved].tmdb_movie_id) {
+            console.log('Fetching TMDb ID from Letterboxd for:', resolved);
             const tmdbId = await getTmdbIdFromLetterboxd(resolved);
+            console.log('TMDb ID result:', tmdbId);
             if (tmdbId) {
               movieIndex[resolved].tmdb_movie_id = tmdbId;
               networkFetches++;
