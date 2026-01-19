@@ -367,7 +367,7 @@ function App() {
 
       // Phase 2: Enrich in batches
       let mergedMovieIndex: Record<string, any> = {};
-      const batchSize = 15;
+      const batchSize = 10;
       let processed = 0;
 
       for (let i = 0; i < allUrls.length; i += batchSize) {
@@ -596,7 +596,7 @@ function App() {
 
         // Phase 2: Enrich in batches
         let mergedMovieIndex: Record<string, any> = {};
-        const batchSize = 15;
+        const batchSize = 10;
         let processed = 0;
 
         for (let i = 0; i < allUrls.length; i += batchSize) {
