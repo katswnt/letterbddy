@@ -385,7 +385,12 @@ function App() {
         }
 
         const enrichResult = await enrichResponse.json();
+        console.log(`Batch ${batchNum} result:`, enrichResult);
+        console.log(`Batch ${batchNum} stats:`, enrichResult.stats);
+
         if (enrichResult.movieIndex) {
+          const moviesWithTmdb = Object.values(enrichResult.movieIndex).filter((m: any) => m.tmdb_data).length;
+          console.log(`Batch ${batchNum}: ${Object.keys(enrichResult.movieIndex).length} movies, ${moviesWithTmdb} with TMDb data`);
           mergedMovieIndex = { ...mergedMovieIndex, ...enrichResult.movieIndex };
         }
 
