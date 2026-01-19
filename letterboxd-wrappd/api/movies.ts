@@ -64,11 +64,25 @@ async function resolveShortlink(url: string): Promise<string> {
   }
 }
 
+// Convert user-scoped URL to canonical URL
+// e.g., /katswnt/film/network/ -> /film/network/
+function toCanonicalUrl(url: string): string {
+  // Match pattern: letterboxd.com/<username>/film/<slug>/
+  const match = url.match(/letterboxd\.com\/([^/]+)\/film\/([^/]+)/);
+  if (match && match[1] !== 'film') {
+    // It's a user-scoped URL, convert to canonical
+    return `https://letterboxd.com/film/${match[2]}/`;
+  }
+  return url;
+}
+
 // Extract TMDb ID from Letterboxd page
 async function getTmdbIdFromLetterboxd(url: string): Promise<number | null> {
   try {
-    console.log('Fetching Letterboxd page:', url);
-    const response = await fetch(url, {
+    // Convert to canonical URL (user-scoped pages don't have TMDb links)
+    const canonicalUrl = toCanonicalUrl(url);
+    console.log('Fetching Letterboxd page:', canonicalUrl, '(original:', url, ')');
+    const response = await fetch(canonicalUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; LetterboxdWrappd/1.0)',
         'Accept': 'text/html',
@@ -78,18 +92,24 @@ async function getTmdbIdFromLetterboxd(url: string): Promise<number | null> {
     const html = await response.text();
     console.log('Got HTML, length:', html.length);
 
-    // Look for TMDb link in the page
-    const tmdbMatch = html.match(/href="https?:\/\/www\.themoviedb\.org\/movie\/(\d+)/);
+    // Look for TMDb link in the page (handle both http and https, with or without www)
+    const tmdbMatch = html.match(/href=["']https?:\/\/(www\.)?themoviedb\.org\/movie\/(\d+)/);
     if (tmdbMatch) {
-      console.log('Found TMDb ID:', tmdbMatch[1]);
-      return parseInt(tmdbMatch[1], 10);
+      console.log('Found TMDb ID:', tmdbMatch[2]);
+      return parseInt(tmdbMatch[2], 10);
     }
 
     // Alternative: look for data attribute
-    const dataMatch = html.match(/data-tmdb-id="(\d+)"/);
+    const dataMatch = html.match(/data-tmdb-id=["'](\d+)["']/);
     if (dataMatch) {
       console.log('Found TMDb ID (data attr):', dataMatch[1]);
       return parseInt(dataMatch[1], 10);
+    }
+
+    // Log a snippet of HTML around "themoviedb" to help debug
+    const tmdbIndex = html.indexOf('themoviedb');
+    if (tmdbIndex > -1) {
+      console.log('Found themoviedb at index', tmdbIndex, '- snippet:', html.slice(Math.max(0, tmdbIndex - 50), tmdbIndex + 100));
     }
 
     console.log('No TMDb ID found in page');
