@@ -1,5 +1,102 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { isRedisAvailable, getCached, setCached, CACHE_KEYS, CACHE_DURATION } from './redis.js';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+// Cache key for Criterion Collection slugs
+const CRITERION_CACHE_KEY = 'criterion:slugs';
+const CRITERION_CACHE_DURATION = 60 * 60 * 24 * 30; // 30 days
+
+// Load and parse Criterion Collection CSV, resolve shortlinks, return slugs
+async function getCriterionSlugs(): Promise<Set<string>> {
+  // Check cache first
+  const cached = await getCached<string[]>(CRITERION_CACHE_KEY);
+  if (cached && cached.length > 0) {
+    console.log('Criterion list loaded from cache:', cached.length, 'films');
+    return new Set(cached);
+  }
+
+  console.log('Loading Criterion Collection from CSV...');
+  const slugs: string[] = [];
+
+  try {
+    // Read the CSV file
+    const csvPath = join(__dirname, 'criterion-collection.csv');
+    const csvContent = readFileSync(csvPath, 'utf-8');
+    const lines = csvContent.split(/\r?\n/);
+
+    // Find the data section (after "Position,Name,Year,URL,Description")
+    let dataStartIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith('Position,Name,Year,URL')) {
+        dataStartIndex = i + 1;
+        break;
+      }
+    }
+
+    if (dataStartIndex === -1) {
+      console.error('Could not find data section in Criterion CSV');
+      return new Set();
+    }
+
+    // Extract URLs from data rows
+    const shortlinks: string[] = [];
+    for (let i = dataStartIndex; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      // Parse CSV line (Position,Name,Year,URL,Description)
+      const parts = parseCSVLine(line);
+      if (parts.length >= 4 && parts[3]) {
+        shortlinks.push(parts[3]);
+      }
+    }
+
+    console.log('Found', shortlinks.length, 'Criterion films in CSV');
+
+    // Resolve shortlinks to get slugs (batch with rate limiting)
+    for (let i = 0; i < shortlinks.length; i++) {
+      const shortlink = shortlinks[i];
+      try {
+        const resolved = await resolveShortlink(shortlink);
+        const slug = getSlugFromUrl(resolved);
+        if (slug) {
+          slugs.push(slug);
+        }
+
+        // Log progress every 100 films
+        if ((i + 1) % 100 === 0) {
+          console.log(`Resolved ${i + 1}/${shortlinks.length} Criterion shortlinks`);
+        }
+
+        // Small delay to avoid rate limiting
+        if (i < shortlinks.length - 1) {
+          await new Promise(r => setTimeout(r, 20));
+        }
+      } catch (e) {
+        console.error('Error resolving shortlink:', shortlink, e);
+      }
+    }
+
+    console.log('Criterion Collection resolved:', slugs.length, 'slugs');
+
+    // Cache the slugs
+    if (slugs.length > 0) {
+      await setCached(CRITERION_CACHE_KEY, slugs, CRITERION_CACHE_DURATION);
+    }
+
+    return new Set(slugs);
+  } catch (error) {
+    console.error('Error loading Criterion Collection:', error);
+    return new Set();
+  }
+}
+
+// Extract film slug from URL
+function getSlugFromUrl(url: string): string | null {
+  const match = url.match(/\/film\/([^/]+)/);
+  return match ? match[1] : null;
+}
 
 // Simple CSV parser (handles quoted fields)
 function parseCSV(text: string): Record<string, string>[] {
@@ -289,6 +386,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Phase 2 & 3: Get TMDb IDs and details
     console.log('Enrich check:', { enrich, parseOnly, urlsToEnrichLen: urlsToEnrich?.length, movieIndexLen: Object.keys(movieIndex).length });
     if (enrich && !parseOnly) {
+      // Fetch Criterion Collection list for checking
+      const criterionSlugs = await getCriterionSlugs();
+
       // When urlsToEnrich is provided, process all of them (frontend controls batch size)
       // When CSV is provided, limit to batchLimit
       const movieUrls = Object.keys(movieIndex);
@@ -330,6 +430,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Phase 3: Get TMDb details
         const tmdbId = movieIndex[resolved].tmdb_movie_id;
         if (tmdbId && !movieIndex[resolved].tmdb_data) {
+          // Check if in Criterion Collection
+          const slug = getSlugFromUrl(resolved);
+          movieIndex[resolved].is_in_criterion_collection = slug ? criterionSlugs.has(slug) : false;
+
           // Check cache for TMDb data
           if (redisAvailable) {
             const cachedData = await getCachedTmdbData(tmdbId);
