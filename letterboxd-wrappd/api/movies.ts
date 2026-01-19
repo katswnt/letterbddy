@@ -1,98 +1,41 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { isRedisAvailable, getCached, setCached, CACHE_KEYS, CACHE_DURATION } from './redis.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { isRedisAvailable, getCached, setCached, CACHE_KEYS, CACHE_DURATION } from './redis.js';
 
 // Cache key for Criterion Collection slugs
 const CRITERION_CACHE_KEY = 'criterion:slugs';
-const CRITERION_CACHE_DURATION = 60 * 60 * 24 * 30; // 30 days
+const CRITERION_CACHE_DURATION = 60 * 60 * 24 * 7; // 7 days
+const CRITERION_SLUGS_PATH = join(__dirname, 'criterion-slugs.json');
 
-// Load and parse Criterion Collection CSV, resolve shortlinks, return slugs
+// Load Criterion Collection film slugs from a bundled JSON file
 async function getCriterionSlugs(): Promise<Set<string>> {
   // Check cache first
   const cached = await getCached<string[]>(CRITERION_CACHE_KEY);
-  if (cached && cached.length > 0) {
+  if (cached) {
     console.log('Criterion list loaded from cache:', cached.length, 'films');
     return new Set(cached);
   }
 
-  console.log('Loading Criterion Collection from CSV...');
-  const slugs: string[] = [];
-
   try {
-    // Read the CSV file
-    const csvPath = join(__dirname, 'criterion-collection.csv');
-    const csvContent = readFileSync(csvPath, 'utf-8');
-    const lines = csvContent.split(/\r?\n/);
+    const jsonText = readFileSync(CRITERION_SLUGS_PATH, 'utf-8');
+    const parsed = JSON.parse(jsonText);
+    const slugs = Array.isArray(parsed) ? parsed.filter((s) => typeof s === 'string') : [];
 
-    // Find the data section (after "Position,Name,Year,URL,Description")
-    let dataStartIndex = -1;
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith('Position,Name,Year,URL')) {
-        dataStartIndex = i + 1;
-        break;
-      }
-    }
+    console.log('Criterion slugs loaded from file:', slugs.length, 'films');
 
-    if (dataStartIndex === -1) {
-      console.error('Could not find data section in Criterion CSV');
-      return new Set();
-    }
-
-    // Extract URLs from data rows
-    const shortlinks: string[] = [];
-    for (let i = dataStartIndex; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-
-      // Parse CSV line (Position,Name,Year,URL,Description)
-      const parts = parseCSVLine(line);
-      if (parts.length >= 4 && parts[3]) {
-        shortlinks.push(parts[3]);
-      }
-    }
-
-    console.log('Found', shortlinks.length, 'Criterion films in CSV');
-
-    // Resolve shortlinks to get slugs (batch with rate limiting)
-    for (let i = 0; i < shortlinks.length; i++) {
-      const shortlink = shortlinks[i];
-      try {
-        const resolved = await resolveShortlink(shortlink);
-        const slug = getSlugFromUrl(resolved);
-        if (slug) {
-          slugs.push(slug);
-        }
-
-        // Log progress every 100 films
-        if ((i + 1) % 100 === 0) {
-          console.log(`Resolved ${i + 1}/${shortlinks.length} Criterion shortlinks`);
-        }
-
-        // Small delay to avoid rate limiting
-        if (i < shortlinks.length - 1) {
-          await new Promise(r => setTimeout(r, 20));
-        }
-      } catch (e) {
-        console.error('Error resolving shortlink:', shortlink, e);
-      }
-    }
-
-    console.log('Criterion Collection resolved:', slugs.length, 'slugs');
-
-    // Cache the slugs
     if (slugs.length > 0) {
       await setCached(CRITERION_CACHE_KEY, slugs, CRITERION_CACHE_DURATION);
     }
 
     return new Set(slugs);
   } catch (error) {
-    console.error('Error loading Criterion Collection:', error);
+    console.error('Error loading Criterion Collection slugs:', error);
     return new Set();
   }
 }
 
-// Extract film slug from URL
+// Check if a film slug is in the Criterion Collection
 function getSlugFromUrl(url: string): string | null {
   const match = url.match(/\/film\/([^/]+)/);
   return match ? match[1] : null;
