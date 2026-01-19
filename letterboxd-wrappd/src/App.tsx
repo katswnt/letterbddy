@@ -603,9 +603,11 @@ function App() {
           const totalFilms = stats.uniqueFilms || Object.keys(mergedMovieIndex).length;
           const processed = totalFilms - remaining;
           setWatchlistStatus(`Processing watchlist... ${processed}/${totalFilms} (batch ${batchNum})`);
+          setWatchlistProgress({ current: processed, total: totalFilms });
         }
 
         json = { movieIndex: mergedMovieIndex, uriMap: mergedUriMap };
+        setWatchlistProgress(null); // Clear progress when done
       }
 
       const index = json?.movieIndex || json || {};
@@ -934,15 +936,15 @@ const filteredRows = rows.filter((row) => {
           {isLoading && (
             <div style={{ marginTop: "16px" }}>
               <LoadingSpinner message={scrapeStatus || "Loading..."} />
-              {scrapeProgress && scrapeProgress.total > 0 && (
-                <div style={{ marginTop: "8px" }}>
-                  <div style={{
-                    height: "6px",
-                    width: "100%",
-                    backgroundColor: "rgba(68, 85, 102, 0.3)",
-                    borderRadius: "3px",
-                    overflow: "hidden"
-                  }}>
+              <div style={{ marginTop: "8px" }}>
+                <div style={{
+                  height: "6px",
+                  width: "100%",
+                  backgroundColor: "rgba(68, 85, 102, 0.3)",
+                  borderRadius: "3px",
+                  overflow: "hidden"
+                }}>
+                  {scrapeProgress && scrapeProgress.total > 0 ? (
                     <div
                       style={{
                         height: "100%",
@@ -952,12 +954,28 @@ const filteredRows = rows.filter((row) => {
                         transition: "width 0.3s ease",
                       }}
                     />
-                  </div>
+                  ) : (
+                    <div
+                      style={{
+                        height: "100%",
+                        borderRadius: "3px",
+                        backgroundColor: "#00e054",
+                        width: "30%",
+                        animation: "indeterminate 1.5s ease-in-out infinite",
+                      }}
+                    />
+                  )}
+                </div>
+                {scrapeProgress && scrapeProgress.total > 0 ? (
                   <p style={{ fontSize: "12px", color: "#678", marginTop: "8px", textAlign: "center" }}>
                     {scrapeProgress.current} / {scrapeProgress.total} ({Math.round((scrapeProgress.current / scrapeProgress.total) * 100)}%)
                   </p>
-                </div>
-              )}
+                ) : (
+                  <p style={{ fontSize: "12px", color: "#678", marginTop: "8px", textAlign: "center" }}>
+                    Connecting to server...
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -1765,15 +1783,15 @@ const filteredRows = rows.filter((row) => {
           {isWatchlistLoading && (
             <div style={{ marginTop: "16px" }}>
               <LoadingSpinner message={watchlistStatus || "Processing..."} />
-              {watchlistProgress && watchlistProgress.total > 0 && (
-                <div style={{ marginTop: "8px" }}>
-                  <div style={{
-                    height: "6px",
-                    width: "100%",
-                    backgroundColor: "rgba(68, 85, 102, 0.3)",
-                    borderRadius: "3px",
-                    overflow: "hidden"
-                  }}>
+              <div style={{ marginTop: "8px" }}>
+                <div style={{
+                  height: "6px",
+                  width: "100%",
+                  backgroundColor: "rgba(68, 85, 102, 0.3)",
+                  borderRadius: "3px",
+                  overflow: "hidden"
+                }}>
+                  {watchlistProgress && watchlistProgress.total > 0 ? (
                     <div
                       style={{
                         height: "100%",
@@ -1783,12 +1801,28 @@ const filteredRows = rows.filter((row) => {
                         transition: "width 0.3s ease"
                       }}
                     />
-                  </div>
-                  <p style={{ fontSize: "12px", color: "#678", textAlign: "center", marginTop: "4px" }}>
-                    {watchlistProgress.current} / {watchlistProgress.total}
-                  </p>
+                  ) : (
+                    <div
+                      style={{
+                        height: "100%",
+                        borderRadius: "3px",
+                        backgroundColor: "#00e054",
+                        width: "30%",
+                        animation: "indeterminate 1.5s ease-in-out infinite",
+                      }}
+                    />
+                  )}
                 </div>
-              )}
+                {watchlistProgress && watchlistProgress.total > 0 ? (
+                  <p style={{ fontSize: "12px", color: "#678", textAlign: "center", marginTop: "4px" }}>
+                    {watchlistProgress.current} / {watchlistProgress.total} ({Math.round((watchlistProgress.current / watchlistProgress.total) * 100)}%)
+                  </p>
+                ) : (
+                  <p style={{ fontSize: "12px", color: "#678", textAlign: "center", marginTop: "4px" }}>
+                    Connecting to server...
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
