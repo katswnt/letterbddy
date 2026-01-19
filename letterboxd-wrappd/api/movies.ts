@@ -181,8 +181,27 @@ async function fetchTmdbCredits(tmdbId: number, apiKey: string): Promise<any> {
   return response.json();
 }
 
-// Sleep helper for rate limiting
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+// Concurrency helper for async work
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const current = nextIndex++;
+      if (current >= items.length) break;
+      results[current] = await worker(items[current]);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
 
 // Gender: 1 = Female, 2 = Male, 0 = Unknown
 const FEMALE_GENDER = 1;
@@ -293,11 +312,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const uriColumn = 'Letterboxd URI';
       const uniqueUris = [...new Set(rows.map(r => r[uriColumn]).filter(Boolean))];
 
-      // Phase 1: Resolve shortlinks
-      for (const uri of uniqueUris) {
+      // Phase 1: Resolve shortlinks (limited concurrency)
+      const resolvedPairs = await mapWithConcurrency(uniqueUris, 6, async (uri) => {
         const resolved = await resolveShortlink(uri);
-        uriMap[uri] = resolved;
+        return [uri, resolved] as const;
+      });
 
+      for (const [uri, resolved] of resolvedPairs) {
+        uriMap[uri] = resolved;
         if (!movieIndex[resolved]) {
           movieIndex[resolved] = {
             letterboxd_url: resolved,
@@ -343,7 +365,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const urlsToProcess = urlsToEnrich ? movieUrls : movieUrls.slice(0, batchLimit);
       console.log('Processing', urlsToProcess.length, 'URLs for enrichment');
 
-      for (const resolved of urlsToProcess) {
+      const concurrencyLimit = 4;
+      await mapWithConcurrency(urlsToProcess, concurrencyLimit, async (resolved) => {
         console.log('Processing URL:', resolved);
         // Phase 2: Get TMDb ID
         if (!movieIndex[resolved].tmdb_movie_id) {
@@ -371,7 +394,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 await setCachedLetterboxdMapping(resolved, tmdbId);
               }
             }
-            await sleep(50); // Reduced rate limit
           }
         }
 
@@ -462,12 +484,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           } catch (e) {
             console.error(`Error fetching TMDb data for ${tmdbId}:`, e);
           }
-
-          await sleep(100); // Reduced rate limit for TMDb API
         }
 
         processed++;
-      }
+      });
     }
 
     const totalMovies = Object.keys(movieIndex).length;
