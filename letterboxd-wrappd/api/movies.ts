@@ -1,0 +1,360 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { kv } from '@vercel/kv';
+
+// Cache keys
+const TMDB_CACHE_PREFIX = 'tmdb:';
+const LETTERBOXD_CACHE_PREFIX = 'lb:';
+
+// Simple CSV parser (handles quoted fields)
+function parseCSV(text: string): Record<string, string>[] {
+  const lines = text.split(/\r?\n/);
+  if (lines.length < 2) return [];
+
+  const headers = parseCSVLine(lines[0]);
+  const rows: Record<string, string>[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const values = parseCSVLine(line);
+    const row: Record<string, string> = {};
+    headers.forEach((h, idx) => {
+      row[h] = values[idx] || '';
+    });
+    rows.push(row);
+  }
+  return rows;
+}
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+// Resolve Letterboxd shortlink to full URL
+async function resolveShortlink(url: string): Promise<string> {
+  if (!url.includes('boxd.it')) return url;
+
+  try {
+    const response = await fetch(url, { redirect: 'follow' });
+    return response.url;
+  } catch {
+    return url;
+  }
+}
+
+// Extract TMDb ID from Letterboxd page
+async function getTmdbIdFromLetterboxd(url: string): Promise<number | null> {
+  try {
+    const response = await fetch(url);
+    const html = await response.text();
+
+    // Look for TMDb link in the page
+    const tmdbMatch = html.match(/href="https?:\/\/www\.themoviedb\.org\/movie\/(\d+)/);
+    if (tmdbMatch) {
+      return parseInt(tmdbMatch[1], 10);
+    }
+
+    // Alternative: look for data attribute
+    const dataMatch = html.match(/data-tmdb-id="(\d+)"/);
+    if (dataMatch) {
+      return parseInt(dataMatch[1], 10);
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Fetch TMDb movie details
+async function fetchTmdbDetails(tmdbId: number, apiKey: string): Promise<any> {
+  const url = `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${apiKey}`;
+  const response = await fetch(url);
+  if (!response.ok) return null;
+  return response.json();
+}
+
+// Fetch TMDb movie credits
+async function fetchTmdbCredits(tmdbId: number, apiKey: string): Promise<any> {
+  const url = `https://api.themoviedb.org/3/movie/${tmdbId}/credits?api_key=${apiKey}`;
+  const response = await fetch(url);
+  if (!response.ok) return null;
+  return response.json();
+}
+
+// Sleep helper for rate limiting
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Gender: 1 = Female, 2 = Male, 0 = Unknown
+const FEMALE_GENDER = 1;
+
+// Check if Vercel KV is configured
+async function isKvConfigured(): Promise<boolean> {
+  try {
+    await kv.ping();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Get cached TMDb data
+async function getCachedTmdbData(tmdbId: number): Promise<any | null> {
+  try {
+    const cached = await kv.get(`${TMDB_CACHE_PREFIX}${tmdbId}`);
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+// Set cached TMDb data (expires in 30 days)
+async function setCachedTmdbData(tmdbId: number, data: any): Promise<void> {
+  try {
+    await kv.set(`${TMDB_CACHE_PREFIX}${tmdbId}`, data, { ex: 60 * 60 * 24 * 30 });
+  } catch (e) {
+    console.error('Failed to cache TMDb data:', e);
+  }
+}
+
+// Get cached Letterboxd to TMDb ID mapping
+async function getCachedLetterboxdMapping(url: string): Promise<number | null> {
+  try {
+    const cached = await kv.get(`${LETTERBOXD_CACHE_PREFIX}${url}`);
+    return cached as number | null;
+  } catch {
+    return null;
+  }
+}
+
+// Set cached Letterboxd to TMDb ID mapping (expires in 90 days)
+async function setCachedLetterboxdMapping(url: string, tmdbId: number): Promise<void> {
+  try {
+    await kv.set(`${LETTERBOXD_CACHE_PREFIX}${url}`, tmdbId, { ex: 60 * 60 * 24 * 90 });
+  } catch (e) {
+    console.error('Failed to cache Letterboxd mapping:', e);
+  }
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Enable CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const tmdbApiKey = (req.query.tmdb_api_key as string) || process.env.TMDB_API_KEY;
+  const enrich = req.query.enrich === '1';
+
+  if (enrich && !tmdbApiKey) {
+    return res.status(400).json({ error: 'TMDb API key required for enrichment' });
+  }
+
+  // Check if KV is available
+  const kvAvailable = await isKvConfigured();
+  console.log('Vercel KV available:', kvAvailable);
+
+  try {
+    // Parse the request body (CSV content)
+    let csvContent: string;
+
+    if (typeof req.body === 'string') {
+      csvContent = req.body;
+    } else if (req.body?.file) {
+      csvContent = req.body.file;
+    } else if (Buffer.isBuffer(req.body)) {
+      csvContent = req.body.toString('utf-8');
+    } else {
+      return res.status(400).json({ error: 'No CSV content provided' });
+    }
+
+    const rows = parseCSV(csvContent);
+    if (rows.length === 0) {
+      return res.status(400).json({ error: 'No data in CSV' });
+    }
+
+    // Build movie index
+    const movieIndex: Record<string, any> = {};
+    const uriMap: Record<string, string> = {};
+
+    // Get unique URIs
+    const uriColumn = 'Letterboxd URI';
+    const uniqueUris = [...new Set(rows.map(r => r[uriColumn]).filter(Boolean))];
+
+    // Stats for response
+    let cacheHits = 0;
+    let cacheMisses = 0;
+
+    // Phase 1: Resolve shortlinks
+    for (const uri of uniqueUris) {
+      const resolved = await resolveShortlink(uri);
+      uriMap[uri] = resolved;
+
+      if (!movieIndex[resolved]) {
+        movieIndex[resolved] = {
+          letterboxd_url: resolved,
+        };
+      }
+    }
+
+    // Phase 2: Get TMDb IDs (check cache first)
+    if (enrich) {
+      for (const [, resolved] of Object.entries(uriMap)) {
+        if (movieIndex[resolved].tmdb_movie_id) continue;
+
+        // Check cache for Letterboxd -> TMDb ID mapping
+        if (kvAvailable) {
+          const cachedId = await getCachedLetterboxdMapping(resolved);
+          if (cachedId) {
+            movieIndex[resolved].tmdb_movie_id = cachedId;
+            cacheHits++;
+            continue;
+          }
+        }
+
+        // Fetch from Letterboxd
+        const tmdbId = await getTmdbIdFromLetterboxd(resolved);
+        if (tmdbId) {
+          movieIndex[resolved].tmdb_movie_id = tmdbId;
+          cacheMisses++;
+
+          // Cache the mapping
+          if (kvAvailable) {
+            await setCachedLetterboxdMapping(resolved, tmdbId);
+          }
+        }
+        await sleep(100); // Rate limit
+      }
+
+      // Phase 3: Fetch TMDb details (check cache first)
+      for (const [url, data] of Object.entries(movieIndex)) {
+        const tmdbId = (data as any).tmdb_movie_id;
+        if (!tmdbId) continue;
+
+        // Check cache for TMDb data
+        if (kvAvailable) {
+          const cachedData = await getCachedTmdbData(tmdbId);
+          if (cachedData) {
+            (movieIndex[url] as any).tmdb_data = cachedData;
+            cacheHits++;
+            continue;
+          }
+        }
+
+        try {
+          const [details, credits] = await Promise.all([
+            fetchTmdbDetails(tmdbId, tmdbApiKey!),
+            fetchTmdbCredits(tmdbId, tmdbApiKey!),
+          ]);
+
+          if (details) {
+            const productionCountries = details.production_countries || [];
+            const countryCodes = productionCountries.map((c: any) => c.iso_3166_1);
+            const countryNames = productionCountries.map((c: any) => c.name);
+
+            const spokenLanguages = details.spoken_languages || [];
+            const languageCodes = spokenLanguages.map((l: any) => l.iso_639_1);
+            const languageNames = spokenLanguages.map((l: any) => l.name);
+
+            const originalLanguage = details.original_language || '';
+            const isAmerican = countryCodes.includes('US');
+            const isEnglish = originalLanguage === 'en';
+
+            // Process credits
+            const crew = credits?.crew || [];
+            const directors = crew
+              .filter((p: any) => p.job === 'Director')
+              .map((p: any) => ({ name: p.name, gender: p.gender }));
+
+            const writerJobs = ['Writer', 'Screenplay', 'Story', 'Characters'];
+            const writers = crew
+              .filter((p: any) => writerJobs.includes(p.job))
+              .map((p: any) => ({ name: p.name, job: p.job, gender: p.gender }));
+
+            const directedByWoman = directors.some((d: any) => d.gender === FEMALE_GENDER);
+            const writtenByWoman = writers.some((w: any) => w.gender === FEMALE_GENDER);
+
+            const tmdbData = {
+              title: details.title,
+              original_title: details.original_title,
+              original_language: originalLanguage,
+              release_date: details.release_date,
+              overview: details.overview,
+              runtime: details.runtime,
+              genres: (details.genres || []).map((g: any) => g.name),
+              popularity: details.popularity,
+              vote_average: details.vote_average,
+              vote_count: details.vote_count,
+              poster_path: details.poster_path,
+              backdrop_path: details.backdrop_path,
+              production_countries: { codes: countryCodes, names: countryNames },
+              is_american: isAmerican,
+              spoken_languages: { codes: languageCodes, names: languageNames },
+              is_english: isEnglish,
+              directors,
+              writers,
+              directed_by_woman: directedByWoman,
+              written_by_woman: writtenByWoman,
+            };
+
+            (movieIndex[url] as any).tmdb_data = tmdbData;
+            cacheMisses++;
+
+            // Cache the TMDb data
+            if (kvAvailable) {
+              await setCachedTmdbData(tmdbId, tmdbData);
+            }
+          }
+        } catch (e) {
+          console.error(`Error fetching TMDb data for ${tmdbId}:`, e);
+        }
+
+        await sleep(250); // Rate limit for TMDb API
+      }
+    }
+
+    return res.status(200).json({
+      movieIndex,
+      uriMap,
+      stats: {
+        totalRows: rows.length,
+        uniqueFilms: Object.keys(movieIndex).length,
+        enriched: enrich,
+        cacheHits,
+        cacheMisses,
+        kvAvailable,
+      },
+    });
+  } catch (error) {
+    console.error('Error processing movies:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
