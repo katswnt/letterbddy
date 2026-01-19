@@ -56,7 +56,12 @@ async function resolveShortlink(url: string): Promise<string> {
   if (!url.includes('boxd.it')) return url;
 
   try {
-    const response = await fetch(url, { redirect: 'follow' });
+    const response = await fetch(url, {
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; LetterboxdWrappd/1.0)',
+      },
+    });
     return response.url;
   } catch {
     return url;
@@ -67,7 +72,13 @@ async function resolveShortlink(url: string): Promise<string> {
 async function getTmdbIdFromLetterboxd(url: string): Promise<number | null> {
   try {
     console.log('Fetching Letterboxd page:', url);
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; LetterboxdWrappd/1.0)',
+        'Accept': 'text/html',
+      },
+    });
+    console.log('Letterboxd response status:', response.status);
     const html = await response.text();
     console.log('Got HTML, length:', html.length);
 
