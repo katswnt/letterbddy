@@ -289,6 +289,8 @@ function App() {
     const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const baseUrl = isLocalDev ? 'http://localhost:5050' : '';
 
+    let json: any;
+
     if (isLocalDev) {
       // Local development: use the Express server with job polling
       const form = new FormData();
@@ -338,7 +340,7 @@ function App() {
         throw new Error(text || `Result error (${resultRes.status})`);
       }
 
-      var json = await resultRes.json();
+      json = await resultRes.json();
     } else {
       // Production (Vercel): batch API calls
       setScrapeStatus("Processing movies...");
@@ -389,7 +391,7 @@ function App() {
         setScrapeProgress({ current: processed, total: totalFilms });
       }
 
-      var json = { movieIndex: mergedMovieIndex, uriMap: mergedUriMap };
+      json = { movieIndex: mergedMovieIndex, uriMap: mergedUriMap };
     }
     console.log("Raw result from server:", json);
     console.log("Type of result:", typeof json);
