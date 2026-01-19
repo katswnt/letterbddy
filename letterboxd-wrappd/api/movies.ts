@@ -173,6 +173,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const tmdbApiKey = (req.query.tmdb_api_key as string) || process.env.TMDB_API_KEY;
   const enrich = req.query.enrich === '1';
+  // Batch processing: limit how many movies to enrich per request (default 25)
+  const batchLimit = parseInt(req.query.limit as string) || 25;
+  const startOffset = parseInt(req.query.offset as string) || 0;
 
   if (enrich && !tmdbApiKey) {
     return res.status(400).json({ error: 'TMDb API key required for enrichment' });
@@ -183,174 +186,204 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('Vercel KV available:', kvAvailable);
 
   try {
-    // Parse the request body (CSV content)
-    let csvContent: string;
+    // Parse the request body (CSV content or URLs to enrich)
+    let csvContent: string | null = null;
+    let urlsToEnrich: string[] | null = null;
 
     if (typeof req.body === 'string') {
       csvContent = req.body;
     } else if (req.body?.file) {
       csvContent = req.body.file;
+    } else if (req.body?.urls) {
+      // Batch mode: just enrich these specific URLs
+      urlsToEnrich = req.body.urls;
     } else if (Buffer.isBuffer(req.body)) {
       csvContent = req.body.toString('utf-8');
     } else {
-      return res.status(400).json({ error: 'No CSV content provided' });
-    }
-
-    const rows = parseCSV(csvContent);
-    if (rows.length === 0) {
-      return res.status(400).json({ error: 'No data in CSV' });
+      return res.status(400).json({ error: 'No CSV content or URLs provided' });
     }
 
     // Build movie index
     const movieIndex: Record<string, any> = {};
     const uriMap: Record<string, string> = {};
+    let totalRows = 0;
 
-    // Get unique URIs
-    const uriColumn = 'Letterboxd URI';
-    const uniqueUris = [...new Set(rows.map(r => r[uriColumn]).filter(Boolean))];
+    if (csvContent) {
+      const rows = parseCSV(csvContent);
+      if (rows.length === 0) {
+        return res.status(400).json({ error: 'No data in CSV' });
+      }
+      totalRows = rows.length;
+
+      // Get unique URIs
+      const uriColumn = 'Letterboxd URI';
+      const uniqueUris = [...new Set(rows.map(r => r[uriColumn]).filter(Boolean))];
+
+      // Phase 1: Resolve shortlinks (this is fast, do all of them)
+      for (const uri of uniqueUris) {
+        const resolved = await resolveShortlink(uri);
+        uriMap[uri] = resolved;
+
+        if (!movieIndex[resolved]) {
+          movieIndex[resolved] = {
+            letterboxd_url: resolved,
+          };
+        }
+      }
+    } else if (urlsToEnrich) {
+      // Batch mode: create index from provided URLs
+      for (const url of urlsToEnrich) {
+        movieIndex[url] = { letterboxd_url: url };
+      }
+    }
 
     // Stats for response
     let cacheHits = 0;
     let cacheMisses = 0;
+    let processed = 0;
+    let networkFetches = 0;
 
-    // Phase 1: Resolve shortlinks
-    for (const uri of uniqueUris) {
-      const resolved = await resolveShortlink(uri);
-      uriMap[uri] = resolved;
-
-      if (!movieIndex[resolved]) {
-        movieIndex[resolved] = {
-          letterboxd_url: resolved,
-        };
-      }
-    }
-
-    // Phase 2: Get TMDb IDs (check cache first)
+    // Phase 2 & 3: Get TMDb IDs and details (with batch limiting)
     if (enrich) {
-      for (const [, resolved] of Object.entries(uriMap)) {
-        if (movieIndex[resolved].tmdb_movie_id) continue;
+      const movieUrls = Object.keys(movieIndex);
+      const urlsToProcess = movieUrls.slice(startOffset, startOffset + batchLimit);
 
-        // Check cache for Letterboxd -> TMDb ID mapping
-        if (kvAvailable) {
-          const cachedId = await getCachedLetterboxdMapping(resolved);
-          if (cachedId) {
-            movieIndex[resolved].tmdb_movie_id = cachedId;
-            cacheHits++;
-            continue;
-          }
-        }
-
-        // Fetch from Letterboxd
-        const tmdbId = await getTmdbIdFromLetterboxd(resolved);
-        if (tmdbId) {
-          movieIndex[resolved].tmdb_movie_id = tmdbId;
-          cacheMisses++;
-
-          // Cache the mapping
+      for (const resolved of urlsToProcess) {
+        // Phase 2: Get TMDb ID
+        if (!movieIndex[resolved].tmdb_movie_id) {
+          // Check cache for Letterboxd -> TMDb ID mapping
           if (kvAvailable) {
-            await setCachedLetterboxdMapping(resolved, tmdbId);
-          }
-        }
-        await sleep(100); // Rate limit
-      }
-
-      // Phase 3: Fetch TMDb details (check cache first)
-      for (const [url, data] of Object.entries(movieIndex)) {
-        const tmdbId = (data as any).tmdb_movie_id;
-        if (!tmdbId) continue;
-
-        // Check cache for TMDb data
-        if (kvAvailable) {
-          const cachedData = await getCachedTmdbData(tmdbId);
-          if (cachedData) {
-            (movieIndex[url] as any).tmdb_data = cachedData;
-            cacheHits++;
-            continue;
-          }
-        }
-
-        try {
-          const [details, credits] = await Promise.all([
-            fetchTmdbDetails(tmdbId, tmdbApiKey!),
-            fetchTmdbCredits(tmdbId, tmdbApiKey!),
-          ]);
-
-          if (details) {
-            const productionCountries = details.production_countries || [];
-            const countryCodes = productionCountries.map((c: any) => c.iso_3166_1);
-            const countryNames = productionCountries.map((c: any) => c.name);
-
-            const spokenLanguages = details.spoken_languages || [];
-            const languageCodes = spokenLanguages.map((l: any) => l.iso_639_1);
-            const languageNames = spokenLanguages.map((l: any) => l.name);
-
-            const originalLanguage = details.original_language || '';
-            const isAmerican = countryCodes.includes('US');
-            const isEnglish = originalLanguage === 'en';
-
-            // Process credits
-            const crew = credits?.crew || [];
-            const directors = crew
-              .filter((p: any) => p.job === 'Director')
-              .map((p: any) => ({ name: p.name, gender: p.gender }));
-
-            const writerJobs = ['Writer', 'Screenplay', 'Story', 'Characters'];
-            const writers = crew
-              .filter((p: any) => writerJobs.includes(p.job))
-              .map((p: any) => ({ name: p.name, job: p.job, gender: p.gender }));
-
-            const directedByWoman = directors.some((d: any) => d.gender === FEMALE_GENDER);
-            const writtenByWoman = writers.some((w: any) => w.gender === FEMALE_GENDER);
-
-            const tmdbData = {
-              title: details.title,
-              original_title: details.original_title,
-              original_language: originalLanguage,
-              release_date: details.release_date,
-              overview: details.overview,
-              runtime: details.runtime,
-              genres: (details.genres || []).map((g: any) => g.name),
-              popularity: details.popularity,
-              vote_average: details.vote_average,
-              vote_count: details.vote_count,
-              poster_path: details.poster_path,
-              backdrop_path: details.backdrop_path,
-              production_countries: { codes: countryCodes, names: countryNames },
-              is_american: isAmerican,
-              spoken_languages: { codes: languageCodes, names: languageNames },
-              is_english: isEnglish,
-              directors,
-              writers,
-              directed_by_woman: directedByWoman,
-              written_by_woman: writtenByWoman,
-            };
-
-            (movieIndex[url] as any).tmdb_data = tmdbData;
-            cacheMisses++;
-
-            // Cache the TMDb data
-            if (kvAvailable) {
-              await setCachedTmdbData(tmdbId, tmdbData);
+            const cachedId = await getCachedLetterboxdMapping(resolved);
+            if (cachedId) {
+              movieIndex[resolved].tmdb_movie_id = cachedId;
+              cacheHits++;
             }
           }
-        } catch (e) {
-          console.error(`Error fetching TMDb data for ${tmdbId}:`, e);
+
+          // Fetch from Letterboxd if not cached
+          if (!movieIndex[resolved].tmdb_movie_id) {
+            const tmdbId = await getTmdbIdFromLetterboxd(resolved);
+            if (tmdbId) {
+              movieIndex[resolved].tmdb_movie_id = tmdbId;
+              networkFetches++;
+
+              // Cache the mapping
+              if (kvAvailable) {
+                await setCachedLetterboxdMapping(resolved, tmdbId);
+              }
+            }
+            await sleep(50); // Reduced rate limit
+          }
         }
 
-        await sleep(250); // Rate limit for TMDb API
+        // Phase 3: Get TMDb details
+        const tmdbId = movieIndex[resolved].tmdb_movie_id;
+        if (tmdbId && !movieIndex[resolved].tmdb_data) {
+          // Check cache for TMDb data
+          if (kvAvailable) {
+            const cachedData = await getCachedTmdbData(tmdbId);
+            if (cachedData) {
+              movieIndex[resolved].tmdb_data = cachedData;
+              cacheHits++;
+              processed++;
+              continue;
+            }
+          }
+
+          // Fetch from TMDb API
+          try {
+            const [details, credits] = await Promise.all([
+              fetchTmdbDetails(tmdbId, tmdbApiKey!),
+              fetchTmdbCredits(tmdbId, tmdbApiKey!),
+            ]);
+
+            if (details) {
+              const productionCountries = details.production_countries || [];
+              const countryCodes = productionCountries.map((c: any) => c.iso_3166_1);
+              const countryNames = productionCountries.map((c: any) => c.name);
+
+              const spokenLanguages = details.spoken_languages || [];
+              const languageCodes = spokenLanguages.map((l: any) => l.iso_639_1);
+              const languageNames = spokenLanguages.map((l: any) => l.name);
+
+              const originalLanguage = details.original_language || '';
+              const isAmerican = countryCodes.includes('US');
+              const isEnglish = originalLanguage === 'en';
+
+              // Process credits
+              const crew = credits?.crew || [];
+              const directors = crew
+                .filter((p: any) => p.job === 'Director')
+                .map((p: any) => ({ name: p.name, gender: p.gender }));
+
+              const writerJobs = ['Writer', 'Screenplay', 'Story', 'Characters'];
+              const writers = crew
+                .filter((p: any) => writerJobs.includes(p.job))
+                .map((p: any) => ({ name: p.name, job: p.job, gender: p.gender }));
+
+              const directedByWoman = directors.some((d: any) => d.gender === FEMALE_GENDER);
+              const writtenByWoman = writers.some((w: any) => w.gender === FEMALE_GENDER);
+
+              const tmdbData = {
+                title: details.title,
+                original_title: details.original_title,
+                original_language: originalLanguage,
+                release_date: details.release_date,
+                overview: details.overview,
+                runtime: details.runtime,
+                genres: (details.genres || []).map((g: any) => g.name),
+                popularity: details.popularity,
+                vote_average: details.vote_average,
+                vote_count: details.vote_count,
+                poster_path: details.poster_path,
+                backdrop_path: details.backdrop_path,
+                production_countries: { codes: countryCodes, names: countryNames },
+                is_american: isAmerican,
+                spoken_languages: { codes: languageCodes, names: languageNames },
+                is_english: isEnglish,
+                directors,
+                writers,
+                directed_by_woman: directedByWoman,
+                written_by_woman: writtenByWoman,
+              };
+
+              movieIndex[resolved].tmdb_data = tmdbData;
+              networkFetches++;
+              cacheMisses++;
+
+              // Cache the TMDb data
+              if (kvAvailable) {
+                await setCachedTmdbData(tmdbId, tmdbData);
+              }
+            }
+          } catch (e) {
+            console.error(`Error fetching TMDb data for ${tmdbId}:`, e);
+          }
+
+          await sleep(100); // Reduced rate limit for TMDb API
+        }
+
+        processed++;
       }
     }
+
+    const totalMovies = Object.keys(movieIndex).length;
+    const remaining = enrich ? Math.max(0, totalMovies - startOffset - processed) : 0;
 
     return res.status(200).json({
       movieIndex,
       uriMap,
       stats: {
-        totalRows: rows.length,
-        uniqueFilms: Object.keys(movieIndex).length,
+        totalRows,
+        uniqueFilms: totalMovies,
         enriched: enrich,
         cacheHits,
         cacheMisses,
         kvAvailable,
+        processed,
+        remaining,
+        nextOffset: startOffset + processed,
+        networkFetches,
       },
     });
   } catch (error) {

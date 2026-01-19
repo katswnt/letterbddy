@@ -340,26 +340,56 @@ function App() {
 
       var json = await resultRes.json();
     } else {
-      // Production (Vercel): synchronous API call
-      setScrapeStatus("Processing movies (this may take a moment)…");
+      // Production (Vercel): batch API calls
+      setScrapeStatus("Processing movies...");
 
       const csvContent = await file.text();
-      const apiUrl = `/api/movies?enrich=1`;
+      let mergedMovieIndex: Record<string, any> = {};
+      let mergedUriMap: Record<string, string> = {};
+      let offset = 0;
+      let remaining = 1; // Start with 1 to enter the loop
+      let batchNum = 0;
+      const batchLimit = 25;
 
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain",
-        },
-        body: csvContent,
-      });
+      while (remaining > 0) {
+        batchNum++;
+        const apiUrl = `/api/movies?enrich=1&limit=${batchLimit}&offset=${offset}`;
 
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || `Server error (${response.status})`);
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain",
+          },
+          body: csvContent,
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || `Server error (${response.status})`);
+        }
+
+        const batchResult = await response.json();
+
+        // Merge results
+        if (batchResult.movieIndex) {
+          mergedMovieIndex = { ...mergedMovieIndex, ...batchResult.movieIndex };
+        }
+        if (batchResult.uriMap) {
+          mergedUriMap = { ...mergedUriMap, ...batchResult.uriMap };
+        }
+
+        // Update progress
+        const stats = batchResult.stats || {};
+        remaining = stats.remaining ?? 0;
+        offset = stats.nextOffset ?? (offset + batchLimit);
+
+        const totalFilms = stats.uniqueFilms || Object.keys(mergedMovieIndex).length;
+        const processed = totalFilms - remaining;
+        setScrapeStatus(`Processing movies... ${processed}/${totalFilms} (batch ${batchNum})`);
+        setScrapeProgress({ current: processed, total: totalFilms });
       }
 
-      var json = await response.json();
+      var json = { movieIndex: mergedMovieIndex, uriMap: mergedUriMap };
     }
     console.log("Raw result from server:", json);
     console.log("Type of result:", typeof json);
@@ -531,21 +561,49 @@ function App() {
 
         json = await resultRes.json();
       } else {
-        // Production (Vercel): synchronous API call
-        setWatchlistStatus("Processing watchlist (this may take a moment)…");
+        // Production (Vercel): batch API calls
+        setWatchlistStatus("Processing watchlist...");
 
         const csvContent = await file.text();
-        const response = await fetch(`/api/movies?enrich=1`, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain" },
-          body: csvContent,
-        });
+        let mergedMovieIndex: Record<string, any> = {};
+        let mergedUriMap: Record<string, string> = {};
+        let offset = 0;
+        let remaining = 1;
+        let batchNum = 0;
+        const batchLimit = 25;
 
-        if (!response.ok) {
-          throw new Error(await response.text() || `Server error (${response.status})`);
+        while (remaining > 0) {
+          batchNum++;
+          const response = await fetch(`/api/movies?enrich=1&limit=${batchLimit}&offset=${offset}`, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain" },
+            body: csvContent,
+          });
+
+          if (!response.ok) {
+            throw new Error(await response.text() || `Server error (${response.status})`);
+          }
+
+          const batchResult = await response.json();
+
+          // Merge results
+          if (batchResult.movieIndex) {
+            mergedMovieIndex = { ...mergedMovieIndex, ...batchResult.movieIndex };
+          }
+          if (batchResult.uriMap) {
+            mergedUriMap = { ...mergedUriMap, ...batchResult.uriMap };
+          }
+
+          const stats = batchResult.stats || {};
+          remaining = stats.remaining ?? 0;
+          offset = stats.nextOffset ?? (offset + batchLimit);
+
+          const totalFilms = stats.uniqueFilms || Object.keys(mergedMovieIndex).length;
+          const processed = totalFilms - remaining;
+          setWatchlistStatus(`Processing watchlist... ${processed}/${totalFilms} (batch ${batchNum})`);
         }
 
-        json = await response.json();
+        json = { movieIndex: mergedMovieIndex, uriMap: mergedUriMap };
       }
 
       const index = json?.movieIndex || json || {};
