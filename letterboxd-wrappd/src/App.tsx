@@ -342,56 +342,59 @@ function App() {
 
       json = await resultRes.json();
     } else {
-      // Production (Vercel): batch API calls
-      setScrapeStatus("Processing movies...");
+      // Production (Vercel): two-phase approach
+      // Phase 1: Parse CSV and resolve shortlinks
+      setScrapeStatus("Parsing CSV...");
 
       const csvContent = await file.text();
+      const parseResponse = await fetch(`/api/movies?parse_only=1`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: csvContent,
+      });
+
+      if (!parseResponse.ok) {
+        throw new Error(await parseResponse.text() || `Server error (${parseResponse.status})`);
+      }
+
+      const parseResult = await parseResponse.json();
+      const uriMap = parseResult.uriMap || {};
+      const allUrls: string[] = parseResult.urls || [];
+      const totalFilms = allUrls.length;
+
+      setScrapeStatus(`Found ${totalFilms} films. Enriching with TMDb data...`);
+      setScrapeProgress({ current: 0, total: totalFilms });
+
+      // Phase 2: Enrich in batches
       let mergedMovieIndex: Record<string, any> = {};
-      let mergedUriMap: Record<string, string> = {};
-      let offset = 0;
-      let remaining = 1; // Start with 1 to enter the loop
-      let batchNum = 0;
-      const batchLimit = 25;
+      const batchSize = 15;
+      let processed = 0;
 
-      while (remaining > 0) {
-        batchNum++;
-        const apiUrl = `/api/movies?enrich=1&limit=${batchLimit}&offset=${offset}`;
+      for (let i = 0; i < allUrls.length; i += batchSize) {
+        const batch = allUrls.slice(i, i + batchSize);
+        const batchNum = Math.floor(i / batchSize) + 1;
 
-        const response = await fetch(apiUrl, {
+        const enrichResponse = await fetch(`/api/movies?enrich=1`, {
           method: "POST",
-          headers: {
-            "Content-Type": "text/plain",
-          },
-          body: csvContent,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ urls: batch }),
         });
 
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(text || `Server error (${response.status})`);
+        if (!enrichResponse.ok) {
+          throw new Error(await enrichResponse.text() || `Server error (${enrichResponse.status})`);
         }
 
-        const batchResult = await response.json();
-
-        // Merge results
-        if (batchResult.movieIndex) {
-          mergedMovieIndex = { ...mergedMovieIndex, ...batchResult.movieIndex };
-        }
-        if (batchResult.uriMap) {
-          mergedUriMap = { ...mergedUriMap, ...batchResult.uriMap };
+        const enrichResult = await enrichResponse.json();
+        if (enrichResult.movieIndex) {
+          mergedMovieIndex = { ...mergedMovieIndex, ...enrichResult.movieIndex };
         }
 
-        // Update progress
-        const stats = batchResult.stats || {};
-        remaining = stats.remaining ?? 0;
-        offset = stats.nextOffset ?? (offset + batchLimit);
-
-        const totalFilms = stats.uniqueFilms || Object.keys(mergedMovieIndex).length;
-        const processed = totalFilms - remaining;
-        setScrapeStatus(`Processing movies... ${processed}/${totalFilms} (batch ${batchNum})`);
+        processed += batch.length;
+        setScrapeStatus(`Enriching movies... ${processed}/${totalFilms} (batch ${batchNum})`);
         setScrapeProgress({ current: processed, total: totalFilms });
       }
 
-      json = { movieIndex: mergedMovieIndex, uriMap: mergedUriMap };
+      json = { movieIndex: mergedMovieIndex, uriMap };
     }
     console.log("Raw result from server:", json);
     console.log("Type of result:", typeof json);
@@ -563,51 +566,60 @@ function App() {
 
         json = await resultRes.json();
       } else {
-        // Production (Vercel): batch API calls
-        setWatchlistStatus("Processing watchlist...");
+        // Production (Vercel): two-phase approach
+        // Phase 1: Parse CSV and resolve shortlinks
+        setWatchlistStatus("Parsing watchlist...");
 
         const csvContent = await file.text();
-        let mergedMovieIndex: Record<string, any> = {};
-        let mergedUriMap: Record<string, string> = {};
-        let offset = 0;
-        let remaining = 1;
-        let batchNum = 0;
-        const batchLimit = 25;
+        const parseResponse = await fetch(`/api/movies?parse_only=1`, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: csvContent,
+        });
 
-        while (remaining > 0) {
-          batchNum++;
-          const response = await fetch(`/api/movies?enrich=1&limit=${batchLimit}&offset=${offset}`, {
+        if (!parseResponse.ok) {
+          throw new Error(await parseResponse.text() || `Server error (${parseResponse.status})`);
+        }
+
+        const parseResult = await parseResponse.json();
+        const uriMap = parseResult.uriMap || {};
+        const allUrls: string[] = parseResult.urls || [];
+        const totalFilms = allUrls.length;
+
+        setWatchlistStatus(`Found ${totalFilms} films. Enriching...`);
+        setWatchlistProgress({ current: 0, total: totalFilms });
+
+        // Phase 2: Enrich in batches
+        let mergedMovieIndex: Record<string, any> = {};
+        const batchSize = 15;
+        let processed = 0;
+
+        for (let i = 0; i < allUrls.length; i += batchSize) {
+          const batch = allUrls.slice(i, i + batchSize);
+          const batchNum = Math.floor(i / batchSize) + 1;
+
+          const enrichResponse = await fetch(`/api/movies?enrich=1`, {
             method: "POST",
-            headers: { "Content-Type": "text/plain" },
-            body: csvContent,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ urls: batch }),
           });
 
-          if (!response.ok) {
-            throw new Error(await response.text() || `Server error (${response.status})`);
+          if (!enrichResponse.ok) {
+            throw new Error(await enrichResponse.text() || `Server error (${enrichResponse.status})`);
           }
 
-          const batchResult = await response.json();
-
-          // Merge results
-          if (batchResult.movieIndex) {
-            mergedMovieIndex = { ...mergedMovieIndex, ...batchResult.movieIndex };
-          }
-          if (batchResult.uriMap) {
-            mergedUriMap = { ...mergedUriMap, ...batchResult.uriMap };
+          const enrichResult = await enrichResponse.json();
+          if (enrichResult.movieIndex) {
+            mergedMovieIndex = { ...mergedMovieIndex, ...enrichResult.movieIndex };
           }
 
-          const stats = batchResult.stats || {};
-          remaining = stats.remaining ?? 0;
-          offset = stats.nextOffset ?? (offset + batchLimit);
-
-          const totalFilms = stats.uniqueFilms || Object.keys(mergedMovieIndex).length;
-          const processed = totalFilms - remaining;
-          setWatchlistStatus(`Processing watchlist... ${processed}/${totalFilms} (batch ${batchNum})`);
+          processed += batch.length;
+          setWatchlistStatus(`Enriching watchlist... ${processed}/${totalFilms} (batch ${batchNum})`);
           setWatchlistProgress({ current: processed, total: totalFilms });
         }
 
-        json = { movieIndex: mergedMovieIndex, uriMap: mergedUriMap };
-        setWatchlistProgress(null); // Clear progress when done
+        json = { movieIndex: mergedMovieIndex, uriMap };
+        setWatchlistProgress(null);
       }
 
       const index = json?.movieIndex || json || {};

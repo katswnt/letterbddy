@@ -173,11 +173,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const tmdbApiKey = (req.query.tmdb_api_key as string) || process.env.TMDB_API_KEY;
   const enrich = req.query.enrich === '1';
-  // Batch processing: limit how many movies to enrich per request (default 25)
-  const batchLimit = parseInt(req.query.limit as string) || 25;
-  const startOffset = parseInt(req.query.offset as string) || 0;
+  const parseOnly = req.query.parse_only === '1';
+  // Batch processing: limit how many movies to enrich per request (default 15)
+  const batchLimit = parseInt(req.query.limit as string) || 15;
 
-  if (enrich && !tmdbApiKey) {
+  if (enrich && !parseOnly && !tmdbApiKey) {
     return res.status(400).json({ error: 'TMDb API key required for enrichment' });
   }
 
@@ -219,7 +219,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const uriColumn = 'Letterboxd URI';
       const uniqueUris = [...new Set(rows.map(r => r[uriColumn]).filter(Boolean))];
 
-      // Phase 1: Resolve shortlinks (this is fast, do all of them)
+      // Phase 1: Resolve shortlinks
       for (const uri of uniqueUris) {
         const resolved = await resolveShortlink(uri);
         uriMap[uri] = resolved;
@@ -229,6 +229,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             letterboxd_url: resolved,
           };
         }
+      }
+
+      // If parse_only, return early with just the uriMap and URLs
+      if (parseOnly) {
+        const allUrls = Object.keys(movieIndex);
+        return res.status(200).json({
+          uriMap,
+          urls: allUrls,
+          stats: {
+            totalRows,
+            uniqueFilms: allUrls.length,
+            parseOnly: true,
+          },
+        });
       }
     } else if (urlsToEnrich) {
       // Batch mode: create index from provided URLs
@@ -243,10 +257,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let processed = 0;
     let networkFetches = 0;
 
-    // Phase 2 & 3: Get TMDb IDs and details (with batch limiting)
-    if (enrich) {
+    // Phase 2 & 3: Get TMDb IDs and details
+    if (enrich && !parseOnly) {
+      // When urlsToEnrich is provided, process all of them (frontend controls batch size)
+      // When CSV is provided, limit to batchLimit
       const movieUrls = Object.keys(movieIndex);
-      const urlsToProcess = movieUrls.slice(startOffset, startOffset + batchLimit);
+      const urlsToProcess = urlsToEnrich ? movieUrls : movieUrls.slice(0, batchLimit);
 
       for (const resolved of urlsToProcess) {
         // Phase 2: Get TMDb ID
@@ -368,7 +384,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const totalMovies = Object.keys(movieIndex).length;
-    const remaining = enrich ? Math.max(0, totalMovies - startOffset - processed) : 0;
 
     return res.status(200).json({
       movieIndex,
@@ -381,8 +396,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         cacheMisses,
         kvAvailable,
         processed,
-        remaining,
-        nextOffset: startOffset + processed,
         networkFetches,
       },
     });
