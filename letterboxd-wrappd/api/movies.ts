@@ -66,23 +66,29 @@ async function resolveShortlink(url: string): Promise<string> {
 // Extract TMDb ID from Letterboxd page
 async function getTmdbIdFromLetterboxd(url: string): Promise<number | null> {
   try {
+    console.log('Fetching Letterboxd page:', url);
     const response = await fetch(url);
     const html = await response.text();
+    console.log('Got HTML, length:', html.length);
 
     // Look for TMDb link in the page
     const tmdbMatch = html.match(/href="https?:\/\/www\.themoviedb\.org\/movie\/(\d+)/);
     if (tmdbMatch) {
+      console.log('Found TMDb ID:', tmdbMatch[1]);
       return parseInt(tmdbMatch[1], 10);
     }
 
     // Alternative: look for data attribute
     const dataMatch = html.match(/data-tmdb-id="(\d+)"/);
     if (dataMatch) {
+      console.log('Found TMDb ID (data attr):', dataMatch[1]);
       return parseInt(dataMatch[1], 10);
     }
 
+    console.log('No TMDb ID found in page');
     return null;
-  } catch {
+  } catch (e) {
+    console.error('Error fetching Letterboxd page:', e);
     return null;
   }
 }
@@ -190,17 +196,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let csvContent: string | null = null;
     let urlsToEnrich: string[] | null = null;
 
-    if (typeof req.body === 'string') {
-      csvContent = req.body;
-    } else if (req.body?.file) {
-      csvContent = req.body.file;
-    } else if (req.body?.urls) {
-      // Batch mode: just enrich these specific URLs
-      urlsToEnrich = req.body.urls;
-    } else if (Buffer.isBuffer(req.body)) {
-      csvContent = req.body.toString('utf-8');
-    } else {
-      return res.status(400).json({ error: 'No CSV content or URLs provided' });
+    // Handle different body formats
+    let body = req.body;
+
+    // If body is a string that looks like JSON, parse it
+    if (typeof body === 'string') {
+      const trimmed = body.trim();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          body = JSON.parse(trimmed);
+        } catch {
+          // Not JSON, treat as CSV
+          csvContent = body;
+        }
+      } else {
+        csvContent = body;
+      }
+    }
+
+    if (!csvContent) {
+      if (body?.file) {
+        csvContent = body.file;
+      } else if (body?.urls && Array.isArray(body.urls)) {
+        // Batch mode: just enrich these specific URLs
+        urlsToEnrich = body.urls;
+        console.log('Enriching batch of', urlsToEnrich.length, 'URLs');
+      } else if (Buffer.isBuffer(body)) {
+        csvContent = body.toString('utf-8');
+      } else if (typeof body === 'object' && body !== null) {
+        // Check if it's already parsed JSON with urls
+        if (body.urls && Array.isArray(body.urls)) {
+          urlsToEnrich = body.urls;
+          console.log('Enriching batch of', urlsToEnrich.length, 'URLs (parsed object)');
+        } else {
+          return res.status(400).json({ error: 'No CSV content or URLs provided', bodyType: typeof body });
+        }
+      } else {
+        return res.status(400).json({ error: 'No CSV content or URLs provided', bodyType: typeof body });
+      }
     }
 
     // Build movie index
@@ -258,11 +291,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let networkFetches = 0;
 
     // Phase 2 & 3: Get TMDb IDs and details
+    console.log('Enrich check:', { enrich, parseOnly, urlsToEnrichLen: urlsToEnrich?.length, movieIndexLen: Object.keys(movieIndex).length });
     if (enrich && !parseOnly) {
       // When urlsToEnrich is provided, process all of them (frontend controls batch size)
       // When CSV is provided, limit to batchLimit
       const movieUrls = Object.keys(movieIndex);
       const urlsToProcess = urlsToEnrich ? movieUrls : movieUrls.slice(0, batchLimit);
+      console.log('Processing', urlsToProcess.length, 'URLs for enrichment');
 
       for (const resolved of urlsToProcess) {
         // Phase 2: Get TMDb ID
