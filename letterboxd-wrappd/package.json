@@ -13,11 +13,11 @@
     "server:no-watch": "node server.mjs"
   },
   "dependencies": {
-    "@vercel/kv": "^3.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "fast-xml-parser": "^5.3.3",
+    "ioredis": "^5.9.2",
     "multer": "^2.0.2",
     "papaparse": "^5.5.3",
     "react": "^19.2.0",

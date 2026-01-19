@@ -1,9 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { kv } from '@vercel/kv';
-
-// Cache keys
-const TMDB_CACHE_PREFIX = 'tmdb:';
-const LETTERBOXD_CACHE_PREFIX = 'lb:';
+import { isRedisAvailable, getCached, setCached, CACHE_KEYS, CACHE_DURATION } from './redis';
 
 // Simple CSV parser (handles quoted fields)
 function parseCSV(text: string): Record<string, string>[] {
@@ -126,52 +122,21 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 // Gender: 1 = Female, 2 = Male, 0 = Unknown
 const FEMALE_GENDER = 1;
 
-// Check if Vercel KV is configured
-async function isKvConfigured(): Promise<boolean> {
-  try {
-    await kv.ping();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// Get cached TMDb data
+// Cache helper functions using ioredis
 async function getCachedTmdbData(tmdbId: number): Promise<any | null> {
-  try {
-    const cached = await kv.get(`${TMDB_CACHE_PREFIX}${tmdbId}`);
-    return cached;
-  } catch {
-    return null;
-  }
+  return getCached(`${CACHE_KEYS.TMDB_DATA}${tmdbId}`);
 }
 
-// Set cached TMDb data (expires in 30 days)
 async function setCachedTmdbData(tmdbId: number, data: any): Promise<void> {
-  try {
-    await kv.set(`${TMDB_CACHE_PREFIX}${tmdbId}`, data, { ex: 60 * 60 * 24 * 30 });
-  } catch (e) {
-    console.error('Failed to cache TMDb data:', e);
-  }
+  await setCached(`${CACHE_KEYS.TMDB_DATA}${tmdbId}`, data, CACHE_DURATION.TMDB_DATA);
 }
 
-// Get cached Letterboxd to TMDb ID mapping
 async function getCachedLetterboxdMapping(url: string): Promise<number | null> {
-  try {
-    const cached = await kv.get(`${LETTERBOXD_CACHE_PREFIX}${url}`);
-    return cached as number | null;
-  } catch {
-    return null;
-  }
+  return getCached(`${CACHE_KEYS.LETTERBOXD_MAPPING}${url}`);
 }
 
-// Set cached Letterboxd to TMDb ID mapping (expires in 90 days)
 async function setCachedLetterboxdMapping(url: string, tmdbId: number): Promise<void> {
-  try {
-    await kv.set(`${LETTERBOXD_CACHE_PREFIX}${url}`, tmdbId, { ex: 60 * 60 * 24 * 90 });
-  } catch (e) {
-    console.error('Failed to cache Letterboxd mapping:', e);
-  }
+  await setCached(`${CACHE_KEYS.LETTERBOXD_MAPPING}${url}`, tmdbId, CACHE_DURATION.LETTERBOXD_MAPPING);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -199,8 +164,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Check if KV is available
-  const kvAvailable = await isKvConfigured();
-  console.log('Vercel KV available:', kvAvailable);
+  const redisAvailable = await isRedisAvailable();
+  console.log('Redis available:', redisAvailable);
 
   try {
     // Parse the request body (CSV content or URLs to enrich)
@@ -314,7 +279,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Phase 2: Get TMDb ID
         if (!movieIndex[resolved].tmdb_movie_id) {
           // Check cache for Letterboxd -> TMDb ID mapping
-          if (kvAvailable) {
+          if (redisAvailable) {
             const cachedId = await getCachedLetterboxdMapping(resolved);
             if (cachedId) {
               movieIndex[resolved].tmdb_movie_id = cachedId;
@@ -330,7 +295,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               networkFetches++;
 
               // Cache the mapping
-              if (kvAvailable) {
+              if (redisAvailable) {
                 await setCachedLetterboxdMapping(resolved, tmdbId);
               }
             }
@@ -342,7 +307,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const tmdbId = movieIndex[resolved].tmdb_movie_id;
         if (tmdbId && !movieIndex[resolved].tmdb_data) {
           // Check cache for TMDb data
-          if (kvAvailable) {
+          if (redisAvailable) {
             const cachedData = await getCachedTmdbData(tmdbId);
             if (cachedData) {
               movieIndex[resolved].tmdb_data = cachedData;
@@ -414,7 +379,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               cacheMisses++;
 
               // Cache the TMDb data
-              if (kvAvailable) {
+              if (redisAvailable) {
                 await setCachedTmdbData(tmdbId, tmdbData);
               }
             }
@@ -440,7 +405,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         enriched: enrich,
         cacheHits,
         cacheMisses,
-        kvAvailable,
+        redisAvailable,
         processed,
         networkFetches,
       },
