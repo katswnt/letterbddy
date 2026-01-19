@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { isRedisAvailable, getCached, setCached, CACHE_KEYS, CACHE_DURATION } from './redis';
+import { isRedisAvailable, getCached, setCached, CACHE_KEYS, CACHE_DURATION } from './redis.js';
 
 // Simple CSV parser (handles quoted fields)
 function parseCSV(text: string): Record<string, string>[] {

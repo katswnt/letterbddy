@@ -4,6 +4,7 @@
  */
 
 import Redis from 'ioredis';
+import type { Redis as RedisType } from 'ioredis';
 
 // Ensure this only runs on the server
 if (typeof window !== 'undefined') {
@@ -13,20 +14,20 @@ if (typeof window !== 'undefined') {
 // Check for Redis URL - Vercel prefixes with project name
 const REDIS_URL = process.env.letterbddy_REDIS_URL || process.env.REDIS_URL;
 
-let redis: Redis | null = null;
+let redis: RedisType | null = null;
 
 /**
  * Get Redis client instance (lazy initialization for serverless)
  * Returns null if Redis is not configured
  */
-export function getRedis(): Redis | null {
+export function getRedis(): RedisType | null {
   if (!REDIS_URL) {
     console.warn('Redis URL not configured (letterbddy_REDIS_URL or REDIS_URL)');
     return null;
   }
 
   if (!redis) {
-    redis = new Redis(REDIS_URL, {
+    redis = new (Redis as any)(REDIS_URL, {
       // Serverless-friendly defaults
       maxRetriesPerRequest: 3,
       retryStrategy(times) {
