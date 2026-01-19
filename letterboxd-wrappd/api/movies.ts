@@ -1,7 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { readFileSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { isRedisAvailable, getCached, setCached, CACHE_KEYS, CACHE_DURATION } from './redis.js';
+
+// ES module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Cache key for Criterion Collection slugs
 const CRITERION_CACHE_KEY = 'criterion:slugs';
