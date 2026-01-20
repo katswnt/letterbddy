@@ -287,8 +287,8 @@ function App() {
   });
   const [diarySortColumn, setDiarySortColumn] = useState<WatchlistSortColumn>(null);
   const [diarySortState, setDiarySortState] = useState<WatchlistSortState>("default");
-  const [decadeHover, setDecadeHover] = useState<{ label: string; count: number; percent: number } | null>(null);
-  const [offsetDecadeHover, setOffsetDecadeHover] = useState<{ label: string; count: number; percent: number } | null>(null);
+  const [decadeHover, setDecadeHover] = useState<{ label: string; count: number; percent: number; midPercent: number } | null>(null);
+  const [offsetDecadeHover, setOffsetDecadeHover] = useState<{ label: string; count: number; percent: number; midPercent: number } | null>(null);
 
   const sortMoviesByColumn = <T extends Record<string, any>>(
     items: T[],
