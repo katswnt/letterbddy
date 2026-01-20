@@ -66,6 +66,7 @@ type RuntimeFilter = "all" | "under90" | "under2h" | "under2.5h" | "over2.5h";
 // Sort state for watchlist columns
 type WatchlistSortState = "default" | "asc" | "desc";
 type WatchlistSortColumn = "name" | "director" | "year" | "runtime" | null;
+type DecadeFilter = { type: "decade" | "offset"; label: string } | null;
 
 // Cute loading spinner component
 const LoadingSpinner = ({ message }: { message?: string }) => (
@@ -293,6 +294,7 @@ function App() {
   const [decadeHover, setDecadeHover] = useState<{ label: string; count: number; percent: number; midPercent: number } | null>(null);
   const [offsetDecadeHover, setOffsetDecadeHover] = useState<{ label: string; count: number; percent: number; midPercent: number } | null>(null);
   const [ratingFilter, setRatingFilter] = useState<string | null>(null);
+  const [decadeFilter, setDecadeFilter] = useState<DecadeFilter>(null);
 
   const sortMoviesByColumn = <T extends Record<string, any>>(
     items: T[],
@@ -849,7 +851,7 @@ const filteredRows = rows.filter((row) => {
   );
   
   // Match movieIndex entries to filtered diary entries using the alias lookup
-  const moviesWithData = movieLookup
+  const moviesWithDataRaw = movieLookup
     ? (() => {
         const matched = new Map<string, any>();
         for (const raw of ratingFilteredUris) {
@@ -863,6 +865,23 @@ const filteredRows = rows.filter((row) => {
         return Array.from(matched.values()).filter((m: any) => m.tmdb_data);
       })()
     : [];
+  const moviesWithData = moviesWithDataRaw.filter((movie: any) => {
+    if (!decadeFilter) return true;
+    const releaseDate = movie.tmdb_data?.release_date;
+    if (typeof releaseDate !== "string" || releaseDate.length < 4) return false;
+    const year = parseInt(releaseDate.slice(0, 4), 10);
+    if (Number.isNaN(year)) return false;
+
+    if (decadeFilter.type === "decade") {
+      const label = `${Math.floor(year / 10) * 10}s`;
+      return label === decadeFilter.label;
+    }
+
+    const decadeStart = Math.floor((year - 6) / 10) * 10 + 6;
+    const decadeEnd = decadeStart + 9;
+    const label = `${decadeStart}-${decadeEnd}`;
+    return label === decadeFilter.label;
+  });
   const totalMoviesWithData = moviesWithData.length;
   
   const directedByWoman = moviesWithData.filter((m: any) => m.tmdb_data?.directed_by_woman === true).length;
@@ -883,6 +902,7 @@ const filteredRows = rows.filter((row) => {
     filteredUrisCount: filteredUris.size,
     filteredUrisSample: Array.from(filteredUris).slice(0, 3),
     ratingFilter,
+    decadeFilter,
     ratingFilteredUrisCount: ratingFilteredUris.size,
     canonicalizedFilteredUrisSample: Array.from(canonicalizedFilteredUris).slice(0, 3),
     moviesWithDataCount: totalMoviesWithData,
@@ -968,6 +988,10 @@ const filteredRows = rows.filter((row) => {
 
   const toggleRatingFilter = (rating: string) => {
     setRatingFilter((prev) => (prev === rating ? null : rating));
+  };
+
+  const toggleDecadeFilter = (type: "decade" | "offset", label: string) => {
+    setDecadeFilter((prev) => (prev && prev.type === type && prev.label === label ? null : { type, label }));
   };
 
   return (
@@ -1207,16 +1231,6 @@ const filteredRows = rows.filter((row) => {
               </div>
             </div>
 
-            {/* Watches vs Rewatches pie chart */}
-            <div style={{ display: "flex", justifyContent: "center", padding: "16px 0" }}>
-              <StatPieChart
-                primaryValue={firstWatchEntryCount}
-                primaryLabel="New watches"
-                secondaryValue={rewatchEntryCount}
-                secondaryLabel="Rewatched"
-                size={160}
-              />
-            </div>
           </section>
         )}
 
@@ -1239,6 +1253,12 @@ const filteredRows = rows.filter((row) => {
 
                 {/* Pie charts grid */}
                 <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "24px", padding: "8px 0" }}>
+                  <StatPieChart
+                    primaryValue={firstWatchEntryCount}
+                    primaryLabel="New watches"
+                    secondaryValue={rewatchEntryCount}
+                    secondaryLabel="Rewatched"
+                  />
                   <StatPieChart
                     primaryValue={directedByWoman}
                     primaryLabel="Directed by women"
@@ -1555,7 +1575,7 @@ const filteredRows = rows.filter((row) => {
               <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>Ratings</h2>
               {ratingFilter && (
                 <div style={{ fontSize: "12px", color: "#9ab", marginTop: "-8px" }}>
-                  Filtering diary list by rating {ratingFilter}★ — check Film Breakdown above.
+                  Filtering diary list and pie charts for rating {ratingFilter}★ — check Film Breakdown above.
                   <button
                     onClick={() => {
                       const section = document.getElementById("diary-list");
@@ -1656,58 +1676,50 @@ const filteredRows = rows.filter((row) => {
               </ResponsiveContainer>
             </div>
 
-            {/* Review stats - only show if reviews have been uploaded */}
-            {reviews.length > 0 && (() => {
-              // Calculate word counts for each review
-              const wordCounts = reviews.map((review) => {
-                const text = review.Review || "";
-                const words = text.trim().split(/\s+/).filter(w => w.length > 0);
-                return words.length;
-              });
-
-              // Calculate median word count
-              const sortedWordCounts = [...wordCounts].sort((a, b) => a - b);
-              const mid = Math.floor(sortedWordCounts.length / 2);
-              const medianWordCount = sortedWordCounts.length % 2 === 1
-                ? sortedWordCounts[mid]
-                : Math.round((sortedWordCounts[mid - 1] + sortedWordCounts[mid]) / 2);
-
-              // Calculate average for comparison
-              const totalWords = wordCounts.reduce((sum, count) => sum + count, 0);
-              const avgWordCount = Math.round(totalWords / wordCounts.length);
-
-              return (
-                <div style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", marginTop: "24px", width: "100%" }}>
-                  <h3 style={{ fontSize: "16px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
-                    Reviews
-                  </h3>
-                  <div style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center" }}>
-                    <div>
-                      <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{reviews.length}</div>
-                      <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Reviews</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{medianWordCount}</div>
-                      <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Median Words</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{avgWordCount}</div>
-                      <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Avg Words</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{totalWords.toLocaleString()}</div>
-                      <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Total Words</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
           </section>
         )}
 
         {/* Decade distribution bars */}
         {totalMoviesWithData > 0 && (
           <section style={{ display: "flex", flexDirection: "column", gap: "20px", width: "100%" }}>
+            {decadeFilter && (
+              <div style={{ fontSize: "12px", color: "#9ab", textAlign: "center" }}>
+                Filtering diary list and pie charts for {decadeFilter.label} — check Film Breakdown above.
+                <button
+                  onClick={() => {
+                    const section = document.getElementById("diary-list");
+                    if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                  style={{
+                    marginLeft: "8px",
+                    padding: "2px 6px",
+                    fontSize: "11px",
+                    backgroundColor: "transparent",
+                    border: "1px solid #456",
+                    borderRadius: "4px",
+                    color: "#9ab",
+                    cursor: "pointer",
+                  }}
+                >
+                  Jump to list
+                </button>
+                <button
+                  onClick={() => setDecadeFilter(null)}
+                  style={{
+                    marginLeft: "8px",
+                    padding: "2px 6px",
+                    fontSize: "11px",
+                    backgroundColor: "transparent",
+                    border: "1px solid #456",
+                    borderRadius: "4px",
+                    color: "#9ab",
+                    cursor: "pointer",
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+            )}
             {/* Decade distribution bar */}
             {(() => {
               // Group movies by decade
@@ -1810,23 +1822,24 @@ const filteredRows = rows.filter((row) => {
                       {decadeSegments.map(({ decade, count, percent, startPercent }) => {
                         const midPercent = startPercent + percent / 2;
                         return (
-                          <div
-                            key={decade}
-                            style={{
-                              width: `${percent}%`,
-                              height: "100%",
-                              backgroundColor: getDecadeColor(decade),
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              cursor: "default",
-                              transition: "opacity 0.2s ease",
-                              minWidth: percent > 3 ? "auto" : "0",
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.opacity = "0.8";
-                              setDecadeHover({ label: decade, count, percent, midPercent });
-                            }}
+                            <div
+                              key={decade}
+                              style={{
+                                width: `${percent}%`,
+                                height: "100%",
+                                backgroundColor: getDecadeColor(decade),
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                cursor: "pointer",
+                                transition: "opacity 0.2s ease",
+                                minWidth: percent > 3 ? "auto" : "0",
+                              }}
+                              onClick={() => toggleDecadeFilter("decade", decade)}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.opacity = "0.8";
+                                setDecadeHover({ label: decade, count, percent, midPercent });
+                              }}
                             onMouseLeave={(e) => {
                               e.currentTarget.style.opacity = "1";
                               setDecadeHover(null);
@@ -1974,10 +1987,11 @@ const filteredRows = rows.filter((row) => {
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
-                              cursor: "default",
+                              cursor: "pointer",
                               transition: "opacity 0.2s ease",
                               minWidth: percent > 3 ? "auto" : "0",
                             }}
+                            onClick={() => toggleDecadeFilter("offset", decade)}
                             onMouseEnter={(e) => {
                               e.currentTarget.style.opacity = "0.8";
                               setOffsetDecadeHover({ label: decade, count, percent, midPercent });
@@ -2014,6 +2028,53 @@ const filteredRows = rows.filter((row) => {
             })()}
           </section>
         )}
+
+        {/* Review stats - only show if reviews have been uploaded */}
+        {reviews.length > 0 && (() => {
+          // Calculate word counts for each review
+          const wordCounts = reviews.map((review) => {
+            const text = review.Review || "";
+            const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+            return words.length;
+          });
+
+          // Calculate median word count
+          const sortedWordCounts = [...wordCounts].sort((a, b) => a - b);
+          const mid = Math.floor(sortedWordCounts.length / 2);
+          const medianWordCount = sortedWordCounts.length % 2 === 1
+            ? sortedWordCounts[mid]
+            : Math.round((sortedWordCounts[mid - 1] + sortedWordCounts[mid]) / 2);
+
+          // Calculate average for comparison
+          const totalWords = wordCounts.reduce((sum, count) => sum + count, 0);
+          const avgWordCount = Math.round(totalWords / wordCounts.length);
+
+          return (
+            <section style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%" }}>
+              <h3 style={{ fontSize: "16px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
+                Reviews
+              </h3>
+              <div style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center" }}>
+                <div>
+                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{reviews.length}</div>
+                  <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Reviews</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{medianWordCount}</div>
+                  <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Median Words</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{avgWordCount}</div>
+                  <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Avg Words</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{totalWords.toLocaleString()}</div>
+                  <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Total Words</div>
+                </div>
+              </div>
+            </section>
+          );
+        })()}
 
         {/* Watchlist Analysis Section */}
         <section style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px", marginTop: "32px" }}>
