@@ -52,3 +52,99 @@
     transform: translateX(-100%);
   }
 }
+
+/* Mobile responsive styles */
+@media (max-width: 768px) {
+  #root {
+    padding: 1rem;
+  }
+
+  /* Make tables scrollable horizontally */
+  .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -1rem;
+    padding: 0 1rem;
+  }
+
+  table {
+    min-width: 600px;
+  }
+
+  /* Stack stat boxes vertically on narrow screens */
+  .stats-row {
+    gap: 24px !important;
+  }
+
+  /* Reduce chart heights on mobile */
+  .chart-container {
+    height: 200px !important;
+  }
+
+  /* Smaller fonts on mobile */
+  .mobile-text-sm {
+    font-size: 12px !important;
+  }
+
+  /* Full width sections */
+  section {
+    width: 100% !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  /* Reduce gaps */
+  .mobile-gap-sm {
+    gap: 12px !important;
+  }
+
+  /* Reduce large stat numbers on mobile */
+  .stats-row > div > div:first-child {
+    font-size: 28px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  #root {
+    padding: 0.75rem;
+  }
+
+  /* Even smaller on very small screens */
+  h1 {
+    font-size: 1.5rem !important;
+  }
+
+  h2 {
+    font-size: 1.25rem !important;
+  }
+
+  h3 {
+    font-size: 1rem !important;
+  }
+
+  /* Compact pie charts */
+  .pie-chart-container {
+    width: 100% !important;
+    max-width: 280px !important;
+  }
+
+  /* Even smaller stats on tiny screens */
+  .stats-row > div > div:first-child {
+    font-size: 24px !important;
+  }
+
+  /* Reduce table font size */
+  table {
+    font-size: 12px !important;
+  }
+
+  table th, table td {
+    padding: 6px 4px !important;
+  }
+
+  /* Smaller buttons */
+  button {
+    font-size: 10px !important;
+    padding: 4px 8px !important;
+  }
+}

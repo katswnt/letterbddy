@@ -870,7 +870,7 @@ const filteredRows = rows.filter((row) => {
   );
   
   // Match movieIndex entries to filtered diary entries using the alias lookup
-  const moviesWithDataRaw = movieLookup
+  const matchedMovies = movieLookup
     ? (() => {
         const matched = new Map<string, any>();
         for (const raw of ratingFilteredUris) {
@@ -881,10 +881,11 @@ const filteredRows = rows.filter((row) => {
             matched.set(idKey, movie);
           }
         }
-        return Array.from(matched.values()).filter((m: any) => m.tmdb_data);
+        return Array.from(matched.values());
       })()
     : [];
-  const moviesWithData = moviesWithDataRaw.filter((movie: any) => {
+  const moviesWithData = matchedMovies.filter((movie: any) => {
+    if (!movie.tmdb_data) return false;
     if (!decadeFilter) return true;
     const releaseDate = movie.tmdb_data?.release_date;
     if (typeof releaseDate !== "string" || releaseDate.length < 4) return false;
@@ -902,6 +903,17 @@ const filteredRows = rows.filter((row) => {
     return label === decadeFilter.label;
   });
   const totalMoviesWithData = moviesWithData.length;
+
+  const tmdbErrorCounts = matchedMovies.reduce<Record<string, number>>((acc, movie: any) => {
+    const err = movie.tmdb_error || movie.tmdb_api_error;
+    if (!err) return acc;
+    const key = String(err).slice(0, 80);
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const topTmdbErrors = Object.entries(tmdbErrorCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2);
   
   const directedByWoman = moviesWithData.filter((m: any) => m.tmdb_data?.directed_by_woman === true).length;
   const writtenByWoman = moviesWithData.filter((m: any) => m.tmdb_data?.written_by_woman === true).length;
@@ -1292,7 +1304,7 @@ const filteredRows = rows.filter((row) => {
         {films.length > 0 && (
           <section style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "24px" }}>
             {/* Key metrics row */}
-            <div style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center" }}>
+            <div className="stats-row" style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center", flexWrap: "wrap" }}>
               <div>
                 <div style={{ fontSize: "36px", fontWeight: 600, color: "#fff" }}>{totalEntries}</div>
                 <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Films</div>
@@ -1327,8 +1339,13 @@ const filteredRows = rows.filter((row) => {
                   Based on {totalMoviesWithData} films with TMDb data
                 </p>
                 <p style={{ fontSize: "11px", color: "#678", textAlign: "center" }}>
-                  Debug: {filteredUris.size} filtered URIs, {movieLookup ? Object.keys(movieLookup).length : 0} in lookup, {moviesWithDataRaw.filter((m: any) => m.tmdb_error).length} TMDb errors
+                  Debug: {filteredUris.size} filtered URIs, {movieLookup ? Object.keys(movieLookup).length : 0} in lookup, {matchedMovies.filter((m: any) => m.tmdb_movie_id).length} tmdb_movie_id, {matchedMovies.filter((m: any) => m.tmdb_data).length} tmdb_data, {matchedMovies.filter((m: any) => m.tmdb_error || m.tmdb_api_error).length} TMDb errors
                 </p>
+                {topTmdbErrors.length > 0 && (
+                  <p style={{ fontSize: "11px", color: "#678", textAlign: "center" }}>
+                    Top errors: {topTmdbErrors.map(([msg, count]) => `${msg} (${count})`).join(", ")}
+                  </p>
+                )}
 
                 {/* Pie charts grid */}
                 <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "24px", padding: "8px 0" }}>
@@ -1507,8 +1524,8 @@ const filteredRows = rows.filter((row) => {
                           </button>
                         </p>
                       )}
-                      <div style={{ overflowX: "auto", maxHeight: "400px", overflowY: "auto" }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+                      <div className="table-container" style={{ overflowX: "auto", maxHeight: "400px", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+                        <table style={{ width: "100%", minWidth: "600px", borderCollapse: "collapse", fontSize: "14px" }}>
                           <thead style={{ position: "sticky", top: 0, backgroundColor: "#14181c", zIndex: 1 }}>
                             <tr style={{ borderBottom: "2px solid #456" }}>
                               <th
@@ -1693,7 +1710,7 @@ const filteredRows = rows.filter((row) => {
             </div>
 
             {/* Rating stats row */}
-            <div style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center" }}>
+            <div className="stats-row" style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center", flexWrap: "wrap" }}>
               <div>
                 <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{averageRating.toFixed(1)}</div>
                 <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Average</div>
@@ -2133,7 +2150,7 @@ const filteredRows = rows.filter((row) => {
               <h3 style={{ fontSize: "16px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
                 Reviews
               </h3>
-              <div style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center" }}>
+              <div className="stats-row" style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center", flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{reviews.length}</div>
                   <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Reviews</div>
@@ -2446,8 +2463,9 @@ const filteredRows = rows.filter((row) => {
                     </button>
                   </p>
                 )}
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
-                  <thead>
+                <div className="table-container" style={{ overflowX: "auto", maxHeight: "500px", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+                <table style={{ width: "100%", minWidth: "650px", borderCollapse: "collapse", fontSize: "14px" }}>
+                  <thead style={{ position: "sticky", top: 0, backgroundColor: "#14181c", zIndex: 1 }}>
                     <tr style={{ borderBottom: "2px solid #456" }}>
                       <th
                         style={sortHeaderStyle("name")}
@@ -2557,6 +2575,7 @@ const filteredRows = rows.filter((row) => {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             );
           })()}
