@@ -320,18 +320,50 @@ type VirtualListProps = {
   items: any[];
   height: number;
   itemHeight: number;
+  heights?: number[] | null;
   overscan?: number;
   className?: string;
-  renderRow: (item: any, index: number) => ReactNode;
+  renderRow: (item: any, index: number, style: React.CSSProperties) => ReactNode;
 };
 
-const VirtualList = memo(({ items, height, itemHeight, overscan = 6, className, renderRow }: VirtualListProps) => {
+const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, className, renderRow }: VirtualListProps) => {
   const [scrollTop, setScrollTop] = useState(0);
 
-  const totalHeight = items.length * itemHeight;
-  const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan);
-  const endIndex = Math.min(items.length, Math.ceil((scrollTop + height) / itemHeight) + overscan);
-  const offsetY = startIndex * itemHeight;
+  const hasHeights = Array.isArray(heights) && heights.length === items.length;
+  const offsets = useMemo(() => {
+    if (!hasHeights) return null;
+    const arr = new Array(items.length + 1);
+    arr[0] = 0;
+    for (let i = 0; i < items.length; i += 1) {
+      arr[i + 1] = arr[i] + (heights?.[i] || itemHeight);
+    }
+    return arr;
+  }, [hasHeights, heights, items.length, itemHeight]);
+
+  const totalHeight = hasHeights && offsets
+    ? offsets[offsets.length - 1]
+    : items.length * itemHeight;
+
+  const findStartIndex = (value: number) => {
+    if (!offsets) return Math.max(0, Math.floor(value / itemHeight));
+    let low = 0;
+    let high = offsets.length - 1;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (offsets[mid] <= value) {
+        if (offsets[mid + 1] > value) return mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return Math.max(0, Math.min(low, items.length - 1));
+  };
+
+  const startIndexRaw = findStartIndex(scrollTop);
+  const endIndexRaw = findStartIndex(scrollTop + height) + 1;
+  const startIndex = Math.max(0, startIndexRaw - overscan);
+  const endIndex = Math.min(items.length, endIndexRaw + overscan);
 
   return (
     <div
@@ -340,9 +372,18 @@ const VirtualList = memo(({ items, height, itemHeight, overscan = 6, className, 
       onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
     >
       <div style={{ height: totalHeight, position: "relative" }}>
-        <div style={{ transform: `translateY(${offsetY}px)` }}>
-          {items.slice(startIndex, endIndex).map((item, idx) => renderRow(item, startIndex + idx))}
-        </div>
+        {items.slice(startIndex, endIndex).map((item, idx) => {
+          const index = startIndex + idx;
+          const top = offsets ? offsets[index] : index * itemHeight;
+          const heightValue = heights?.[index] || itemHeight;
+          return renderRow(item, index, {
+            position: "absolute",
+            top,
+            left: 0,
+            right: 0,
+            height: heightValue,
+          });
+        })}
       </div>
     </div>
   );
@@ -423,7 +464,8 @@ const DiaryTable = memo(({
 
   const measureRef = useRef<HTMLDivElement | null>(null);
   const hasMeasuredRef = useRef(false);
-  const [rowHeight, setRowHeight] = useState(64);
+  const [rowHeightsByKey, setRowHeightsByKey] = useState<Record<string, number> | null>(null);
+  const estimatedRowHeight = 56;
 
   const filteredDiaryMovies = useMemo(() => {
     const hasActiveFilter = Object.values(diaryFilters).some(Boolean);
@@ -485,27 +527,35 @@ const DiaryTable = memo(({
     return "";
   };
 
+  const getDiaryKey = useCallback((movie: DiaryMovie) => movie.uri || `${movie.name}|${movie.year}`, []);
+
   useLayoutEffect(() => {
     if (hasMeasuredRef.current) return;
     const container = measureRef.current;
     if (!container) return;
     const rows = Array.from(container.querySelectorAll(".lb-row"));
     if (!rows.length) return;
-    let max = 0;
-    for (const row of rows) {
-      const rect = row.getBoundingClientRect();
-      if (rect.height > max) max = rect.height;
-    }
-    if (max > 0) {
-      setRowHeight(Math.ceil(max));
+    const nextMap: Record<string, number> = {};
+    rows.forEach((row) => {
+      const key = row.getAttribute("data-key");
+      if (!key) return;
+      nextMap[key] = Math.ceil(row.getBoundingClientRect().height);
+    });
+    if (Object.keys(nextMap).length) {
+      setRowHeightsByKey(nextMap);
       hasMeasuredRef.current = true;
     }
   }, [diaryMovieList]);
 
-  const renderRow = useCallback((movie: DiaryMovie, index: number) => {
+  const rowHeights = useMemo(
+    () => filteredDiaryMovies.map((movie) => rowHeightsByKey?.[getDiaryKey(movie)] || estimatedRowHeight),
+    [filteredDiaryMovies, rowHeightsByKey, getDiaryKey, estimatedRowHeight]
+  );
+
+  const renderRow = useCallback((movie: DiaryMovie, index: number, style: React.CSSProperties) => {
     const isAlt = index % 2 === 1;
     return (
-      <div key={movie.uri || index} style={{ height: rowHeight }} className={`lb-row lb-diary-grid ${isAlt ? "lb-row-alt" : ""}`}>
+      <div key={movie.uri || index} style={style} className={`lb-row lb-diary-grid ${isAlt ? "lb-row-alt" : ""}`}>
         <div className="lb-cell lb-cell-title">
           <a
             href={movie.uri}
@@ -562,7 +612,7 @@ const DiaryTable = memo(({
         {!hasMeasuredRef.current && (
           <div ref={measureRef} className="lb-measure lb-diary-grid">
             {diaryMovieList.map((movie, index) => (
-              <div key={movie.uri || index} className="lb-row lb-diary-grid">
+              <div key={movie.uri || index} data-key={getDiaryKey(movie)} className="lb-row lb-diary-grid">
                 <div className="lb-cell lb-cell-title">{movie.name}</div>
                 <div className="lb-cell">{movie.director}</div>
                 <div className="lb-cell lb-cell-center">{movie.year}</div>
@@ -603,7 +653,8 @@ const DiaryTable = memo(({
         </div>
         <VirtualList
           height={400}
-          itemHeight={rowHeight}
+          itemHeight={estimatedRowHeight}
+          heights={rowHeights}
           items={filteredDiaryMovies}
           renderRow={renderRow}
         />
@@ -653,7 +704,8 @@ const WatchlistTable = memo(({
 }: WatchlistTableProps) => {
   const measureRef = useRef<HTMLDivElement | null>(null);
   const hasMeasuredRef = useRef(false);
-  const [rowHeight, setRowHeight] = useState(64);
+  const [rowHeightsByKey, setRowHeightsByKey] = useState<Record<string, number> | null>(null);
+  const estimatedRowHeight = 56;
 
   const passesRuntimeFilter = useCallback((runtime: number | null) => {
     if (watchlistRuntimeFilter === "all") return true;
@@ -732,27 +784,35 @@ const WatchlistTable = memo(({
     setWatchlistContinentFilter(CONTINENT_ORDER[idx + 1]);
   };
 
+  const getWatchlistKey = useCallback((movie: WatchlistMovie) => movie.uri, []);
+
   useLayoutEffect(() => {
     if (hasMeasuredRef.current) return;
     const container = measureRef.current;
     if (!container) return;
     const rows = Array.from(container.querySelectorAll(".lb-row"));
     if (!rows.length) return;
-    let max = 0;
-    for (const row of rows) {
-      const rect = row.getBoundingClientRect();
-      if (rect.height > max) max = rect.height;
-    }
-    if (max > 0) {
-      setRowHeight(Math.ceil(max));
+    const nextMap: Record<string, number> = {};
+    rows.forEach((row) => {
+      const key = row.getAttribute("data-key");
+      if (!key) return;
+      nextMap[key] = Math.ceil(row.getBoundingClientRect().height);
+    });
+    if (Object.keys(nextMap).length) {
+      setRowHeightsByKey(nextMap);
       hasMeasuredRef.current = true;
     }
   }, [watchlistMovies]);
 
-  const renderRow = useCallback((movie: WatchlistMovie, index: number) => {
+  const rowHeights = useMemo(
+    () => filteredMovies.map((movie) => rowHeightsByKey?.[getWatchlistKey(movie)] || estimatedRowHeight),
+    [filteredMovies, rowHeightsByKey, getWatchlistKey, estimatedRowHeight]
+  );
+
+  const renderRow = useCallback((movie: WatchlistMovie, index: number, style: React.CSSProperties) => {
     const isAlt = index % 2 === 1;
     return (
-      <div key={movie.uri} style={{ height: rowHeight }} className={`lb-row lb-watchlist-grid ${isAlt ? "lb-row-alt" : ""}`}>
+      <div key={movie.uri} style={style} className={`lb-row lb-watchlist-grid ${isAlt ? "lb-row-alt" : ""}`}>
         <div className="lb-cell lb-cell-title">
           <a
             href={movie.uri}
@@ -835,7 +895,7 @@ const WatchlistTable = memo(({
         {!hasMeasuredRef.current && (
           <div ref={measureRef} className="lb-measure lb-watchlist-grid">
             {watchlistMovies.map((movie) => (
-              <div key={movie.uri} className="lb-row lb-watchlist-grid">
+              <div key={movie.uri} data-key={getWatchlistKey(movie)} className="lb-row lb-watchlist-grid">
                 <div className="lb-cell lb-cell-title">{movie.name}</div>
                 <div className="lb-cell">{movie.director}</div>
                 <div className="lb-cell lb-cell-center">{movie.year}</div>
@@ -889,7 +949,8 @@ const WatchlistTable = memo(({
         </div>
         <VirtualList
           height={500}
-          itemHeight={rowHeight}
+          itemHeight={estimatedRowHeight}
+          heights={rowHeights}
           items={filteredMovies}
           renderRow={renderRow}
         />
