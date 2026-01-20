@@ -1864,26 +1864,22 @@ const filteredRows = rows.filter((row) => {
                 return decadeColors[decade] || "#678";
               };
 
-              const showDecadeLabel = Boolean(decadeHover);
-
               return (
                 <div style={{ width: "100%" }}>
                       <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
                         Films by Decade
                       </h3>
-                  <div style={{ position: "relative", paddingTop: showDecadeLabel ? "24px" : "0", transition: "padding-top 0.2s ease" }}>
+                  <div style={{ position: "relative" }}>
+                    {/* Fixed-height tooltip area - no layout shift */}
                     <div
                       style={{
-                        position: "absolute",
-                        top: "0",
-                        left: 0,
-                        width: "100%",
-                        minHeight: showDecadeLabel ? "16px" : "0",
+                        height: "24px",
+                        marginBottom: "8px",
+                        position: "relative",
                         pointerEvents: "none",
-                        display: showDecadeLabel ? "block" : "none",
                       }}
                     >
-                      {decadeHover ? (
+                      {decadeHover && (
                         <span
                           style={{
                             position: "absolute",
@@ -1901,7 +1897,7 @@ const filteredRows = rows.filter((row) => {
                         >
                           {decadeHover.label}: {decadeHover.count} films ({Math.round(decadeHover.percent)}%)
                         </span>
-                      ) : null}
+                      )}
                     </div>
                     <div
                       style={{
@@ -1911,8 +1907,6 @@ const filteredRows = rows.filter((row) => {
                         borderRadius: "6px",
                         overflow: "hidden",
                         backgroundColor: "#345",
-                        marginTop: showDecadeLabel ? "12px" : "0",
-                        transition: "margin-top 0.2s ease",
                       }}
                     >
                       {decadeSegments.map(({ decade, count, percent, startPercent }) => {
@@ -2020,26 +2014,22 @@ const filteredRows = rows.filter((row) => {
                 return offsetDecadeColors[decade] || "#678";
               };
 
-              const showOffsetLabel = Boolean(offsetDecadeHover);
-
               return (
                 <div style={{ width: "100%" }}>
                   <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
                     Films by Offset Decade
                   </h3>
-                  <div style={{ position: "relative", paddingTop: showOffsetLabel ? "24px" : "0", transition: "padding-top 0.2s ease" }}>
+                  <div style={{ position: "relative" }}>
+                    {/* Fixed-height tooltip area - no layout shift */}
                     <div
                       style={{
-                        position: "absolute",
-                        top: "0",
-                        left: 0,
-                        width: "100%",
-                        minHeight: showOffsetLabel ? "16px" : "0",
+                        height: "24px",
+                        marginBottom: "8px",
+                        position: "relative",
                         pointerEvents: "none",
-                        display: showOffsetLabel ? "block" : "none",
                       }}
                     >
-                      {offsetDecadeHover ? (
+                      {offsetDecadeHover && (
                         <span
                           style={{
                             position: "absolute",
@@ -2057,7 +2047,7 @@ const filteredRows = rows.filter((row) => {
                         >
                           {offsetDecadeHover.label}: {offsetDecadeHover.count} films ({Math.round(offsetDecadeHover.percent)}%)
                         </span>
-                      ) : null}
+                      )}
                     </div>
                     <div
                       style={{
@@ -2067,8 +2057,6 @@ const filteredRows = rows.filter((row) => {
                         borderRadius: "6px",
                         overflow: "hidden",
                         backgroundColor: "#345",
-                        marginTop: showOffsetLabel ? "12px" : "0",
-                        transition: "margin-top 0.2s ease",
                       }}
                     >
                       {offsetSegments.map(({ decade, count, percent, startPercent }) => {
