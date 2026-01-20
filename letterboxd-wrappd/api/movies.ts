@@ -393,6 +393,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               if (redisAvailable) {
                 await setCachedLetterboxdMapping(resolved, tmdbId);
               }
+            } else {
+              // Track that we couldn't find a TMDb ID
+              movieIndex[resolved].tmdb_error = 'No TMDb ID found on Letterboxd page';
+              cacheMisses++;
             }
           }
         }
@@ -480,9 +484,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               if (redisAvailable) {
                 await setCachedTmdbData(tmdbId, tmdbData);
               }
+            } else {
+              movieIndex[resolved].tmdb_api_error = 'TMDb API returned no details';
             }
           } catch (e) {
             console.error(`Error fetching TMDb data for ${tmdbId}:`, e);
+            movieIndex[resolved].tmdb_api_error = `TMDb API error: ${e instanceof Error ? e.message : String(e)}`;
+          }
+        } else if (!tmdbId) {
+          // No TMDb ID means we couldn't enrich this movie
+          if (!movieIndex[resolved].tmdb_error) {
+            movieIndex[resolved].tmdb_error = 'No TMDb ID available';
           }
         }
 
@@ -491,6 +503,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const totalMovies = Object.keys(movieIndex).length;
+    const withTmdbData = Object.values(movieIndex).filter((m: any) => m.tmdb_data).length;
+    const withErrors = Object.values(movieIndex).filter((m: any) => m.tmdb_error || m.tmdb_api_error).length;
 
     return res.status(200).json({
       movieIndex,
@@ -499,6 +513,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         totalRows,
         uniqueFilms: totalMovies,
         enriched: enrich,
+        withTmdbData,
+        withErrors,
         cacheHits,
         cacheMisses,
         redisAvailable,
