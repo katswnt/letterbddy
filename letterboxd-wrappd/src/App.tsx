@@ -1504,25 +1504,35 @@ const filteredRows = rows.filter((row) => {
                       <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
                         Films by Decade
                       </h3>
-                      <div style={{ minHeight: "16px", textAlign: "center", marginBottom: "8px" }}>
-                        {decadeHover ? (
-                          <span style={{ fontSize: "12px", color: "#9ab" }}>
-                            {decadeHover.label}: {decadeHover.count} films ({Math.round(decadeHover.percent)}%)
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: "12px", color: "transparent" }}>.</span>
-                        )}
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          width: "100%",
-                          height: "32px",
-                          borderRadius: "6px",
-                          overflow: "hidden",
-                          backgroundColor: "#345",
-                        }}
-                      >
+                      <div style={{ position: "relative" }}>
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "-18px",
+                            left: 0,
+                            right: 0,
+                            textAlign: "center",
+                            minHeight: "16px",
+                          }}
+                        >
+                          {decadeHover ? (
+                            <span style={{ fontSize: "12px", color: "#9ab" }}>
+                              {decadeHover.label}: {decadeHover.count} films ({Math.round(decadeHover.percent)}%)
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: "12px", color: "transparent" }}>.</span>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            width: "100%",
+                            height: "32px",
+                            borderRadius: "6px",
+                            overflow: "hidden",
+                            backgroundColor: "#345",
+                          }}
+                        >
                         {sortedDecades.map(([decade, count]) => {
                           const percent = (count / totalMoviesWithData) * 100;
                           return (
@@ -1556,6 +1566,7 @@ const filteredRows = rows.filter((row) => {
                             </div>
                           );
                         })}
+                        </div>
                       </div>
                       {/* Legend */}
                       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "12px", marginTop: "12px" }}>
@@ -1623,25 +1634,35 @@ const filteredRows = rows.filter((row) => {
                       <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
                         Films by Offset Decade
                       </h3>
-                      <div style={{ minHeight: "16px", textAlign: "center", marginBottom: "8px" }}>
-                        {offsetDecadeHover ? (
-                          <span style={{ fontSize: "12px", color: "#9ab" }}>
-                            {offsetDecadeHover.label}: {offsetDecadeHover.count} films ({Math.round(offsetDecadeHover.percent)}%)
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: "12px", color: "transparent" }}>.</span>
-                        )}
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          width: "100%",
-                          height: "32px",
-                          borderRadius: "6px",
-                          overflow: "hidden",
-                          backgroundColor: "#345",
-                        }}
-                      >
+                      <div style={{ position: "relative" }}>
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "-18px",
+                            left: 0,
+                            right: 0,
+                            textAlign: "center",
+                            minHeight: "16px",
+                          }}
+                        >
+                          {offsetDecadeHover ? (
+                            <span style={{ fontSize: "12px", color: "#9ab" }}>
+                              {offsetDecadeHover.label}: {offsetDecadeHover.count} films ({Math.round(offsetDecadeHover.percent)}%)
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: "12px", color: "transparent" }}>.</span>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            width: "100%",
+                            height: "32px",
+                            borderRadius: "6px",
+                            overflow: "hidden",
+                            backgroundColor: "#345",
+                          }}
+                        >
                         {sortedOffsetDecades.map(([decade, count]) => {
                           const percent = (count / totalMoviesWithData) * 100;
                           return (
@@ -1675,6 +1696,7 @@ const filteredRows = rows.filter((row) => {
                             </div>
                           );
                         })}
+                        </div>
                       </div>
                       {/* Legend */}
                       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "12px", marginTop: "12px" }}>
