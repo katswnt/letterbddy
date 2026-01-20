@@ -270,6 +270,9 @@ function App() {
   const [watchlistSortColumn, setWatchlistSortColumn] = useState<WatchlistSortColumn>(null);
   const [watchlistSortState, setWatchlistSortState] = useState<WatchlistSortState>("default");
   const [watchlistRuntimeFilter, setWatchlistRuntimeFilter] = useState<RuntimeFilter>("all");
+  const [diaryFileName, setDiaryFileName] = useState<string>("No file selected");
+  const [watchlistFileName, setWatchlistFileName] = useState<string>("No file selected");
+  const [reviewsFileName, setReviewsFileName] = useState<string>("No file selected");
 
   // Diary table state (for Film Breakdown section)
   const [diaryFilters, setDiaryFilters] = useState<{
@@ -289,6 +292,7 @@ function App() {
   const [diarySortState, setDiarySortState] = useState<WatchlistSortState>("default");
   const [decadeHover, setDecadeHover] = useState<{ label: string; count: number; percent: number; midPercent: number } | null>(null);
   const [offsetDecadeHover, setOffsetDecadeHover] = useState<{ label: string; count: number; percent: number; midPercent: number } | null>(null);
+  const [ratingFilter, setRatingFilter] = useState<string | null>(null);
 
   const sortMoviesByColumn = <T extends Record<string, any>>(
     items: T[],
@@ -504,6 +508,7 @@ function App() {
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setDiaryFileName(file ? file.name : "No file selected");
     if (!file) return;
 
     if (!file.name.toLowerCase().endsWith(".csv")) {
@@ -547,6 +552,7 @@ function App() {
   // Watchlist file handler
   const handleWatchlistChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setWatchlistFileName(file ? file.name : "No file selected");
     if (!file) return;
 
     if (!file.name.toLowerCase().endsWith(".csv")) {
@@ -797,6 +803,18 @@ const filteredRows = rows.filter((row) => {
       .map((row) => (row["Letterboxd URI"] || "").trim())
       .filter((uri) => uri)
   );
+
+  const ratingFilteredUris = new Set(
+    (ratingFilter
+      ? filteredRows.filter((row) => {
+          const value = parseFloat(row.Rating);
+          return !Number.isNaN(value) && value.toFixed(1) === ratingFilter;
+        })
+      : filteredRows
+    )
+      .map((row) => (row["Letterboxd URI"] || "").trim())
+      .filter((uri) => uri)
+  );
   
   // Normalize URIs for matching - convert user-scoped URLs to canonical /film/<slug>/ format,
   // and canonicalize boxd.it shortlinks using uriMap if available
@@ -834,7 +852,7 @@ const filteredRows = rows.filter((row) => {
   const moviesWithData = movieLookup
     ? (() => {
         const matched = new Map<string, any>();
-        for (const raw of filteredUris) {
+        for (const raw of ratingFilteredUris) {
           const canon = canonicalizeUri(raw);
           const movie = movieLookup[canon] || movieLookup[raw];
           if (movie) {
@@ -864,6 +882,8 @@ const filteredRows = rows.filter((row) => {
     movieIndexKeys: movieIndex ? Object.keys(movieIndex).slice(0, 3) : [],
     filteredUrisCount: filteredUris.size,
     filteredUrisSample: Array.from(filteredUris).slice(0, 3),
+    ratingFilter,
+    ratingFilteredUrisCount: ratingFilteredUris.size,
     canonicalizedFilteredUrisSample: Array.from(canonicalizedFilteredUris).slice(0, 3),
     moviesWithDataCount: totalMoviesWithData,
     allMoviesInIndex: movieIndex ? Object.values(movieIndex).slice(0, 2).map((m: any) => ({
@@ -946,13 +966,18 @@ const filteredRows = rows.filter((row) => {
     count,
   }));
 
+  const toggleRatingFilter = (rating: string) => {
+    setRatingFilter((prev) => (prev === rating ? null : rating));
+  };
+
   return (
     <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
       <div style={{ width: "100%", maxWidth: "800px", display: "flex", flexDirection: "column", gap: "32px" }}>
         <header style={{ textAlign: "center" }}>
-          <h1 style={{ fontSize: "28px", fontWeight: 600, color: "#fff", marginBottom: "8px" }}>
-            Letterboxd Wrapped
+          <h1 style={{ fontSize: "28px", fontWeight: 700, color: "#fff", marginBottom: "6px", letterSpacing: "0.5px" }}>
+            Letterbddy
           </h1>
+          <div style={{ fontSize: "12px", color: "#9ab", marginBottom: "10px" }}>by Kat Swint</div>
           <p style={{ fontSize: "14px", color: "#9ab" }}>
             Upload your diary.csv to get started
           </p>
@@ -968,20 +993,31 @@ const filteredRows = rows.filter((row) => {
               Export from Letterboxd: Settings → Import & Export → Export Your Data
             </p>
             <input
+              id="diary-file-input"
               type="file"
               accept=".csv"
               onChange={handleFileChange}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "10px",
-                borderRadius: "4px",
-                border: "1px solid #456",
-                backgroundColor: "#14181c",
-                color: "#9ab",
-                fontSize: "14px",
-              }}
+              style={{ display: "none" }}
             />
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "13px", color: "#9ab" }}>Choose file:</span>
+              <label
+                htmlFor="diary-file-input"
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: "6px",
+                  border: "1px solid #4b5a66",
+                  backgroundColor: "#1b2026",
+                  color: "#e2e8f0",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+                }}
+              >
+                {diaryFileName}
+              </label>
+            </div>
           </div>
 
           {/* Loading state with spinner - only show when actively loading */}
@@ -1062,10 +1098,12 @@ const filteredRows = rows.filter((row) => {
                 For review word count analysis
               </p>
               <input
+                id="reviews-file-input"
                 type="file"
                 accept=".csv"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
+                  setReviewsFileName(file ? file.name : "No file selected");
                   if (!file) return;
                   Papa.parse<ReviewRow>(file, {
                     header: true,
@@ -1078,17 +1116,27 @@ const filteredRows = rows.filter((row) => {
                     },
                   });
                 }}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "10px",
-                  borderRadius: "4px",
-                  border: "1px solid #456",
-                  backgroundColor: "#14181c",
-                  color: "#9ab",
-                  fontSize: "14px",
-                }}
+                style={{ display: "none" }}
               />
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "13px", color: "#9ab" }}>Choose file:</span>
+                <label
+                  htmlFor="reviews-file-input"
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid #4b5a66",
+                    backgroundColor: "#1b2026",
+                    color: "#e2e8f0",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+                  }}
+                >
+                  {reviewsFileName}
+                </label>
+              </div>
               {reviews.length > 0 && (
                 <p style={{ color: "#00e054", fontSize: "12px", marginTop: "8px" }}>
                   ✓ Loaded {reviews.length} reviews
@@ -1174,7 +1222,7 @@ const filteredRows = rows.filter((row) => {
 
         {/* TMDb enrichment stats - Always show if movieIndex exists or if we should debug */}
         {(movieIndex || scrapeStatus?.includes("ready")) && (
-          <section style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "24px" }}>
+          <section id="film-breakdown" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "24px" }}>
             <div style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%", textAlign: "center" }}>
               <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#fff", marginBottom: "4px" }}>Film Breakdown</h2>
               {!movieIndex && (
@@ -1333,7 +1381,7 @@ const filteredRows = rows.filter((row) => {
 
                   return (
                     <div style={{ width: "100%", marginTop: "24px" }}>
-                      <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
+                      <h3 id="diary-list" style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
                         All Films ({filteredDiaryMovies.length}{hasActiveFilter ? ` of ${diaryMovieList.length}` : ""})
                       </h3>
                       {hasActiveFilter && (
@@ -1469,306 +1517,6 @@ const filteredRows = rows.filter((row) => {
                   );
                 })()}
 
-                {/* Decade distribution bar */}
-                {(() => {
-                  // Group movies by decade
-                  const decadeCounts: Record<string, number> = {};
-                  for (const movie of moviesWithData) {
-                    const releaseDate = (movie as any).tmdb_data?.release_date;
-                    if (typeof releaseDate === "string" && releaseDate.length >= 4) {
-                      const year = parseInt(releaseDate.slice(0, 4), 10);
-                      if (!isNaN(year)) {
-                        const decade = `${Math.floor(year / 10) * 10}s`;
-                        decadeCounts[decade] = (decadeCounts[decade] || 0) + 1;
-                      }
-                    }
-                  }
-
-                  // Sort decades chronologically
-                  const sortedDecades = Object.entries(decadeCounts)
-                    .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
-
-                  if (sortedDecades.length === 0) return null;
-
-                  let decadeRunningPercent = 0;
-                  const decadeSegments = sortedDecades.map(([decade, count]) => {
-                    const percent = (count / totalMoviesWithData) * 100;
-                    const startPercent = decadeRunningPercent;
-                    decadeRunningPercent += percent;
-                    return { decade, count, percent, startPercent };
-                  });
-
-                  // Color palette for decades (gradient from warm to cool)
-                  const decadeColors: Record<string, string> = {
-                    "1920s": "#8b4513",
-                    "1930s": "#cd853f",
-                    "1940s": "#daa520",
-                    "1950s": "#f4a460",
-                    "1960s": "#ff6347",
-                    "1970s": "#ff4500",
-                    "1980s": "#9932cc",
-                    "1990s": "#4169e1",
-                    "2000s": "#00ced1",
-                    "2010s": "#32cd32",
-                    "2020s": "#00e054",
-                  };
-
-                  const getDecadeColor = (decade: string) => {
-                    return decadeColors[decade] || "#678";
-                  };
-
-                  return (
-                    <div style={{ width: "100%", marginTop: "24px" }}>
-                      <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
-                        Films by Decade
-                      </h3>
-                      <div style={{ position: "relative", paddingTop: "24px" }}>
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: "0",
-                            left: 0,
-                            width: "100%",
-                            minHeight: "16px",
-                            pointerEvents: "none",
-                          }}
-                        >
-                          {decadeHover ? (
-                            <span
-                              style={{
-                                position: "absolute",
-                                left: `${decadeHover.midPercent}%`,
-                                transform: "translateX(-50%)",
-                                fontSize: "12px",
-                                color: "#9ab",
-                                backgroundColor: "rgba(20, 24, 28, 0.9)",
-                                border: "1px solid #345",
-                                borderRadius: "4px",
-                                padding: "2px 6px",
-                                whiteSpace: "nowrap",
-                                boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
-                              }}
-                            >
-                              {decadeHover.label}: {decadeHover.count} films ({Math.round(decadeHover.percent)}%)
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: "12px", color: "transparent" }}>.</span>
-                          )}
-                        </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            width: "100%",
-                            height: "32px",
-                            borderRadius: "6px",
-                            overflow: "hidden",
-                            backgroundColor: "#345",
-                            marginTop: "6px",
-                          }}
-                        >
-                        {decadeSegments.map(({ decade, count, percent, startPercent }) => {
-                          const midPercent = startPercent + percent / 2;
-                          return (
-                            <div
-                              key={decade}
-                              style={{
-                                width: `${percent}%`,
-                                height: "100%",
-                                backgroundColor: getDecadeColor(decade),
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                cursor: "default",
-                                transition: "opacity 0.2s ease",
-                                minWidth: percent > 3 ? "auto" : "0",
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.opacity = "0.8";
-                                setDecadeHover({ label: decade, count, percent, midPercent });
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.opacity = "1";
-                                setDecadeHover(null);
-                              }}
-                            >
-                              {percent >= 8 && (
-                                <span style={{ fontSize: "11px", fontWeight: 600, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
-                                  {decade.slice(0, 4)}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                        </div>
-                      </div>
-                      {/* Legend */}
-                      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "12px", marginTop: "12px" }}>
-                        {sortedDecades.map(([decade, count]) => {
-                          const percent = Math.round((count / totalMoviesWithData) * 100);
-                          return (
-                            <div key={decade} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                              <div style={{ width: "12px", height: "12px", borderRadius: "2px", backgroundColor: getDecadeColor(decade) }} />
-                              <span style={{ fontSize: "11px", color: "#9ab" }}>{decade} ({percent}%)</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Offset decade bar (1906-1915, 1916-1925, etc.) */}
-                {(() => {
-                  // Group movies by offset decades (years ending in 6 to years ending in 5)
-                  const offsetDecadeCounts: Record<string, number> = {};
-                  for (const movie of moviesWithData) {
-                    const releaseDate = (movie as any).tmdb_data?.release_date;
-                    if (typeof releaseDate === "string" && releaseDate.length >= 4) {
-                      const year = parseInt(releaseDate.slice(0, 4), 10);
-                      if (!isNaN(year)) {
-                        // Calculate offset decade: 1906-1915, 1916-1925, etc.
-                        const decadeStart = Math.floor((year - 6) / 10) * 10 + 6;
-                        const decadeEnd = decadeStart + 9;
-                        const decadeLabel = `${decadeStart}-${decadeEnd}`;
-                        offsetDecadeCounts[decadeLabel] = (offsetDecadeCounts[decadeLabel] || 0) + 1;
-                      }
-                    }
-                  }
-
-                  // Sort decades chronologically
-                  const sortedOffsetDecades = Object.entries(offsetDecadeCounts)
-                    .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
-
-                  if (sortedOffsetDecades.length === 0) return null;
-
-                  let offsetRunningPercent = 0;
-                  const offsetSegments = sortedOffsetDecades.map(([decade, count]) => {
-                    const percent = (count / totalMoviesWithData) * 100;
-                    const startPercent = offsetRunningPercent;
-                    offsetRunningPercent += percent;
-                    return { decade, count, percent, startPercent };
-                  });
-
-                  // Color palette for offset decades (different hues)
-                  const offsetDecadeColors: Record<string, string> = {
-                    "1896-1905": "#4a1c6b",
-                    "1906-1915": "#6b2d5b",
-                    "1916-1925": "#8b3d4b",
-                    "1926-1935": "#ab4d3b",
-                    "1936-1945": "#cb6d2b",
-                    "1946-1955": "#db8d1b",
-                    "1956-1965": "#dbad0b",
-                    "1966-1975": "#bbcd0b",
-                    "1976-1985": "#7bcd2b",
-                    "1986-1995": "#3bbd4b",
-                    "1996-2005": "#1b9d6b",
-                    "2006-2015": "#0b7d8b",
-                    "2016-2025": "#1b5dab",
-                  };
-
-                  const getOffsetDecadeColor = (decade: string) => {
-                    return offsetDecadeColors[decade] || "#678";
-                  };
-
-                  return (
-                    <div style={{ width: "100%", marginTop: "20px" }}>
-                      <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
-                        Films by Offset Decade
-                      </h3>
-                      <div style={{ position: "relative", paddingTop: "24px" }}>
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: "0",
-                            left: 0,
-                            width: "100%",
-                            minHeight: "16px",
-                            pointerEvents: "none",
-                          }}
-                        >
-                          {offsetDecadeHover ? (
-                            <span
-                              style={{
-                                position: "absolute",
-                                left: `${offsetDecadeHover.midPercent}%`,
-                                transform: "translateX(-50%)",
-                                fontSize: "12px",
-                                color: "#9ab",
-                                backgroundColor: "rgba(20, 24, 28, 0.9)",
-                                border: "1px solid #345",
-                                borderRadius: "4px",
-                                padding: "2px 6px",
-                                whiteSpace: "nowrap",
-                                boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
-                              }}
-                            >
-                              {offsetDecadeHover.label}: {offsetDecadeHover.count} films ({Math.round(offsetDecadeHover.percent)}%)
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: "12px", color: "transparent" }}>.</span>
-                          )}
-                        </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            width: "100%",
-                            height: "32px",
-                            borderRadius: "6px",
-                            overflow: "hidden",
-                            backgroundColor: "#345",
-                            marginTop: "6px",
-                          }}
-                        >
-                        {offsetSegments.map(({ decade, count, percent, startPercent }) => {
-                          const midPercent = startPercent + percent / 2;
-                          return (
-                            <div
-                              key={decade}
-                              style={{
-                                width: `${percent}%`,
-                                height: "100%",
-                                backgroundColor: getOffsetDecadeColor(decade),
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                cursor: "default",
-                                transition: "opacity 0.2s ease",
-                                minWidth: percent > 3 ? "auto" : "0",
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.opacity = "0.8";
-                                setOffsetDecadeHover({ label: decade, count, percent, midPercent });
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.opacity = "1";
-                                setOffsetDecadeHover(null);
-                              }}
-                            >
-                              {percent >= 10 && (
-                                <span style={{ fontSize: "10px", fontWeight: 600, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
-                                  {decade.slice(2, 4)}-{decade.slice(-2)}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                        </div>
-                      </div>
-                      {/* Legend */}
-                      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "12px", marginTop: "12px" }}>
-                        {sortedOffsetDecades.map(([decade, count]) => {
-                          const percent = Math.round((count / totalMoviesWithData) * 100);
-                          return (
-                            <div key={decade} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                              <div style={{ width: "12px", height: "12px", borderRadius: "2px", backgroundColor: getOffsetDecadeColor(decade) }} />
-                              <span style={{ fontSize: "11px", color: "#9ab" }}>{decade} ({percent}%)</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
               </>
             ) : (
               <div className="text-sm text-slate-400 space-y-2">
@@ -1805,6 +1553,44 @@ const filteredRows = rows.filter((row) => {
           <section style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "24px" }}>
             <div style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%", textAlign: "center" }}>
               <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>Ratings</h2>
+              {ratingFilter && (
+                <div style={{ fontSize: "12px", color: "#9ab", marginTop: "-8px" }}>
+                  Filtering diary list by rating {ratingFilter}★ — check Film Breakdown above.
+                  <button
+                    onClick={() => {
+                      const section = document.getElementById("diary-list");
+                      if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    style={{
+                      marginLeft: "8px",
+                      padding: "2px 6px",
+                      fontSize: "11px",
+                      backgroundColor: "transparent",
+                      border: "1px solid #456",
+                      borderRadius: "4px",
+                      color: "#9ab",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Jump to list
+                  </button>
+                  <button
+                    onClick={() => setRatingFilter(null)}
+                    style={{
+                      marginLeft: "8px",
+                      padding: "2px 6px",
+                      fontSize: "11px",
+                      backgroundColor: "transparent",
+                      border: "1px solid #456",
+                      borderRadius: "4px",
+                      color: "#9ab",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Rating stats row */}
@@ -1851,7 +1637,21 @@ const filteredRows = rows.filter((row) => {
                     cursor={{ fill: "rgba(68, 85, 102, 0.3)" }}
                     content={<RatingTooltip />}
                   />
-                  <Bar dataKey="count" fill="#00e054" radius={[3, 3, 0, 0]} />
+                  <Bar
+                    dataKey="count"
+                    radius={[3, 3, 0, 0]}
+                    onClick={(data: any) => {
+                      const rating = data?.payload?.rating;
+                      if (rating) toggleRatingFilter(String(rating));
+                    }}
+                  >
+                    {ratingChartData.map((entry) => (
+                      <Cell
+                        key={`rating-${entry.rating}`}
+                        fill={ratingFilter && ratingFilter !== entry.rating ? "#345" : "#00e054"}
+                      />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1905,6 +1705,316 @@ const filteredRows = rows.filter((row) => {
           </section>
         )}
 
+        {/* Decade distribution bars */}
+        {totalMoviesWithData > 0 && (
+          <section style={{ display: "flex", flexDirection: "column", gap: "20px", width: "100%" }}>
+            {/* Decade distribution bar */}
+            {(() => {
+              // Group movies by decade
+              const decadeCounts: Record<string, number> = {};
+              for (const movie of moviesWithData) {
+                const releaseDate = (movie as any).tmdb_data?.release_date;
+                if (typeof releaseDate === "string" && releaseDate.length >= 4) {
+                  const year = parseInt(releaseDate.slice(0, 4), 10);
+                  if (!isNaN(year)) {
+                    const decade = `${Math.floor(year / 10) * 10}s`;
+                    decadeCounts[decade] = (decadeCounts[decade] || 0) + 1;
+                  }
+                }
+              }
+
+              // Sort decades chronologically
+              const sortedDecades = Object.entries(decadeCounts)
+                .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+
+              if (sortedDecades.length === 0) return null;
+
+              let decadeRunningPercent = 0;
+              const decadeSegments = sortedDecades.map(([decade, count]) => {
+                const percent = (count / totalMoviesWithData) * 100;
+                const startPercent = decadeRunningPercent;
+                decadeRunningPercent += percent;
+                return { decade, count, percent, startPercent };
+              });
+
+              // Color palette for decades (gradient from warm to cool)
+              const decadeColors: Record<string, string> = {
+                "1920s": "#8b4513",
+                "1930s": "#cd853f",
+                "1940s": "#daa520",
+                "1950s": "#f4a460",
+                "1960s": "#ff6347",
+                "1970s": "#ff4500",
+                "1980s": "#9932cc",
+                "1990s": "#4169e1",
+                "2000s": "#00ced1",
+                "2010s": "#32cd32",
+                "2020s": "#00e054",
+              };
+
+              const getDecadeColor = (decade: string) => {
+                return decadeColors[decade] || "#678";
+              };
+
+              const showDecadeLabel = Boolean(decadeHover);
+
+              return (
+                <div style={{ width: "100%" }}>
+                      <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
+                        Films by Decade
+                      </h3>
+                  <div style={{ position: "relative", paddingTop: showDecadeLabel ? "24px" : "0", transition: "padding-top 0.2s ease" }}>
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "0",
+                        left: 0,
+                        width: "100%",
+                        minHeight: showDecadeLabel ? "16px" : "0",
+                        pointerEvents: "none",
+                        display: showDecadeLabel ? "block" : "none",
+                      }}
+                    >
+                      {decadeHover ? (
+                        <span
+                          style={{
+                            position: "absolute",
+                            left: `${decadeHover.midPercent}%`,
+                            transform: "translateX(-50%)",
+                            fontSize: "12px",
+                            color: "#9ab",
+                            backgroundColor: "rgba(20, 24, 28, 0.9)",
+                            border: "1px solid #345",
+                            borderRadius: "4px",
+                            padding: "2px 6px",
+                            whiteSpace: "nowrap",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+                          }}
+                        >
+                          {decadeHover.label}: {decadeHover.count} films ({Math.round(decadeHover.percent)}%)
+                        </span>
+                      ) : null}
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        width: "100%",
+                        height: "32px",
+                        borderRadius: "6px",
+                        overflow: "hidden",
+                        backgroundColor: "#345",
+                        marginTop: showDecadeLabel ? "12px" : "0",
+                        transition: "margin-top 0.2s ease",
+                      }}
+                    >
+                      {decadeSegments.map(({ decade, count, percent, startPercent }) => {
+                        const midPercent = startPercent + percent / 2;
+                        return (
+                          <div
+                            key={decade}
+                            style={{
+                              width: `${percent}%`,
+                              height: "100%",
+                              backgroundColor: getDecadeColor(decade),
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "default",
+                              transition: "opacity 0.2s ease",
+                              minWidth: percent > 3 ? "auto" : "0",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.opacity = "0.8";
+                              setDecadeHover({ label: decade, count, percent, midPercent });
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.opacity = "1";
+                              setDecadeHover(null);
+                            }}
+                          >
+                            {percent >= 8 && (
+                              <span style={{ fontSize: "11px", fontWeight: 600, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
+                                {decade.slice(0, 4)}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {/* Legend */}
+                  <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "12px", marginTop: "12px" }}>
+                    {sortedDecades.map(([decade, count]) => {
+                      const percent = Math.round((count / totalMoviesWithData) * 100);
+                      return (
+                        <div key={decade} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                          <div style={{ width: "12px", height: "12px", borderRadius: "2px", backgroundColor: getDecadeColor(decade) }} />
+                          <span style={{ fontSize: "11px", color: "#9ab" }}>{decade} ({percent}%)</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Offset decade bar (1906-1915, 1916-1925, etc.) */}
+            {(() => {
+              // Group movies by offset decades (years ending in 6 to years ending in 5)
+              const offsetDecadeCounts: Record<string, number> = {};
+              for (const movie of moviesWithData) {
+                const releaseDate = (movie as any).tmdb_data?.release_date;
+                if (typeof releaseDate === "string" && releaseDate.length >= 4) {
+                  const year = parseInt(releaseDate.slice(0, 4), 10);
+                  if (!isNaN(year)) {
+                    // Calculate offset decade: 1906-1915, 1916-1925, etc.
+                    const decadeStart = Math.floor((year - 6) / 10) * 10 + 6;
+                    const decadeEnd = decadeStart + 9;
+                    const decadeLabel = `${decadeStart}-${decadeEnd}`;
+                    offsetDecadeCounts[decadeLabel] = (offsetDecadeCounts[decadeLabel] || 0) + 1;
+                  }
+                }
+              }
+
+              // Sort decades chronologically
+              const sortedOffsetDecades = Object.entries(offsetDecadeCounts)
+                .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+
+              if (sortedOffsetDecades.length === 0) return null;
+
+              let offsetRunningPercent = 0;
+              const offsetSegments = sortedOffsetDecades.map(([decade, count]) => {
+                const percent = (count / totalMoviesWithData) * 100;
+                const startPercent = offsetRunningPercent;
+                offsetRunningPercent += percent;
+                return { decade, count, percent, startPercent };
+              });
+
+              // Color palette for offset decades (different hues)
+              const offsetDecadeColors: Record<string, string> = {
+                "1896-1905": "#4a1c6b",
+                "1906-1915": "#6b2d5b",
+                "1916-1925": "#8b3d4b",
+                "1926-1935": "#ab4d3b",
+                "1936-1945": "#cb6d2b",
+                "1946-1955": "#db8d1b",
+                "1956-1965": "#dbad0b",
+                "1966-1975": "#bbcd0b",
+                "1976-1985": "#7bcd2b",
+                "1986-1995": "#3bbd4b",
+                "1996-2005": "#1b9d6b",
+                "2006-2015": "#0b7d8b",
+                "2016-2025": "#1b5dab",
+              };
+
+              const getOffsetDecadeColor = (decade: string) => {
+                return offsetDecadeColors[decade] || "#678";
+              };
+
+              const showOffsetLabel = Boolean(offsetDecadeHover);
+
+              return (
+                <div style={{ width: "100%" }}>
+                  <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
+                    Films by Offset Decade
+                  </h3>
+                  <div style={{ position: "relative", paddingTop: showOffsetLabel ? "24px" : "0", transition: "padding-top 0.2s ease" }}>
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "0",
+                        left: 0,
+                        width: "100%",
+                        minHeight: showOffsetLabel ? "16px" : "0",
+                        pointerEvents: "none",
+                        display: showOffsetLabel ? "block" : "none",
+                      }}
+                    >
+                      {offsetDecadeHover ? (
+                        <span
+                          style={{
+                            position: "absolute",
+                            left: `${offsetDecadeHover.midPercent}%`,
+                            transform: "translateX(-50%)",
+                            fontSize: "12px",
+                            color: "#9ab",
+                            backgroundColor: "rgba(20, 24, 28, 0.9)",
+                            border: "1px solid #345",
+                            borderRadius: "4px",
+                            padding: "2px 6px",
+                            whiteSpace: "nowrap",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+                          }}
+                        >
+                          {offsetDecadeHover.label}: {offsetDecadeHover.count} films ({Math.round(offsetDecadeHover.percent)}%)
+                        </span>
+                      ) : null}
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        width: "100%",
+                        height: "32px",
+                        borderRadius: "6px",
+                        overflow: "hidden",
+                        backgroundColor: "#345",
+                        marginTop: showOffsetLabel ? "12px" : "0",
+                        transition: "margin-top 0.2s ease",
+                      }}
+                    >
+                      {offsetSegments.map(({ decade, count, percent, startPercent }) => {
+                        const midPercent = startPercent + percent / 2;
+                        return (
+                          <div
+                            key={decade}
+                            style={{
+                              width: `${percent}%`,
+                              height: "100%",
+                              backgroundColor: getOffsetDecadeColor(decade),
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "default",
+                              transition: "opacity 0.2s ease",
+                              minWidth: percent > 3 ? "auto" : "0",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.opacity = "0.8";
+                              setOffsetDecadeHover({ label: decade, count, percent, midPercent });
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.opacity = "1";
+                              setOffsetDecadeHover(null);
+                            }}
+                          >
+                            {percent >= 10 && (
+                              <span style={{ fontSize: "10px", fontWeight: 600, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
+                                {decade.slice(2, 4)}-{decade.slice(-2)}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {/* Legend */}
+                  <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "12px", marginTop: "12px" }}>
+                    {sortedOffsetDecades.map(([decade, count]) => {
+                      const percent = Math.round((count / totalMoviesWithData) * 100);
+                      return (
+                        <div key={decade} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                          <div style={{ width: "12px", height: "12px", borderRadius: "2px", backgroundColor: getOffsetDecadeColor(decade) }} />
+                          <span style={{ fontSize: "11px", color: "#9ab" }}>{decade} ({percent}%)</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+          </section>
+        )}
+
         {/* Watchlist Analysis Section */}
         <section style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px", marginTop: "32px" }}>
           <h2 style={{ fontSize: "20px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
@@ -1916,21 +2026,33 @@ const filteredRows = rows.filter((row) => {
 
           <div style={{ marginBottom: "16px" }}>
             <input
+              id="watchlist-file-input"
               type="file"
               accept=".csv"
               onChange={handleWatchlistChange}
               disabled={isWatchlistLoading}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "10px",
-                borderRadius: "4px",
-                border: "1px solid #456",
-                backgroundColor: "#14181c",
-                color: "#9ab",
-                fontSize: "14px",
-              }}
+              style={{ display: "none" }}
             />
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "13px", color: "#9ab" }}>Choose file:</span>
+              <label
+                htmlFor="watchlist-file-input"
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: "6px",
+                  border: "1px solid #4b5a66",
+                  backgroundColor: "#1b2026",
+                  color: "#e2e8f0",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: isWatchlistLoading ? "not-allowed" : "pointer",
+                  boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+                  opacity: isWatchlistLoading ? 0.6 : 1,
+                }}
+              >
+                {watchlistFileName}
+              </label>
+            </div>
           </div>
 
           {/* Loading state */}
