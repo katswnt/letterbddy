@@ -508,11 +508,7 @@ function App() {
     console.log("Sample entry keys:", firstEntry ? Object.keys(firstEntry[1] as any) : "none");
   }
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    setDiaryFileName(file ? file.name : "No file selected");
-    if (!file) return;
-
+  const processDiaryFile = (file: File) => {
     if (!file.name.toLowerCase().endsWith(".csv")) {
       setError("Please upload a CSV file.");
       setRows([]);
@@ -551,12 +547,15 @@ function App() {
     });
   };
 
-  // Watchlist file handler
-  const handleWatchlistChange = async (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    setWatchlistFileName(file ? file.name : "No file selected");
+    setDiaryFileName(file ? file.name : "No file selected");
     if (!file) return;
+    processDiaryFile(file);
+  };
 
+  // Watchlist file handler
+  const processWatchlistFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".csv")) {
       setError("Please upload a CSV file.");
       return;
@@ -739,6 +738,20 @@ function App() {
       setIsWatchlistLoading(false);
       setWatchlistProgress(null);
     }
+  };
+
+  const handleWatchlistChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setWatchlistFileName(file ? file.name : "No file selected");
+    if (!file) return;
+    await processWatchlistFile(file);
+  };
+
+  const loadSampleCsv = async (path: string, fileName: string) => {
+    const res = await fetch(path);
+    if (!res.ok) throw new Error(`Failed to load sample: ${fileName}`);
+    const blob = await res.blob();
+    return new File([blob], fileName, { type: "text/csv" });
   };
 
 // Extract unique years from diary entries, sorted descending (newest first)
@@ -1041,6 +1054,30 @@ const filteredRows = rows.filter((row) => {
               >
                 {diaryFileName}
               </label>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const file = await loadSampleCsv("/kat_diary.csv", "kat_diary.csv");
+                    setDiaryFileName(file.name);
+                    processDiaryFile(file);
+                  } catch (e: any) {
+                    setError(e.message || "Failed to load sample diary");
+                  }
+                }}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: "6px",
+                  border: "1px solid #456",
+                  backgroundColor: "transparent",
+                  color: "#9ab",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Try with Kat's
+              </button>
             </div>
           </div>
 
@@ -1160,6 +1197,39 @@ const filteredRows = rows.filter((row) => {
                 >
                   {reviewsFileName}
                 </label>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const file = await loadSampleCsv("/kat_reviews.csv", "kat_reviews.csv");
+                      setReviewsFileName(file.name);
+                      Papa.parse<ReviewRow>(file, {
+                        header: true,
+                        skipEmptyLines: true,
+                        complete: (result) => {
+                          const data = result.data.filter(
+                            (row: ReviewRow) => row.Review && row.Review.trim().length > 0
+                          );
+                          setReviews(data);
+                        },
+                      });
+                    } catch (e: any) {
+                      setError(e.message || "Failed to load sample reviews");
+                    }
+                  }}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: "6px",
+                    border: "1px solid #456",
+                    backgroundColor: "transparent",
+                    color: "#9ab",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Try with Kat's
+                </button>
               </div>
               {reviews.length > 0 && (
                 <p style={{ color: "#00e054", fontSize: "12px", marginTop: "8px" }}>
@@ -2113,6 +2183,32 @@ const filteredRows = rows.filter((row) => {
               >
                 {watchlistFileName}
               </label>
+              <button
+                type="button"
+                disabled={isWatchlistLoading}
+                onClick={async () => {
+                  try {
+                    const file = await loadSampleCsv("/kat_watchlist.csv", "kat_watchlist.csv");
+                    setWatchlistFileName(file.name);
+                    await processWatchlistFile(file);
+                  } catch (e: any) {
+                    setError(e.message || "Failed to load sample watchlist");
+                  }
+                }}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: "6px",
+                  border: "1px solid #456",
+                  backgroundColor: "transparent",
+                  color: "#9ab",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: isWatchlistLoading ? "not-allowed" : "pointer",
+                  opacity: isWatchlistLoading ? 0.6 : 1,
+                }}
+              >
+                Try with Kat's
+              </button>
             </div>
           </div>
 
