@@ -1,6 +1,8 @@
-import { useState, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import world from "@svg-maps/world";
+import { countries, continents } from "countries-list";
 
 // Shape of one row in diary.csv
 type DiaryRow = {
@@ -67,6 +69,8 @@ type RuntimeFilter = "all" | "under90" | "under2h" | "under2.5h" | "over2.5h";
 type WatchlistSortState = "default" | "asc" | "desc";
 type WatchlistSortColumn = "name" | "director" | "year" | "runtime" | null;
 type DecadeFilter = { type: "decade" | "offset"; label: string } | null;
+type GeoFilter = { type: "continent" | "country"; value: string } | null;
+type GeoView = "continent" | "country";
 
 // Cute loading spinner component
 const LoadingSpinner = ({ message }: { message?: string }) => (
@@ -305,6 +309,10 @@ function App() {
   const [offsetDecadeHover, setOffsetDecadeHover] = useState<{ label: string; count: number; percent: number; midPercent: number } | null>(null);
   const [ratingFilter, setRatingFilter] = useState<string | null>(null);
   const [decadeFilter, setDecadeFilter] = useState<DecadeFilter>(null);
+  const [geoFilter, setGeoFilter] = useState<GeoFilter>(null);
+  const [geoView, setGeoView] = useState<GeoView>("continent");
+  const [geoHover, setGeoHover] = useState<{ label: string; count: number; x: number; y: number } | null>(null);
+  const mapWrapperRef = useRef<HTMLDivElement | null>(null);
 
   const sortMoviesByColumn = <T extends Record<string, any>>(
     items: T[],
@@ -530,6 +538,7 @@ function App() {
   const processDiaryFile = (file: File) => {
     setRatingFilter(null);
     setDecadeFilter(null);
+    setGeoFilter(null);
     setDateFilter("all");
     if (!file.name.toLowerCase().endsWith(".csv")) {
       setError("Please upload a CSV file.");
@@ -888,6 +897,48 @@ const filteredRows = rows.filter((row) => {
     Array.from(filteredUris).map(canonicalizeUri)
   );
   
+  const getContinentCode = (countryCode: string | undefined | null) => {
+    if (!countryCode) return null;
+    const upper = countryCode.toUpperCase();
+    const entry = (countries as Record<string, any>)[upper];
+    return entry?.continent || null;
+  };
+
+  const getProductionCountryCodes = (movie: any): string[] => {
+    const codes = movie?.tmdb_data?.production_countries?.codes;
+    return Array.isArray(codes) ? codes.filter(Boolean) : [];
+  };
+
+  const matchesDecadeFilter = (movie: any) => {
+    if (!decadeFilter) return true;
+    const releaseDate = movie?.tmdb_data?.release_date;
+    if (typeof releaseDate !== "string" || releaseDate.length < 4) return false;
+    const year = parseInt(releaseDate.slice(0, 4), 10);
+    if (Number.isNaN(year)) return false;
+
+    if (decadeFilter.type === "decade") {
+      const label = `${Math.floor(year / 10) * 10}s`;
+      return label === decadeFilter.label;
+    }
+
+    const decadeStart = Math.floor((year - 6) / 10) * 10 + 6;
+    const decadeEnd = decadeStart + 9;
+    const label = `${decadeStart}-${decadeEnd}`;
+    return label === decadeFilter.label;
+  };
+
+  const matchesGeoFilter = (movie: any) => {
+    if (!geoFilter) return true;
+    const codes = getProductionCountryCodes(movie);
+    if (geoFilter.type === "country") {
+      return codes.map((c) => c.toUpperCase()).includes(geoFilter.value.toUpperCase());
+    }
+    const continentsForFilm = new Set(
+      codes.map(getContinentCode).filter(Boolean) as string[]
+    );
+    return continentsForFilm.has(geoFilter.value);
+  };
+
   // Match movieIndex entries to filtered diary entries using the alias lookup
   const matchedMovies = movieLookup
     ? (() => {
@@ -903,25 +954,55 @@ const filteredRows = rows.filter((row) => {
         return Array.from(matched.values());
       })()
     : [];
-  const moviesWithData = matchedMovies.filter((movie: any) => {
+  const moviesWithDataBase = matchedMovies.filter((movie: any) => {
     if (!movie.tmdb_data) return false;
-    if (!decadeFilter) return true;
-    const releaseDate = movie.tmdb_data?.release_date;
-    if (typeof releaseDate !== "string" || releaseDate.length < 4) return false;
-    const year = parseInt(releaseDate.slice(0, 4), 10);
-    if (Number.isNaN(year)) return false;
-
-    if (decadeFilter.type === "decade") {
-      const label = `${Math.floor(year / 10) * 10}s`;
-      return label === decadeFilter.label;
-    }
-
-    const decadeStart = Math.floor((year - 6) / 10) * 10 + 6;
-    const decadeEnd = decadeStart + 9;
-    const label = `${decadeStart}-${decadeEnd}`;
-    return label === decadeFilter.label;
+    return matchesDecadeFilter(movie);
   });
+  const moviesWithData = moviesWithDataBase.filter(matchesGeoFilter);
   const totalMoviesWithData = moviesWithData.length;
+
+  const countryCounts: Record<string, number> = {};
+  const continentCounts: Record<string, number> = {};
+  for (const movie of moviesWithDataBase) {
+    const codes = getProductionCountryCodes(movie).map((c) => c.toUpperCase());
+    for (const code of codes) {
+      countryCounts[code] = (countryCounts[code] || 0) + 1;
+    }
+    const continentsForFilm = new Set(
+      codes.map(getContinentCode).filter(Boolean) as string[]
+    );
+    for (const cont of continentsForFilm) {
+      continentCounts[cont] = (continentCounts[cont] || 0) + 1;
+    }
+  }
+
+  const maxCountryCount = Math.max(1, ...Object.values(countryCounts));
+  const maxContinentCount = Math.max(1, ...Object.values(continentCounts));
+
+  const continentColors: Record<string, string> = {
+    AF: "#f97316",
+    AS: "#f59e0b",
+    EU: "#3b82f6",
+    NA: "#22c55e",
+    SA: "#14b8a6",
+    OC: "#a855f7",
+    AN: "#94a3b8",
+  };
+
+  const mixHex = (a: string, b: string, t: number) => {
+    const toRgb = (hex: string) => {
+      const h = hex.replace("#", "");
+      return {
+        r: parseInt(h.slice(0, 2), 16),
+        g: parseInt(h.slice(2, 4), 16),
+        b: parseInt(h.slice(4, 6), 16),
+      };
+    };
+    const ar = toRgb(a);
+    const br = toRgb(b);
+    const mix = (x: number, y: number) => Math.round(x + (y - x) * t);
+    return `#${mix(ar.r, br.r).toString(16).padStart(2, "0")}${mix(ar.g, br.g).toString(16).padStart(2, "0")}${mix(ar.b, br.b).toString(16).padStart(2, "0")}`;
+  };
 
   const tmdbErrorCounts = matchedMovies.reduce<Record<string, number>>((acc, movie: any) => {
     const err = movie.tmdb_error || movie.tmdb_api_error;
@@ -2131,6 +2212,236 @@ const filteredRows = rows.filter((row) => {
             })()}
           </section>
         )}
+
+        {/* World map by country/continent */}
+        {moviesWithDataBase.length > 0 && (() => {
+          const worldMap = world as any;
+          const continentOrder = ["AF", "AS", "EU", "NA", "SA", "OC", "AN"];
+
+          const getCountryName = (code: string, fallback?: string) =>
+            (countries as Record<string, any>)[code]?.name || fallback || code;
+
+          const getContinentLabel = (code: string) =>
+            (continents as Record<string, string>)[code] || code;
+
+          const getFillForLocation = (codeLower: string) => {
+            const code = codeLower.toUpperCase();
+            const cont = getContinentCode(code);
+            if (geoView === "continent") {
+              if (!cont) return "#1b2026";
+              const base = continentColors[cont] || "#334";
+              const intensity = (continentCounts[cont] || 0) / maxContinentCount;
+              return mixHex("#1b2026", base, Math.min(1, 0.2 + intensity * 0.8));
+            }
+            const count = countryCounts[code] || 0;
+            if (count === 0) return "#1b2026";
+            const intensity = count / maxCountryCount;
+            return mixHex("#1b2026", "#00e054", Math.min(1, 0.2 + intensity * 0.8));
+          };
+
+          const isSelectedLocation = (codeLower: string) => {
+            if (!geoFilter) return false;
+            const code = codeLower.toUpperCase();
+            if (geoFilter.type === "country") {
+              return geoFilter.value.toUpperCase() === code;
+            }
+            const cont = getContinentCode(code);
+            return cont === geoFilter.value;
+          };
+
+          return (
+            <section style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#9ab" }}>World Map</h3>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  {(["continent", "country"] as const).map((view) => (
+                    <button
+                      key={view}
+                      type="button"
+                      onClick={() => setGeoView(view)}
+                      style={{
+                        padding: "4px 8px",
+                        borderRadius: "6px",
+                        border: "1px solid #456",
+                        backgroundColor: geoView === view ? "#00e054" : "transparent",
+                        color: geoView === view ? "#14181c" : "#9ab",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {view === "continent" ? "Continent" : "Country"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {geoFilter && (
+                <div style={{ fontSize: "12px", color: "#9ab", textAlign: "center" }}>
+                  Filtering diary list and pie charts for {geoFilter.type === "continent"
+                    ? getContinentLabel(geoFilter.value)
+                    : getCountryName(geoFilter.value)} — check Film Breakdown above.
+                  <button
+                    onClick={() => {
+                      const section = document.getElementById("diary-list");
+                      if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    style={{
+                      marginLeft: "8px",
+                      padding: "2px 6px",
+                      fontSize: "11px",
+                      backgroundColor: "transparent",
+                      border: "1px solid #456",
+                      borderRadius: "4px",
+                      color: "#9ab",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Jump to list
+                  </button>
+                  <button
+                    onClick={() => setGeoFilter(null)}
+                    style={{
+                      marginLeft: "8px",
+                      padding: "2px 6px",
+                      fontSize: "11px",
+                      backgroundColor: "transparent",
+                      border: "1px solid #456",
+                      borderRadius: "4px",
+                      color: "#9ab",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+
+              <div
+                ref={mapWrapperRef}
+                style={{ position: "relative", width: "100%", backgroundColor: "#101419", borderRadius: "8px", padding: "8px" }}
+              >
+                {geoHover && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: geoHover.x,
+                      top: geoHover.y,
+                      transform: "translate(-50%, -120%)",
+                      backgroundColor: "rgba(20, 24, 28, 0.95)",
+                      border: "1px solid #345",
+                      borderRadius: "6px",
+                      padding: "4px 8px",
+                      fontSize: "12px",
+                      color: "#e2e8f0",
+                      pointerEvents: "none",
+                      whiteSpace: "nowrap",
+                      boxShadow: "0 6px 16px rgba(0,0,0,0.35)",
+                    }}
+                  >
+                    {geoHover.label}: {geoHover.count} films
+                  </div>
+                )}
+                <svg
+                  viewBox={worldMap.viewBox}
+                  style={{ width: "100%", height: "auto" }}
+                  role="img"
+                  aria-label="World map"
+                >
+                  {worldMap.locations.map((loc: any) => {
+                    const codeLower = loc.id;
+                    const code = codeLower.toUpperCase();
+                    const cont = getContinentCode(code);
+                    const countryCount = countryCounts[code] || 0;
+                    const continentCount = cont ? (continentCounts[cont] || 0) : 0;
+                    const label = geoView === "continent"
+                      ? (cont ? getContinentLabel(cont) : "Unknown")
+                      : getCountryName(code, loc.name);
+                    const hoverCount = geoView === "continent" ? continentCount : countryCount;
+                    const clickable = geoView === "continent" ? Boolean(cont && continentCount > 0) : countryCount > 0;
+
+                    return (
+                      <path
+                        key={loc.id}
+                        d={loc.path}
+                        fill={getFillForLocation(codeLower)}
+                        stroke={isSelectedLocation(codeLower) ? "#00e054" : "#222831"}
+                        strokeWidth={isSelectedLocation(codeLower) ? 0.8 : 0.4}
+                        style={{ cursor: clickable ? "pointer" : "default", transition: "fill 0.2s ease" }}
+                        onMouseEnter={(e) => {
+                          const rect = mapWrapperRef.current?.getBoundingClientRect();
+                          if (!rect) return;
+                          setGeoHover({
+                            label,
+                            count: hoverCount,
+                            x: e.clientX - rect.left,
+                            y: e.clientY - rect.top,
+                          });
+                        }}
+                        onMouseMove={(e) => {
+                          const rect = mapWrapperRef.current?.getBoundingClientRect();
+                          if (!rect) return;
+                          setGeoHover((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  x: e.clientX - rect.left,
+                                  y: e.clientY - rect.top,
+                                }
+                              : {
+                                  label,
+                                  count: hoverCount,
+                                  x: e.clientX - rect.left,
+                                  y: e.clientY - rect.top,
+                                }
+                          );
+                        }}
+                        onMouseLeave={() => setGeoHover(null)}
+                        onClick={() => {
+                          if (!clickable) return;
+                          if (geoView === "continent" && cont) {
+                            setGeoFilter((prev) => (prev && prev.type === "continent" && prev.value === cont ? null : { type: "continent", value: cont }));
+                          }
+                          if (geoView === "country") {
+                            setGeoFilter((prev) => (prev && prev.type === "country" && prev.value === code ? null : { type: "country", value: code }));
+                          }
+                        }}
+                      />
+                    );
+                  })}
+                </svg>
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "center" }}>
+                {continentOrder.map((cont) => {
+                  const count = continentCounts[cont] || 0;
+                  const label = getContinentLabel(cont);
+                  const isActive = geoFilter?.type === "continent" && geoFilter.value === cont;
+                  return (
+                    <button
+                      key={cont}
+                      type="button"
+                      onClick={() => setGeoFilter((prev) => (prev && prev.type === "continent" && prev.value === cont ? null : { type: "continent", value: cont }))}
+                      style={{
+                        padding: "4px 8px",
+                        borderRadius: "999px",
+                        border: "1px solid #456",
+                        backgroundColor: isActive ? "#00e054" : "transparent",
+                        color: isActive ? "#14181c" : "#9ab",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        cursor: count > 0 ? "pointer" : "default",
+                        opacity: count > 0 ? 1 : 0.5,
+                      }}
+                    >
+                      {label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })()}
 
         {/* Review stats - only show if reviews have been uploaded */}
         {reviews.length > 0 && (() => {
