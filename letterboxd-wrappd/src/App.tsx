@@ -509,6 +509,9 @@ function App() {
   }
 
   const processDiaryFile = (file: File) => {
+    setRatingFilter(null);
+    setDecadeFilter(null);
+    setDateFilter("all");
     if (!file.name.toLowerCase().endsWith(".csv")) {
       setError("Please upload a CSV file.");
       setRows([]);
@@ -755,20 +758,23 @@ function App() {
   };
 
 // Extract unique years from diary entries, sorted descending (newest first)
-const availableYears = Array.from(
-  new Set(
-    rows
-      .map((row) => (row["Watched Date"] || "").trim().slice(0, 4))
-      .filter((year) => year && /^\d{4}$/.test(year))
-  )
-).sort((a, b) => parseInt(b) - parseInt(a));
+  const getWatchedDate = (row: DiaryRow) =>
+    (row["Watched Date"] || (row as any).Date || "").trim();
+
+  const availableYears = Array.from(
+    new Set(
+      rows
+        .map((row) => getWatchedDate(row).slice(0, 4))
+        .filter((year) => year && /^\d{4}$/.test(year))
+    )
+  ).sort((a, b) => parseInt(b) - parseInt(a));
 
 // Filter rows based on selected time range
 const filteredRows = rows.filter((row) => {
   if (dateFilter === "all") return true;
 
-  // diary "Watched Date" is "YYYY-MM-DD" as a string
-  const watched = (row["Watched Date"] || "").trim();
+  // diary "Watched Date" or watched list "Date" is "YYYY-MM-DD"
+  const watched = getWatchedDate(row);
   if (!watched) return false;
 
   const year = watched.slice(0, 4); // "2025-04-12" -> "2025"
@@ -1319,6 +1325,9 @@ const filteredRows = rows.filter((row) => {
               <>
                 <p style={{ fontSize: "12px", color: "#9ab", textAlign: "center" }}>
                   Based on {totalMoviesWithData} films with TMDb data
+                </p>
+                <p style={{ fontSize: "11px", color: "#678", textAlign: "center" }}>
+                  Debug: {filteredUris.size} filtered URIs, {movieLookup ? Object.keys(movieLookup).length : 0} in lookup, {moviesWithDataRaw.filter((m: any) => m.tmdb_error).length} TMDb errors
                 </p>
 
                 {/* Pie charts grid */}
