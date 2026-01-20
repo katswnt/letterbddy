@@ -411,7 +411,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               movieIndex[resolved].tmdb_data = cachedData;
               cacheHits++;
               processed++;
-              continue;
+              return;
             }
           }
 
