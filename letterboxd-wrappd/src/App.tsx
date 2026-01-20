@@ -1,8 +1,20 @@
-import { useCallback, useMemo, useRef, useState, type ChangeEvent } from "react";
+import {
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
 import Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import world from "@svg-maps/world";
 import { countries, continents } from "countries-list";
+import "./App.css";
 
 // Shape of one row in diary.csv
 type DiaryRow = {
@@ -83,6 +95,36 @@ const getContinentCode = (countryCode: string | undefined | null) => {
 
 const getContinentLabel = (code: string) =>
   (continents as Record<string, string>)[code] || code;
+
+const sortMoviesByColumn = <T extends Record<string, any>>(
+  items: T[],
+  column: WatchlistSortColumn,
+  state: WatchlistSortState
+) => {
+  if (!column || state === "default") return items;
+
+  return [...items].sort((a, b) => {
+    let aVal = a[column];
+    let bVal = b[column];
+    // Handle null/undefined values
+    if (aVal == null && bVal == null) return 0;
+    if (aVal == null) return 1;
+    if (bVal == null) return -1;
+    // Case-insensitive string comparison
+    if (typeof aVal === "string") aVal = aVal.toLowerCase();
+    if (typeof bVal === "string") bVal = bVal.toLowerCase();
+    if (aVal < bVal) return state === "asc" ? -1 : 1;
+    if (aVal > bVal) return state === "asc" ? 1 : -1;
+    return 0;
+  });
+};
+
+const formatRuntime = (runtime: number | null) => {
+  if (!runtime) return "—";
+  const h = Math.floor(runtime / 60);
+  const m = runtime % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+};
 
 // Cute loading spinner component
 const LoadingSpinner = ({ message }: { message?: string }) => (
@@ -253,6 +295,7 @@ const StatPieChart = ({
               startAngle={90}
               endAngle={-270}
               stroke="none"
+              isAnimationActive={false}
             >
               <Cell fill={PIE_COLORS.primary} />
               <Cell fill={PIE_COLORS.secondary} />
@@ -270,6 +313,588 @@ const StatPieChart = ({
     </div>
   );
 };
+
+type VirtualListProps = {
+  items: any[];
+  height: number;
+  itemHeight: number;
+  overscan?: number;
+  className?: string;
+  renderRow: (item: any, index: number) => ReactNode;
+};
+
+const VirtualList = memo(({ items, height, itemHeight, overscan = 6, className, renderRow }: VirtualListProps) => {
+  const [scrollTop, setScrollTop] = useState(0);
+
+  const totalHeight = items.length * itemHeight;
+  const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan);
+  const endIndex = Math.min(items.length, Math.ceil((scrollTop + height) / itemHeight) + overscan);
+  const offsetY = startIndex * itemHeight;
+
+  return (
+    <div
+      className={className}
+      style={{ height, overflowY: "auto", overflowX: "visible", position: "relative" }}
+      onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+    >
+      <div style={{ height: totalHeight, position: "relative" }}>
+        <div style={{ transform: `translateY(${offsetY}px)` }}>
+          {items.slice(startIndex, endIndex).map((item, idx) => renderRow(item, startIndex + idx))}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+type DiaryMovie = {
+  name: string;
+  year: string;
+  uri: string;
+  director: string;
+  runtime: number | null;
+  directedByWoman: boolean;
+  writtenByWoman: boolean;
+  notAmerican: boolean;
+  notEnglish: boolean;
+  inCriterion: boolean;
+  criteriaCount: number;
+};
+
+type DiaryTableProps = {
+  moviesWithData: any[];
+  diaryFilters: {
+    directedByWoman: boolean;
+    writtenByWoman: boolean;
+    notAmerican: boolean;
+    notEnglish: boolean;
+    inCriterion: boolean;
+  };
+  setDiaryFilters: Dispatch<SetStateAction<{
+    directedByWoman: boolean;
+    writtenByWoman: boolean;
+    notAmerican: boolean;
+    notEnglish: boolean;
+    inCriterion: boolean;
+  }>>;
+  diarySortColumn: WatchlistSortColumn;
+  setDiarySortColumn: Dispatch<SetStateAction<WatchlistSortColumn>>;
+  diarySortState: WatchlistSortState;
+  setDiarySortState: Dispatch<SetStateAction<WatchlistSortState>>;
+};
+
+const DiaryTable = memo(({
+  moviesWithData,
+  diaryFilters,
+  setDiaryFilters,
+  diarySortColumn,
+  setDiarySortColumn,
+  diarySortState,
+  setDiarySortState,
+}: DiaryTableProps) => {
+  const diaryMovieList = useMemo<DiaryMovie[]>(() => (
+    moviesWithData.map((movie: any) => {
+      const tmdbData = movie.tmdb_data || {};
+      const directors = tmdbData.directors || [];
+      const directorNames = directors.map((d: any) => d.name).filter(Boolean).join(", ");
+
+      return {
+        name: tmdbData.title || "Unknown Title",
+        year: tmdbData.release_date?.slice(0, 4) || "",
+        uri: movie.letterboxd_url || "",
+        director: directorNames || "Unknown",
+        runtime: typeof tmdbData.runtime === "number" ? tmdbData.runtime : null,
+        directedByWoman: tmdbData.directed_by_woman === true,
+        writtenByWoman: tmdbData.written_by_woman === true,
+        notAmerican: tmdbData.is_american === false,
+        notEnglish: tmdbData.is_english === false,
+        inCriterion: movie.is_in_criterion_collection === true,
+        criteriaCount: [
+          tmdbData.directed_by_woman === true,
+          tmdbData.written_by_woman === true,
+          tmdbData.is_american === false,
+          tmdbData.is_english === false,
+          movie.is_in_criterion_collection === true,
+        ].filter(Boolean).length,
+      };
+    })
+  ), [moviesWithData]);
+
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  const hasMeasuredRef = useRef(false);
+  const [rowHeight, setRowHeight] = useState(64);
+
+  const filteredDiaryMovies = useMemo(() => {
+    const hasActiveFilter = Object.values(diaryFilters).some(Boolean);
+    let filtered = hasActiveFilter
+      ? diaryMovieList.filter((movie) => {
+          if (diaryFilters.directedByWoman && !movie.directedByWoman) return false;
+          if (diaryFilters.writtenByWoman && !movie.writtenByWoman) return false;
+          if (diaryFilters.notAmerican && !movie.notAmerican) return false;
+          if (diaryFilters.notEnglish && !movie.notEnglish) return false;
+          if (diaryFilters.inCriterion && !movie.inCriterion) return false;
+          return true;
+        })
+      : [...diaryMovieList];
+
+    if (diarySortColumn && diarySortState !== "default") {
+      filtered = sortMoviesByColumn(filtered, diarySortColumn, diarySortState);
+    } else {
+      filtered = [...filtered].sort((a, b) => {
+        if (b.criteriaCount !== a.criteriaCount) {
+          return b.criteriaCount - a.criteriaCount;
+        }
+        const nameA = (a.name || "").toLowerCase();
+        const nameB = (b.name || "").toLowerCase();
+        if (nameA < nameB) return -1;
+        if (nameA > nameB) return 1;
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [diaryFilters, diaryMovieList, diarySortColumn, diarySortState]);
+
+  const hasActiveFilter = Object.values(diaryFilters).some(Boolean);
+
+  const toggleFilter = (key: keyof typeof diaryFilters) => {
+    setDiaryFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleSort = (column: WatchlistSortColumn) => {
+    if (diarySortColumn !== column) {
+      setDiarySortColumn(column);
+      setDiarySortState("asc");
+    } else {
+      if (diarySortState === "asc") {
+        setDiarySortState("desc");
+      } else if (diarySortState === "desc") {
+        setDiarySortState("default");
+        setDiarySortColumn(null);
+      } else {
+        setDiarySortState("asc");
+      }
+    }
+  };
+
+  const getSortIndicator = (column: WatchlistSortColumn) => {
+    if (diarySortColumn !== column) return "";
+    if (diarySortState === "asc") return " ↑";
+    if (diarySortState === "desc") return " ↓";
+    return "";
+  };
+
+  useLayoutEffect(() => {
+    if (hasMeasuredRef.current) return;
+    const container = measureRef.current;
+    if (!container) return;
+    const rows = Array.from(container.querySelectorAll(".lb-row"));
+    if (!rows.length) return;
+    let max = 0;
+    for (const row of rows) {
+      const rect = row.getBoundingClientRect();
+      if (rect.height > max) max = rect.height;
+    }
+    if (max > 0) {
+      setRowHeight(Math.ceil(max));
+      hasMeasuredRef.current = true;
+    }
+  }, [diaryMovieList]);
+
+  const renderRow = useCallback((movie: DiaryMovie, index: number) => {
+    const isAlt = index % 2 === 1;
+    return (
+      <div key={movie.uri || index} style={{ height: rowHeight }} className={`lb-row lb-diary-grid ${isAlt ? "lb-row-alt" : ""}`}>
+        <div className="lb-cell lb-cell-title">
+          <a
+            href={movie.uri}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="lb-link"
+          >
+            {movie.name}
+          </a>
+        </div>
+        <div className="lb-cell">{movie.director}</div>
+        <div className="lb-cell lb-cell-center">{movie.year}</div>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.directedByWoman ? "#00e054" : "#456" }}>
+          {movie.directedByWoman ? "✓" : "✗"}
+        </div>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.writtenByWoman ? "#00e054" : "#456" }}>
+          {movie.writtenByWoman ? "✓" : "✗"}
+        </div>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.notAmerican ? "#00e054" : "#456" }}>
+          {movie.notAmerican ? "✓" : "✗"}
+        </div>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.notEnglish ? "#00e054" : "#456" }}>
+          {movie.notEnglish ? "✓" : "✗"}
+        </div>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.inCriterion ? "#00e054" : "#456" }}>
+          {movie.inCriterion ? "✓" : "✗"}
+        </div>
+      </div>
+    );
+  }, []);
+
+  return (
+    <div style={{ width: "100%", marginTop: "24px" }}>
+      <h3 id="diary-list" className="lb-section-title">
+        All Films ({filteredDiaryMovies.length}{hasActiveFilter ? ` of ${diaryMovieList.length}` : ""})
+      </h3>
+      {hasActiveFilter && (
+        <p className="lb-filter-row">
+          <button
+            onClick={() => setDiaryFilters({
+              directedByWoman: false,
+              writtenByWoman: false,
+              notAmerican: false,
+              notEnglish: false,
+              inCriterion: false,
+            })}
+            className="lb-filter-clear"
+          >
+            Clear filters
+          </button>
+        </p>
+      )}
+      <div className="lb-table-container" style={{ maxHeight: "400px" }}>
+        {!hasMeasuredRef.current && (
+          <div ref={measureRef} className="lb-measure lb-diary-grid">
+            {diaryMovieList.map((movie, index) => (
+              <div key={movie.uri || index} className="lb-row lb-diary-grid">
+                <div className="lb-cell lb-cell-title">{movie.name}</div>
+                <div className="lb-cell">{movie.director}</div>
+                <div className="lb-cell lb-cell-center">{movie.year}</div>
+                <div className="lb-cell lb-cell-flag">{movie.directedByWoman ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.writtenByWoman ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.notAmerican ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.notEnglish ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.inCriterion ? "✓" : "✗"}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="lb-table-head lb-diary-grid">
+          <button className="lb-header-cell lb-header-left" title="Click to sort by title" onClick={() => toggleSort("name")}>
+            Title{getSortIndicator("name")}
+          </button>
+          <button className="lb-header-cell" title="Click to sort by director" onClick={() => toggleSort("director")}>
+            Director{getSortIndicator("director")}
+          </button>
+          <button className="lb-header-cell" title="Click to sort by year" onClick={() => toggleSort("year")}>
+            Year{getSortIndicator("year")}
+          </button>
+          <button className={`lb-header-cell lb-header-flag ${diaryFilters.directedByWoman ? "lb-header-active" : ""}`} title="Directed by Woman (click to filter)" onClick={() => toggleFilter("directedByWoman")}>
+            Dir♀
+          </button>
+          <button className={`lb-header-cell lb-header-flag ${diaryFilters.writtenByWoman ? "lb-header-active" : ""}`} title="Written by Woman (click to filter)" onClick={() => toggleFilter("writtenByWoman")}>
+            Writ♀
+          </button>
+          <button className={`lb-header-cell lb-header-flag ${diaryFilters.notAmerican ? "lb-header-active" : ""}`} title="Not American (click to filter)" onClick={() => toggleFilter("notAmerican")}>
+            !US
+          </button>
+          <button className={`lb-header-cell lb-header-flag ${diaryFilters.notEnglish ? "lb-header-active" : ""}`} title="Not in English (click to filter)" onClick={() => toggleFilter("notEnglish")}>
+            !EN
+          </button>
+          <button className={`lb-header-cell lb-header-flag ${diaryFilters.inCriterion ? "lb-header-active" : ""}`} title="Criterion Collection (click to filter)" onClick={() => toggleFilter("inCriterion")}>
+            CC
+          </button>
+        </div>
+        <VirtualList
+          height={400}
+          itemHeight={rowHeight}
+          items={filteredDiaryMovies}
+          renderRow={renderRow}
+        />
+      </div>
+    </div>
+  );
+});
+
+type WatchlistTableProps = {
+  watchlistMovies: WatchlistMovie[];
+  watchlistFilters: {
+    directedByWoman: boolean;
+    writtenByWoman: boolean;
+    notAmerican: boolean;
+    notEnglish: boolean;
+    inCriterion: boolean;
+  };
+  setWatchlistFilters: Dispatch<SetStateAction<{
+    directedByWoman: boolean;
+    writtenByWoman: boolean;
+    notAmerican: boolean;
+    notEnglish: boolean;
+    inCriterion: boolean;
+  }>>;
+  watchlistRuntimeFilter: RuntimeFilter;
+  setWatchlistRuntimeFilter: Dispatch<SetStateAction<RuntimeFilter>>;
+  watchlistSortColumn: WatchlistSortColumn;
+  setWatchlistSortColumn: Dispatch<SetStateAction<WatchlistSortColumn>>;
+  watchlistSortState: WatchlistSortState;
+  setWatchlistSortState: Dispatch<SetStateAction<WatchlistSortState>>;
+  watchlistContinentFilter: string | null;
+  setWatchlistContinentFilter: Dispatch<SetStateAction<string | null>>;
+};
+
+const WatchlistTable = memo(({
+  watchlistMovies,
+  watchlistFilters,
+  setWatchlistFilters,
+  watchlistRuntimeFilter,
+  setWatchlistRuntimeFilter,
+  watchlistSortColumn,
+  setWatchlistSortColumn,
+  watchlistSortState,
+  setWatchlistSortState,
+  watchlistContinentFilter,
+  setWatchlistContinentFilter,
+}: WatchlistTableProps) => {
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  const hasMeasuredRef = useRef(false);
+  const [rowHeight, setRowHeight] = useState(64);
+
+  const passesRuntimeFilter = useCallback((runtime: number | null) => {
+    if (watchlistRuntimeFilter === "all") return true;
+    if (runtime === null) return false;
+    if (watchlistRuntimeFilter === "under90") return runtime < 90;
+    if (watchlistRuntimeFilter === "under2h") return runtime < 120;
+    if (watchlistRuntimeFilter === "under2.5h") return runtime < 150;
+    if (watchlistRuntimeFilter === "over2.5h") return runtime >= 150;
+    return true;
+  }, [watchlistRuntimeFilter]);
+
+  const filteredMovies = useMemo(() => {
+    const hasActiveFilter = Object.values(watchlistFilters).some(Boolean);
+    const hasActiveContinentFilter = watchlistContinentFilter !== null;
+    let filtered = watchlistMovies.filter((movie) => {
+      if (hasActiveFilter) {
+        if (watchlistFilters.directedByWoman && !movie.directedByWoman) return false;
+        if (watchlistFilters.writtenByWoman && !movie.writtenByWoman) return false;
+        if (watchlistFilters.notAmerican && !movie.notAmerican) return false;
+        if (watchlistFilters.notEnglish && !movie.notEnglish) return false;
+        if (watchlistFilters.inCriterion && !movie.inCriterion) return false;
+      }
+      if (hasActiveContinentFilter && watchlistContinentFilter && !movie.continents.includes(watchlistContinentFilter)) {
+        return false;
+      }
+      if (!passesRuntimeFilter(movie.runtime)) return false;
+      return true;
+    });
+
+    filtered = sortMoviesByColumn(filtered, watchlistSortColumn, watchlistSortState);
+    return filtered;
+  }, [passesRuntimeFilter, watchlistContinentFilter, watchlistFilters, watchlistMovies, watchlistSortColumn, watchlistSortState]);
+
+  const hasActiveFilter = Object.values(watchlistFilters).some(Boolean);
+  const hasActiveRuntimeFilter = watchlistRuntimeFilter !== "all";
+  const hasActiveContinentFilter = watchlistContinentFilter !== null;
+  const hasAnyFilter = hasActiveFilter || hasActiveRuntimeFilter || hasActiveContinentFilter;
+
+  const toggleFilter = (key: keyof typeof watchlistFilters) => {
+    setWatchlistFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleSort = (column: WatchlistSortColumn) => {
+    if (watchlistSortColumn !== column) {
+      setWatchlistSortColumn(column);
+      setWatchlistSortState("asc");
+    } else {
+      if (watchlistSortState === "asc") {
+        setWatchlistSortState("desc");
+      } else if (watchlistSortState === "desc") {
+        setWatchlistSortState("default");
+        setWatchlistSortColumn(null);
+      } else {
+        setWatchlistSortState("asc");
+      }
+    }
+  };
+
+  const getSortIndicator = (column: WatchlistSortColumn) => {
+    if (watchlistSortColumn !== column) return "";
+    if (watchlistSortState === "asc") return " ↑";
+    if (watchlistSortState === "desc") return " ↓";
+    return "";
+  };
+
+  const cycleContinentFilter = () => {
+    if (!watchlistContinentFilter) {
+      setWatchlistContinentFilter(CONTINENT_ORDER[0]);
+      return;
+    }
+    const idx = CONTINENT_ORDER.indexOf(watchlistContinentFilter as (typeof CONTINENT_ORDER)[number]);
+    if (idx === -1 || idx === CONTINENT_ORDER.length - 1) {
+      setWatchlistContinentFilter(null);
+      return;
+    }
+    setWatchlistContinentFilter(CONTINENT_ORDER[idx + 1]);
+  };
+
+  useLayoutEffect(() => {
+    if (hasMeasuredRef.current) return;
+    const container = measureRef.current;
+    if (!container) return;
+    const rows = Array.from(container.querySelectorAll(".lb-row"));
+    if (!rows.length) return;
+    let max = 0;
+    for (const row of rows) {
+      const rect = row.getBoundingClientRect();
+      if (rect.height > max) max = rect.height;
+    }
+    if (max > 0) {
+      setRowHeight(Math.ceil(max));
+      hasMeasuredRef.current = true;
+    }
+  }, [watchlistMovies]);
+
+  const renderRow = useCallback((movie: WatchlistMovie, index: number) => {
+    const isAlt = index % 2 === 1;
+    return (
+      <div key={movie.uri} style={{ height: rowHeight }} className={`lb-row lb-watchlist-grid ${isAlt ? "lb-row-alt" : ""}`}>
+        <div className="lb-cell lb-cell-title">
+          <a
+            href={movie.uri}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="lb-link"
+          >
+            {movie.name}
+          </a>
+        </div>
+        <div className="lb-cell">{movie.director}</div>
+        <div className="lb-cell lb-cell-center">{movie.year}</div>
+        <div className="lb-cell lb-cell-center lb-cell-small">{formatRuntime(movie.runtime)}</div>
+        <div className="lb-cell lb-cell-center lb-cell-small">
+          {movie.continents.length > 0 ? movie.continents.map(getContinentLabel).join(", ") : "—"}
+        </div>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.directedByWoman ? "#00e054" : "#456" }}>
+          {movie.directedByWoman ? "✓" : "✗"}
+        </div>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.writtenByWoman ? "#00e054" : "#456" }}>
+          {movie.writtenByWoman ? "✓" : "✗"}
+        </div>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.notAmerican ? "#00e054" : "#456" }}>
+          {movie.notAmerican ? "✓" : "✗"}
+        </div>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.notEnglish ? "#00e054" : "#456" }}>
+          {movie.notEnglish ? "✓" : "✗"}
+        </div>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.inCriterion ? "#00e054" : "#456" }}>
+          {movie.inCriterion ? "✓" : "✗"}
+        </div>
+      </div>
+    );
+  }, []);
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <div className="lb-runtime-filters">
+        <span className="lb-runtime-label">Runtime:</span>
+        <button className={`lb-runtime-btn ${watchlistRuntimeFilter === "all" ? "is-active" : ""}`} onClick={() => setWatchlistRuntimeFilter("all")}>
+          All
+        </button>
+        <button className={`lb-runtime-btn ${watchlistRuntimeFilter === "under90" ? "is-active" : ""}`} onClick={() => setWatchlistRuntimeFilter("under90")}>
+          Under 90 min
+        </button>
+        <button className={`lb-runtime-btn ${watchlistRuntimeFilter === "under2h" ? "is-active" : ""}`} onClick={() => setWatchlistRuntimeFilter("under2h")}>
+          Under 2 hrs
+        </button>
+        <button className={`lb-runtime-btn ${watchlistRuntimeFilter === "under2.5h" ? "is-active" : ""}`} onClick={() => setWatchlistRuntimeFilter("under2.5h")}>
+          Under 2½ hrs
+        </button>
+        <button className={`lb-runtime-btn ${watchlistRuntimeFilter === "over2.5h" ? "is-active" : ""}`} onClick={() => setWatchlistRuntimeFilter("over2.5h")}>
+          Over 2½ hrs
+        </button>
+      </div>
+
+      {hasAnyFilter && (
+        <p className="lb-filter-row">
+          Showing {filteredMovies.length} of {watchlistMovies.length} movies
+          <button
+            onClick={() => {
+              setWatchlistFilters({
+                directedByWoman: false,
+                writtenByWoman: false,
+                notAmerican: false,
+                notEnglish: false,
+                inCriterion: false,
+              });
+              setWatchlistRuntimeFilter("all");
+              setWatchlistContinentFilter(null);
+            }}
+            className="lb-filter-clear"
+          >
+            Clear all filters
+          </button>
+        </p>
+      )}
+
+      <div className="lb-table-container" style={{ maxHeight: "500px" }}>
+        {!hasMeasuredRef.current && (
+          <div ref={measureRef} className="lb-measure lb-watchlist-grid">
+            {watchlistMovies.map((movie) => (
+              <div key={movie.uri} className="lb-row lb-watchlist-grid">
+                <div className="lb-cell lb-cell-title">{movie.name}</div>
+                <div className="lb-cell">{movie.director}</div>
+                <div className="lb-cell lb-cell-center">{movie.year}</div>
+                <div className="lb-cell lb-cell-center lb-cell-small">{formatRuntime(movie.runtime)}</div>
+                <div className="lb-cell lb-cell-center lb-cell-small">
+                  {movie.continents.length > 0 ? movie.continents.map(getContinentLabel).join(", ") : "—"}
+                </div>
+                <div className="lb-cell lb-cell-flag">{movie.directedByWoman ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.writtenByWoman ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.notAmerican ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.notEnglish ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.inCriterion ? "✓" : "✗"}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="lb-table-head lb-watchlist-grid">
+          <button className="lb-header-cell lb-header-left" title="Click to sort by title" onClick={() => toggleSort("name")}>
+            Title{getSortIndicator("name")}
+          </button>
+          <button className="lb-header-cell" title="Click to sort by director" onClick={() => toggleSort("director")}>
+            Director{getSortIndicator("director")}
+          </button>
+          <button className="lb-header-cell" title="Click to sort by year" onClick={() => toggleSort("year")}>
+            Year{getSortIndicator("year")}
+          </button>
+          <button className="lb-header-cell" title="Click to sort by runtime" onClick={() => toggleSort("runtime")}>
+            Time{getSortIndicator("runtime")}
+          </button>
+          <button className={`lb-header-cell lb-header-continent ${watchlistContinentFilter ? "lb-header-active" : ""}`} title="Click to cycle continent filter" onClick={cycleContinentFilter}>
+            <div className="lb-header-continent-labels">
+              <span>Cont</span>
+              <span className="lb-header-sub">{watchlistContinentFilter ? getContinentLabel(watchlistContinentFilter) : "All"}</span>
+            </div>
+          </button>
+          <button className={`lb-header-cell lb-header-flag ${watchlistFilters.directedByWoman ? "lb-header-active" : ""}`} title="Directed by Woman (click to filter)" onClick={() => toggleFilter("directedByWoman")}>
+            Dir♀
+          </button>
+          <button className={`lb-header-cell lb-header-flag ${watchlistFilters.writtenByWoman ? "lb-header-active" : ""}`} title="Written by Woman (click to filter)" onClick={() => toggleFilter("writtenByWoman")}>
+            Writ♀
+          </button>
+          <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notAmerican ? "lb-header-active" : ""}`} title="Not American (click to filter)" onClick={() => toggleFilter("notAmerican")}>
+            !US
+          </button>
+          <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notEnglish ? "lb-header-active" : ""}`} title="Not in English (click to filter)" onClick={() => toggleFilter("notEnglish")}>
+            !EN
+          </button>
+          <button className={`lb-header-cell lb-header-flag ${watchlistFilters.inCriterion ? "lb-header-active" : ""}`} title="Criterion Collection (click to filter)" onClick={() => toggleFilter("inCriterion")}>
+            CC
+          </button>
+        </div>
+        <VirtualList
+          height={500}
+          itemHeight={rowHeight}
+          items={filteredMovies}
+          renderRow={renderRow}
+        />
+      </div>
+    </div>
+  );
+});
 
 function App() {
   const [rows, setRows] = useState<DiaryRow[]>([]);
@@ -334,29 +959,6 @@ function App() {
   const [geoView, setGeoView] = useState<GeoView>("continent");
   const [geoHover, setGeoHover] = useState<{ label: string; count: number; x: number; y: number } | null>(null);
   const mapWrapperRef = useRef<HTMLDivElement | null>(null);
-
-  const sortMoviesByColumn = <T extends Record<string, any>>(
-    items: T[],
-    column: WatchlistSortColumn,
-    state: WatchlistSortState
-  ) => {
-    if (!column || state === "default") return items;
-
-    return [...items].sort((a, b) => {
-      let aVal = a[column];
-      let bVal = b[column];
-      // Handle null/undefined values
-      if (aVal == null && bVal == null) return 0;
-      if (aVal == null) return 1;
-      if (bVal == null) return -1;
-      // Case-insensitive string comparison
-      if (typeof aVal === "string") aVal = aVal.toLowerCase();
-      if (typeof bVal === "string") bVal = bVal.toLowerCase();
-      if (aVal < bVal) return state === "asc" ? -1 : 1;
-      if (aVal > bVal) return state === "asc" ? 1 : -1;
-      return 0;
-    });
-  };
 
   async function buildMovieIndex(file: File) {
     setScrapeStatus("Starting TMDb scraping…");
@@ -1579,251 +2181,15 @@ function App() {
                   />
                 </div>
 
-                {/* Diary films table */}
-                {(() => {
-                  // Build diary movie list from moviesWithData
-                  const diaryMovieList = moviesWithData.map((movie: any) => {
-                    const tmdbData = movie.tmdb_data || {};
-                    const directors = tmdbData.directors || [];
-                    const directorNames = directors.map((d: any) => d.name).filter(Boolean).join(", ");
-
-                    return {
-                      name: tmdbData.title || "Unknown Title",
-                      year: tmdbData.release_date?.slice(0, 4) || "",
-                      uri: movie.letterboxd_url || "",
-                      director: directorNames || "Unknown",
-                      runtime: typeof tmdbData.runtime === "number" ? tmdbData.runtime : null,
-                      directedByWoman: tmdbData.directed_by_woman === true,
-                      writtenByWoman: tmdbData.written_by_woman === true,
-                      notAmerican: tmdbData.is_american === false,
-                      notEnglish: tmdbData.is_english === false,
-                      inCriterion: movie.is_in_criterion_collection === true,
-                      criteriaCount: [
-                        tmdbData.directed_by_woman === true,
-                        tmdbData.written_by_woman === true,
-                        tmdbData.is_american === false,
-                        tmdbData.is_english === false,
-                        movie.is_in_criterion_collection === true,
-                      ].filter(Boolean).length,
-                    };
-                  });
-
-                  // Filter based on active filters
-                  const hasActiveFilter = Object.values(diaryFilters).some(Boolean);
-                  let filteredDiaryMovies = hasActiveFilter
-                    ? diaryMovieList.filter((movie) => {
-                        if (diaryFilters.directedByWoman && !movie.directedByWoman) return false;
-                        if (diaryFilters.writtenByWoman && !movie.writtenByWoman) return false;
-                        if (diaryFilters.notAmerican && !movie.notAmerican) return false;
-                        if (diaryFilters.notEnglish && !movie.notEnglish) return false;
-                        if (diaryFilters.inCriterion && !movie.inCriterion) return false;
-                        return true;
-                      })
-                    : [...diaryMovieList];
-
-                  // Apply sorting (default mirrors watchlist: criteria count desc, random within tier)
-                  if (diarySortColumn && diarySortState !== "default") {
-                    filteredDiaryMovies = sortMoviesByColumn(filteredDiaryMovies, diarySortColumn, diarySortState);
-                  } else {
-                    filteredDiaryMovies = [...filteredDiaryMovies].sort((a, b) => {
-                      if (b.criteriaCount !== a.criteriaCount) {
-                        return b.criteriaCount - a.criteriaCount;
-                      }
-                      const nameA = (a.name || "").toLowerCase();
-                      const nameB = (b.name || "").toLowerCase();
-                      if (nameA < nameB) return -1;
-                      if (nameA > nameB) return 1;
-                      return 0;
-                    });
-                  }
-
-                  const toggleFilter = (key: keyof typeof diaryFilters) => {
-                    setDiaryFilters((prev) => ({ ...prev, [key]: !prev[key] }));
-                  };
-
-                  const toggleSort = (column: WatchlistSortColumn) => {
-                    if (diarySortColumn !== column) {
-                      setDiarySortColumn(column);
-                      setDiarySortState("asc");
-                    } else {
-                      if (diarySortState === "asc") {
-                        setDiarySortState("desc");
-                      } else if (diarySortState === "desc") {
-                        setDiarySortState("default");
-                        setDiarySortColumn(null);
-                      } else {
-                        setDiarySortState("asc");
-                      }
-                    }
-                  };
-
-                  const getSortIndicator = (column: WatchlistSortColumn) => {
-                    if (diarySortColumn !== column) return "";
-                    if (diarySortState === "asc") return " ↑";
-                    if (diarySortState === "desc") return " ↓";
-                    return "";
-                  };
-
-                  const filterHeaderStyle = (isActive: boolean) => ({
-                    textAlign: "center" as const,
-                    padding: "12px 4px",
-                    fontWeight: 600,
-                    width: "40px",
-                    cursor: "pointer",
-                    userSelect: "none" as const,
-                    color: isActive ? "#14181c" : "#def",
-                    backgroundColor: isActive ? "#00e054" : "transparent",
-                    borderRadius: "4px",
-                    transition: "all 0.2s ease",
-                  });
-
-                  const sortHeaderStyle = (column: WatchlistSortColumn) => ({
-                    textAlign: column === "name" ? "left" as const : "center" as const,
-                    padding: "12px 8px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    userSelect: "none" as const,
-                    color: diarySortColumn === column ? "#00e054" : "#def",
-                    width: column === "year" ? "60px" : column === "director" ? "150px" : undefined,
-                  });
-
-                  return (
-                    <div style={{ width: "100%", marginTop: "24px" }}>
-                      <h3 id="diary-list" style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
-                        All Films ({filteredDiaryMovies.length}{hasActiveFilter ? ` of ${diaryMovieList.length}` : ""})
-                      </h3>
-                      {hasActiveFilter && (
-                        <p style={{ fontSize: "12px", color: "#9ab", marginBottom: "8px", textAlign: "center" }}>
-                          <button
-                            onClick={() => setDiaryFilters({
-                              directedByWoman: false,
-                              writtenByWoman: false,
-                              notAmerican: false,
-                              notEnglish: false,
-                              inCriterion: false,
-                            })}
-                            style={{
-                              padding: "2px 8px",
-                              fontSize: "11px",
-                              backgroundColor: "transparent",
-                              border: "1px solid #456",
-                              borderRadius: "4px",
-                              color: "#9ab",
-                              cursor: "pointer",
-                            }}
-                          >
-                            Clear filters
-                          </button>
-                        </p>
-                      )}
-                      <div className="table-container" style={{ overflowX: "auto", maxHeight: "400px", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
-                        <table style={{ width: "100%", minWidth: "600px", borderCollapse: "collapse", fontSize: "14px" }}>
-                          <thead style={{ position: "sticky", top: 0, backgroundColor: "#14181c", zIndex: 1 }}>
-                            <tr style={{ borderBottom: "2px solid #456" }}>
-                              <th
-                                style={sortHeaderStyle("name")}
-                                title="Click to sort by title"
-                                onClick={() => toggleSort("name")}
-                              >
-                                Title{getSortIndicator("name")}
-                              </th>
-                              <th
-                                style={sortHeaderStyle("director")}
-                                title="Click to sort by director"
-                                onClick={() => toggleSort("director")}
-                              >
-                                Director{getSortIndicator("director")}
-                              </th>
-                              <th
-                                style={sortHeaderStyle("year")}
-                                title="Click to sort by year"
-                                onClick={() => toggleSort("year")}
-                              >
-                                Year{getSortIndicator("year")}
-                              </th>
-                              <th
-                                style={filterHeaderStyle(diaryFilters.directedByWoman)}
-                                title="Directed by Woman (click to filter)"
-                                onClick={() => toggleFilter("directedByWoman")}
-                              >
-                                Dir♀
-                              </th>
-                              <th
-                                style={filterHeaderStyle(diaryFilters.writtenByWoman)}
-                                title="Written by Woman (click to filter)"
-                                onClick={() => toggleFilter("writtenByWoman")}
-                              >
-                                Writ♀
-                              </th>
-                              <th
-                                style={filterHeaderStyle(diaryFilters.notAmerican)}
-                                title="Not American (click to filter)"
-                                onClick={() => toggleFilter("notAmerican")}
-                              >
-                                !US
-                              </th>
-                              <th
-                                style={filterHeaderStyle(diaryFilters.notEnglish)}
-                                title="Not in English (click to filter)"
-                                onClick={() => toggleFilter("notEnglish")}
-                              >
-                                !EN
-                              </th>
-                              <th
-                                style={filterHeaderStyle(diaryFilters.inCriterion)}
-                                title="Criterion Collection (click to filter)"
-                                onClick={() => toggleFilter("inCriterion")}
-                              >
-                                CC
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredDiaryMovies.map((movie, idx) => (
-                              <tr
-                                key={movie.uri || idx}
-                                style={{
-                                  borderBottom: "1px solid #345",
-                                  backgroundColor: idx % 2 === 0 ? "transparent" : "rgba(68, 85, 102, 0.1)"
-                                }}
-                              >
-                                <td style={{ padding: "10px 8px", color: "#fff" }}>
-                                  <a
-                                    href={movie.uri}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{ color: "#fff", textDecoration: "none" }}
-                                    onMouseOver={(e) => (e.currentTarget.style.color = "#00e054")}
-                                    onMouseOut={(e) => (e.currentTarget.style.color = "#fff")}
-                                  >
-                                    {movie.name}
-                                  </a>
-                                </td>
-                                <td style={{ padding: "10px 8px", color: "#9ab" }}>{movie.director}</td>
-                                <td style={{ textAlign: "center", padding: "10px 8px", color: "#9ab" }}>{movie.year}</td>
-                                <td style={{ textAlign: "center", padding: "10px 4px", color: movie.directedByWoman ? "#00e054" : "#456" }}>
-                                  {movie.directedByWoman ? "✓" : "✗"}
-                                </td>
-                                <td style={{ textAlign: "center", padding: "10px 4px", color: movie.writtenByWoman ? "#00e054" : "#456" }}>
-                                  {movie.writtenByWoman ? "✓" : "✗"}
-                                </td>
-                                <td style={{ textAlign: "center", padding: "10px 4px", color: movie.notAmerican ? "#00e054" : "#456" }}>
-                                  {movie.notAmerican ? "✓" : "✗"}
-                                </td>
-                                <td style={{ textAlign: "center", padding: "10px 4px", color: movie.notEnglish ? "#00e054" : "#456" }}>
-                                  {movie.notEnglish ? "✓" : "✗"}
-                                </td>
-                                <td style={{ textAlign: "center", padding: "10px 4px", color: movie.inCriterion ? "#00e054" : "#456" }}>
-                                  {movie.inCriterion ? "✓" : "✗"}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  );
-                })()}
+                <DiaryTable
+                  moviesWithData={moviesWithData}
+                  diaryFilters={diaryFilters}
+                  setDiaryFilters={setDiaryFilters}
+                  diarySortColumn={diarySortColumn}
+                  setDiarySortColumn={setDiarySortColumn}
+                  diarySortState={diarySortState}
+                  setDiarySortState={setDiarySortState}
+                />
 
               </>
             ) : (
@@ -1948,6 +2314,7 @@ function App() {
                   <Bar
                     dataKey="count"
                     radius={[3, 3, 0, 0]}
+                    isAnimationActive={false}
                     onClick={(data: any) => {
                       const rating = data?.payload?.rating;
                       if (rating) toggleRatingFilter(String(rating));
@@ -2698,338 +3065,21 @@ function App() {
           )}
 
           {/* Results table */}
-          {watchlistMovies.length > 0 && (() => {
-            // Helper to format runtime
-            const formatRuntime = (minutes: number | null) => {
-              if (minutes === null) return "—";
-              const h = Math.floor(minutes / 60);
-              const m = minutes % 60;
-              return h > 0 ? `${h}h ${m}m` : `${m}m`;
-            };
-
-            // Apply runtime filter
-            const passesRuntimeFilter = (runtime: number | null) => {
-              if (watchlistRuntimeFilter === "all") return true;
-              if (runtime === null) return false;
-              if (watchlistRuntimeFilter === "under90") return runtime < 90;
-              if (watchlistRuntimeFilter === "under2h") return runtime < 120;
-              if (watchlistRuntimeFilter === "under2.5h") return runtime < 150;
-              if (watchlistRuntimeFilter === "over2.5h") return runtime >= 150;
-              return true;
-            };
-
-            // Filter movies based on active filters
-            const hasActiveFilter = Object.values(watchlistFilters).some(Boolean);
-            const hasActiveRuntimeFilter = watchlistRuntimeFilter !== "all";
-            const hasActiveContinentFilter = watchlistContinentFilter !== null;
-            let filteredMovies = watchlistMovies.filter((movie) => {
-              // Check criteria filters
-              if (watchlistFilters.directedByWoman && !movie.directedByWoman) return false;
-              if (watchlistFilters.writtenByWoman && !movie.writtenByWoman) return false;
-              if (watchlistFilters.notAmerican && !movie.notAmerican) return false;
-              if (watchlistFilters.notEnglish && !movie.notEnglish) return false;
-              if (watchlistFilters.inCriterion && !movie.inCriterion) return false;
-              if (watchlistContinentFilter && !movie.continents.includes(watchlistContinentFilter)) return false;
-              // Check runtime filter
-              if (!passesRuntimeFilter(movie.runtime)) return false;
-              return true;
-            });
-
-            // Apply sorting if a column is selected
-            filteredMovies = sortMoviesByColumn(filteredMovies, watchlistSortColumn, watchlistSortState);
-
-            const toggleFilter = (key: keyof typeof watchlistFilters) => {
-              setWatchlistFilters((prev) => ({ ...prev, [key]: !prev[key] }));
-            };
-
-            const toggleSort = (column: WatchlistSortColumn) => {
-              if (watchlistSortColumn !== column) {
-                // New column - start with ascending
-                setWatchlistSortColumn(column);
-                setWatchlistSortState("asc");
-              } else {
-                // Same column - cycle through: asc -> desc -> default
-                if (watchlistSortState === "asc") {
-                  setWatchlistSortState("desc");
-                } else if (watchlistSortState === "desc") {
-                  setWatchlistSortState("default");
-                  setWatchlistSortColumn(null);
-                } else {
-                  setWatchlistSortState("asc");
-                }
-              }
-            };
-
-            const cycleContinentFilter = () => {
-              if (!watchlistContinentFilter) {
-                setWatchlistContinentFilter(CONTINENT_ORDER[0]);
-                return;
-              }
-              const idx = CONTINENT_ORDER.indexOf(watchlistContinentFilter as (typeof CONTINENT_ORDER)[number]);
-              if (idx === -1 || idx === CONTINENT_ORDER.length - 1) {
-                setWatchlistContinentFilter(null);
-                return;
-              }
-              setWatchlistContinentFilter(CONTINENT_ORDER[idx + 1]);
-            };
-
-            const getSortIndicator = (column: WatchlistSortColumn) => {
-              if (watchlistSortColumn !== column) return "";
-              if (watchlistSortState === "asc") return " ↑";
-              if (watchlistSortState === "desc") return " ↓";
-              return "";
-            };
-
-            const filterHeaderStyle = (isActive: boolean) => ({
-              textAlign: "center" as const,
-              padding: "12px 4px",
-              fontWeight: 600,
-              width: "40px",
-              cursor: "pointer",
-              userSelect: "none" as const,
-              color: isActive ? "#14181c" : "#def",
-              backgroundColor: isActive ? "#00e054" : "transparent",
-              borderRadius: "4px",
-              transition: "all 0.2s ease",
-            });
-
-            const continentHeaderStyle = (isActive: boolean) => ({
-              textAlign: "center" as const,
-              padding: "8px 6px",
-              fontWeight: 600,
-              cursor: "pointer",
-              userSelect: "none" as const,
-              color: isActive ? "#14181c" : "#def",
-              backgroundColor: isActive ? "#00e054" : "transparent",
-              borderRadius: "4px",
-              transition: "all 0.2s ease",
-              width: "120px",
-            });
-
-            const sortHeaderStyle = (column: WatchlistSortColumn) => ({
-              textAlign: column === "name" ? "left" as const : "center" as const,
-              padding: "12px 8px",
-              fontWeight: 600,
-              cursor: "pointer",
-              userSelect: "none" as const,
-              color: watchlistSortColumn === column ? "#00e054" : "#def",
-              width: column === "year" ? "60px" : column === "director" ? "150px" : column === "runtime" ? "70px" : undefined,
-            });
-
-            const runtimeButtonStyle = (filter: RuntimeFilter) => ({
-              padding: "6px 12px",
-              borderRadius: "4px",
-              fontSize: "13px",
-              fontWeight: 500,
-              border: "none",
-              cursor: "pointer",
-              backgroundColor: watchlistRuntimeFilter === filter ? "#00e054" : "rgba(68, 85, 102, 0.3)",
-              color: watchlistRuntimeFilter === filter ? "#14181c" : "#9ab",
-              transition: "all 0.2s ease",
-            });
-
-            const hasAnyFilter = hasActiveFilter || hasActiveRuntimeFilter || hasActiveContinentFilter;
-
-            return (
-              <div style={{ overflowX: "auto" }}>
-                {/* Runtime filter buttons */}
-                <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
-                  <span style={{ fontSize: "13px", color: "#9ab", alignSelf: "center", marginRight: "8px" }}>Runtime:</span>
-                  <button
-                    style={runtimeButtonStyle("all")}
-                    onClick={() => setWatchlistRuntimeFilter("all")}
-                  >
-                    All
-                  </button>
-                  <button
-                    style={runtimeButtonStyle("under90")}
-                    onClick={() => setWatchlistRuntimeFilter("under90")}
-                  >
-                    Under 90 min
-                  </button>
-                  <button
-                    style={runtimeButtonStyle("under2h")}
-                    onClick={() => setWatchlistRuntimeFilter("under2h")}
-                  >
-                    Under 2 hrs
-                  </button>
-                  <button
-                    style={runtimeButtonStyle("under2.5h")}
-                    onClick={() => setWatchlistRuntimeFilter("under2.5h")}
-                  >
-                    Under 2½ hrs
-                  </button>
-                  <button
-                    style={runtimeButtonStyle("over2.5h")}
-                    onClick={() => setWatchlistRuntimeFilter("over2.5h")}
-                  >
-                    Over 2½ hrs
-                  </button>
-                </div>
-
-                {hasAnyFilter && (
-                  <p style={{ fontSize: "12px", color: "#9ab", marginBottom: "8px", textAlign: "center" }}>
-                    Showing {filteredMovies.length} of {watchlistMovies.length} movies
-                    <button
-                      onClick={() => {
-                        setWatchlistFilters({
-                          directedByWoman: false,
-                          writtenByWoman: false,
-                          notAmerican: false,
-                          notEnglish: false,
-                          inCriterion: false,
-                        });
-                        setWatchlistRuntimeFilter("all");
-                        setWatchlistContinentFilter(null);
-                      }}
-                      style={{
-                        marginLeft: "8px",
-                        padding: "2px 8px",
-                        fontSize: "11px",
-                        backgroundColor: "transparent",
-                        border: "1px solid #456",
-                        borderRadius: "4px",
-                        color: "#9ab",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Clear all filters
-                    </button>
-                  </p>
-                )}
-                <div className="table-container" style={{ overflowX: "auto", maxHeight: "500px", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
-                <table style={{ width: "100%", minWidth: "760px", borderCollapse: "collapse", fontSize: "14px" }}>
-                  <thead style={{ position: "sticky", top: 0, backgroundColor: "#14181c", zIndex: 1 }}>
-                    <tr style={{ borderBottom: "2px solid #456" }}>
-                      <th
-                        style={sortHeaderStyle("name")}
-                        title="Click to sort by title"
-                        onClick={() => toggleSort("name")}
-                      >
-                        Title{getSortIndicator("name")}
-                      </th>
-                      <th
-                        style={sortHeaderStyle("director")}
-                        title="Click to sort by director"
-                        onClick={() => toggleSort("director")}
-                      >
-                        Director{getSortIndicator("director")}
-                      </th>
-                      <th
-                        style={sortHeaderStyle("year")}
-                        title="Click to sort by year"
-                        onClick={() => toggleSort("year")}
-                      >
-                        Year{getSortIndicator("year")}
-                      </th>
-                      <th
-                        style={sortHeaderStyle("runtime")}
-                        title="Click to sort by runtime"
-                        onClick={() => toggleSort("runtime")}
-                      >
-                        Time{getSortIndicator("runtime")}
-                      </th>
-                      <th
-                        style={continentHeaderStyle(watchlistContinentFilter !== null)}
-                        title="Click to cycle continent filter"
-                        onClick={cycleContinentFilter}
-                      >
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
-                          <span>Cont</span>
-                          <span style={{ fontSize: "11px", fontWeight: 500, color: watchlistContinentFilter ? "#14181c" : "#9ab" }}>
-                            {watchlistContinentFilter ? getContinentLabel(watchlistContinentFilter) : "All"}
-                          </span>
-                        </div>
-                      </th>
-                      <th
-                        style={filterHeaderStyle(watchlistFilters.directedByWoman)}
-                        title="Directed by Woman (click to filter)"
-                        onClick={() => toggleFilter("directedByWoman")}
-                      >
-                        Dir♀
-                      </th>
-                      <th
-                        style={filterHeaderStyle(watchlistFilters.writtenByWoman)}
-                        title="Written by Woman (click to filter)"
-                        onClick={() => toggleFilter("writtenByWoman")}
-                      >
-                        Writ♀
-                      </th>
-                      <th
-                        style={filterHeaderStyle(watchlistFilters.notAmerican)}
-                        title="Not American (click to filter)"
-                        onClick={() => toggleFilter("notAmerican")}
-                      >
-                        !US
-                      </th>
-                      <th
-                        style={filterHeaderStyle(watchlistFilters.notEnglish)}
-                        title="Not in English (click to filter)"
-                        onClick={() => toggleFilter("notEnglish")}
-                      >
-                        !EN
-                      </th>
-                      <th
-                        style={filterHeaderStyle(watchlistFilters.inCriterion)}
-                        title="Criterion Collection (click to filter)"
-                        onClick={() => toggleFilter("inCriterion")}
-                      >
-                        CC
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredMovies.map((movie, idx) => (
-                      <tr
-                        key={movie.uri}
-                        style={{
-                          borderBottom: "1px solid #345",
-                          backgroundColor: idx % 2 === 0 ? "transparent" : "rgba(68, 85, 102, 0.1)"
-                        }}
-                      >
-                        <td style={{ padding: "10px 8px", color: "#fff" }}>
-                          <a
-                            href={movie.uri}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ color: "#fff", textDecoration: "none" }}
-                            onMouseOver={(e) => (e.currentTarget.style.color = "#00e054")}
-                            onMouseOut={(e) => (e.currentTarget.style.color = "#fff")}
-                          >
-                            {movie.name}
-                          </a>
-                        </td>
-                        <td style={{ padding: "10px 8px", color: "#9ab" }}>{movie.director}</td>
-                        <td style={{ textAlign: "center", padding: "10px 8px", color: "#9ab" }}>{movie.year}</td>
-                        <td style={{ textAlign: "center", padding: "10px 8px", color: "#9ab", fontSize: "12px" }}>{formatRuntime(movie.runtime)}</td>
-                        <td style={{ textAlign: "center", padding: "10px 6px", color: "#9ab", fontSize: "12px" }}>
-                          {movie.continents.length > 0
-                            ? movie.continents.map(getContinentLabel).join(", ")
-                            : "—"}
-                        </td>
-                        <td style={{ textAlign: "center", padding: "10px 4px", color: movie.directedByWoman ? "#00e054" : "#456" }}>
-                          {movie.directedByWoman ? "✓" : "✗"}
-                        </td>
-                        <td style={{ textAlign: "center", padding: "10px 4px", color: movie.writtenByWoman ? "#00e054" : "#456" }}>
-                          {movie.writtenByWoman ? "✓" : "✗"}
-                        </td>
-                        <td style={{ textAlign: "center", padding: "10px 4px", color: movie.notAmerican ? "#00e054" : "#456" }}>
-                          {movie.notAmerican ? "✓" : "✗"}
-                        </td>
-                        <td style={{ textAlign: "center", padding: "10px 4px", color: movie.notEnglish ? "#00e054" : "#456" }}>
-                          {movie.notEnglish ? "✓" : "✗"}
-                        </td>
-                        <td style={{ textAlign: "center", padding: "10px 4px", color: movie.inCriterion ? "#00e054" : "#456" }}>
-                          {movie.inCriterion ? "✓" : "✗"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
-              </div>
-            );
-          })()}
+          {watchlistMovies.length > 0 && (
+            <WatchlistTable
+              watchlistMovies={watchlistMovies}
+              watchlistFilters={watchlistFilters}
+              setWatchlistFilters={setWatchlistFilters}
+              watchlistRuntimeFilter={watchlistRuntimeFilter}
+              setWatchlistRuntimeFilter={setWatchlistRuntimeFilter}
+              watchlistSortColumn={watchlistSortColumn}
+              setWatchlistSortColumn={setWatchlistSortColumn}
+              watchlistSortState={watchlistSortState}
+              setWatchlistSortState={setWatchlistSortState}
+              watchlistContinentFilter={watchlistContinentFilter}
+              setWatchlistContinentFilter={setWatchlistContinentFilter}
+            />
+          )}
         </section>
       </div>
     </main>
