@@ -277,6 +277,31 @@ function App() {
   });
   const [diarySortColumn, setDiarySortColumn] = useState<WatchlistSortColumn>(null);
   const [diarySortState, setDiarySortState] = useState<WatchlistSortState>("default");
+  const [decadeHover, setDecadeHover] = useState<{ label: string; count: number; percent: number } | null>(null);
+  const [offsetDecadeHover, setOffsetDecadeHover] = useState<{ label: string; count: number; percent: number } | null>(null);
+
+  const sortMoviesByColumn = <T extends Record<string, any>>(
+    items: T[],
+    column: WatchlistSortColumn,
+    state: WatchlistSortState
+  ) => {
+    if (!column || state === "default") return items;
+
+    return [...items].sort((a, b) => {
+      let aVal = a[column];
+      let bVal = b[column];
+      // Handle null/undefined values
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return 1;
+      if (bVal == null) return -1;
+      // Case-insensitive string comparison
+      if (typeof aVal === "string") aVal = aVal.toLowerCase();
+      if (typeof bVal === "string") bVal = bVal.toLowerCase();
+      if (aVal < bVal) return state === "asc" ? -1 : 1;
+      if (aVal > bVal) return state === "asc" ? 1 : -1;
+      return 0;
+    });
+  };
 
   async function buildMovieIndex(file: File) {
     setScrapeStatus("Starting TMDb scraping…");
@@ -1207,6 +1232,13 @@ const filteredRows = rows.filter((row) => {
                       notAmerican: tmdbData.is_american === false,
                       notEnglish: tmdbData.is_english === false,
                       inCriterion: movie.is_in_criterion_collection === true,
+                      criteriaCount: [
+                        tmdbData.directed_by_woman === true,
+                        tmdbData.written_by_woman === true,
+                        tmdbData.is_american === false,
+                        tmdbData.is_english === false,
+                        movie.is_in_criterion_collection === true,
+                      ].filter(Boolean).length,
                     };
                   });
 
@@ -1223,20 +1255,15 @@ const filteredRows = rows.filter((row) => {
                       })
                     : [...diaryMovieList];
 
-                  // Apply sorting
+                  // Apply sorting (default mirrors watchlist: criteria count desc, random within tier)
                   if (diarySortColumn && diarySortState !== "default") {
+                    filteredDiaryMovies = sortMoviesByColumn(filteredDiaryMovies, diarySortColumn, diarySortState);
+                  } else {
                     filteredDiaryMovies = [...filteredDiaryMovies].sort((a, b) => {
-                      let aVal = a[diarySortColumn];
-                      let bVal = b[diarySortColumn];
-                      // Handle null runtime values
-                      if (aVal === null && bVal === null) return 0;
-                      if (aVal === null) return 1;
-                      if (bVal === null) return -1;
-                      if (typeof aVal === "string") aVal = aVal.toLowerCase();
-                      if (typeof bVal === "string") bVal = bVal.toLowerCase();
-                      if (aVal < bVal) return diarySortState === "asc" ? -1 : 1;
-                      if (aVal > bVal) return diarySortState === "asc" ? 1 : -1;
-                      return 0;
+                      if (b.criteriaCount !== a.criteriaCount) {
+                        return b.criteriaCount - a.criteriaCount;
+                      }
+                      return Math.random() - 0.5;
                     });
                   }
 
@@ -1473,6 +1500,15 @@ const filteredRows = rows.filter((row) => {
                       <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
                         Films by Decade
                       </h3>
+                      <div style={{ minHeight: "16px", textAlign: "center", marginBottom: "8px" }}>
+                        {decadeHover ? (
+                          <span style={{ fontSize: "12px", color: "#9ab" }}>
+                            {decadeHover.label}: {decadeHover.count} films ({Math.round(decadeHover.percent)}%)
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: "12px", color: "transparent" }}>.</span>
+                        )}
+                      </div>
                       <div
                         style={{
                           display: "flex",
@@ -1488,7 +1524,6 @@ const filteredRows = rows.filter((row) => {
                           return (
                             <div
                               key={decade}
-                              title={`${decade}: ${count} films (${Math.round(percent)}%)`}
                               style={{
                                 width: `${percent}%`,
                                 height: "100%",
@@ -1500,8 +1535,14 @@ const filteredRows = rows.filter((row) => {
                                 transition: "opacity 0.2s ease",
                                 minWidth: percent > 3 ? "auto" : "0",
                               }}
-                              onMouseOver={(e) => (e.currentTarget.style.opacity = "0.8")}
-                              onMouseOut={(e) => (e.currentTarget.style.opacity = "1")}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.opacity = "0.8";
+                                setDecadeHover({ label: decade, count, percent });
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.opacity = "1";
+                                setDecadeHover(null);
+                              }}
                             >
                               {percent >= 8 && (
                                 <span style={{ fontSize: "11px", fontWeight: 600, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
@@ -1578,6 +1619,15 @@ const filteredRows = rows.filter((row) => {
                       <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
                         Films by Offset Decade
                       </h3>
+                      <div style={{ minHeight: "16px", textAlign: "center", marginBottom: "8px" }}>
+                        {offsetDecadeHover ? (
+                          <span style={{ fontSize: "12px", color: "#9ab" }}>
+                            {offsetDecadeHover.label}: {offsetDecadeHover.count} films ({Math.round(offsetDecadeHover.percent)}%)
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: "12px", color: "transparent" }}>.</span>
+                        )}
+                      </div>
                       <div
                         style={{
                           display: "flex",
@@ -1593,7 +1643,6 @@ const filteredRows = rows.filter((row) => {
                           return (
                             <div
                               key={decade}
-                              title={`${decade}: ${count} films (${Math.round(percent)}%)`}
                               style={{
                                 width: `${percent}%`,
                                 height: "100%",
@@ -1605,8 +1654,14 @@ const filteredRows = rows.filter((row) => {
                                 transition: "opacity 0.2s ease",
                                 minWidth: percent > 3 ? "auto" : "0",
                               }}
-                              onMouseOver={(e) => (e.currentTarget.style.opacity = "0.8")}
-                              onMouseOut={(e) => (e.currentTarget.style.opacity = "1")}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.opacity = "0.8";
+                                setOffsetDecadeHover({ label: decade, count, percent });
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.opacity = "1";
+                                setOffsetDecadeHover(null);
+                              }}
                             >
                               {percent >= 10 && (
                                 <span style={{ fontSize: "10px", fontWeight: 600, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
@@ -1887,22 +1942,7 @@ const filteredRows = rows.filter((row) => {
             });
 
             // Apply sorting if a column is selected
-            if (watchlistSortColumn && watchlistSortState !== "default") {
-              filteredMovies = [...filteredMovies].sort((a, b) => {
-                let aVal = a[watchlistSortColumn];
-                let bVal = b[watchlistSortColumn];
-                // Handle null runtime values
-                if (aVal === null && bVal === null) return 0;
-                if (aVal === null) return 1;
-                if (bVal === null) return -1;
-                // Case-insensitive string comparison
-                if (typeof aVal === "string") aVal = aVal.toLowerCase();
-                if (typeof bVal === "string") bVal = bVal.toLowerCase();
-                if (aVal < bVal) return watchlistSortState === "asc" ? -1 : 1;
-                if (aVal > bVal) return watchlistSortState === "asc" ? 1 : -1;
-                return 0;
-              });
-            }
+            filteredMovies = sortMoviesByColumn(filteredMovies, watchlistSortColumn, watchlistSortState);
 
             const toggleFilter = (key: keyof typeof watchlistFilters) => {
               setWatchlistFilters((prev) => ({ ...prev, [key]: !prev[key] }));
