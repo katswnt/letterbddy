@@ -54,6 +54,7 @@ type WatchlistMovie = {
   uri: string;
   director: string;
   runtime: number | null; // in minutes
+  continents: string[];
   directedByWoman: boolean;
   writtenByWoman: boolean;
   notAmerican: boolean;
@@ -71,6 +72,17 @@ type WatchlistSortColumn = "name" | "director" | "year" | "runtime" | null;
 type DecadeFilter = { type: "decade" | "offset"; label: string } | null;
 type GeoFilter = { type: "continent" | "country"; value: string } | null;
 type GeoView = "continent" | "country";
+const CONTINENT_ORDER = ["AF", "AS", "EU", "NA", "SA", "OC", "AN"] as const;
+
+const getContinentCode = (countryCode: string | undefined | null) => {
+  if (!countryCode) return null;
+  const upper = countryCode.toUpperCase();
+  const entry = (countries as Record<string, any>)[upper];
+  return entry?.continent || null;
+};
+
+const getContinentLabel = (code: string) =>
+  (continents as Record<string, string>)[code] || code;
 
 // Cute loading spinner component
 const LoadingSpinner = ({ message }: { message?: string }) => (
@@ -285,6 +297,7 @@ function App() {
   const [watchlistSortColumn, setWatchlistSortColumn] = useState<WatchlistSortColumn>(null);
   const [watchlistSortState, setWatchlistSortState] = useState<WatchlistSortState>("default");
   const [watchlistRuntimeFilter, setWatchlistRuntimeFilter] = useState<RuntimeFilter>("all");
+  const [watchlistContinentFilter, setWatchlistContinentFilter] = useState<string | null>(null);
   const [diaryFileName, setDiaryFileName] = useState<string>("No file selected");
   const [watchlistFileName, setWatchlistFileName] = useState<string>("No file selected");
   const [reviewsFileName, setReviewsFileName] = useState<string>("No file selected");
@@ -725,6 +738,12 @@ function App() {
         const notEnglish = tmdbData?.is_english === false;
         const inCriterion = movie?.is_in_criterion_collection === true;
         const runtime = typeof tmdbData?.runtime === "number" ? tmdbData.runtime : null;
+        const countryCodes = Array.isArray(tmdbData?.production_countries?.codes)
+          ? tmdbData.production_countries.codes.filter(Boolean)
+          : [];
+        const continentsForMovie = Array.from(
+          new Set(countryCodes.map(getContinentCode).filter(Boolean) as string[])
+        );
 
         // Extract director names
         const directors = tmdbData?.directors || [];
@@ -741,6 +760,7 @@ function App() {
             uri: resolvedUri,
             director: directorNames || "Unknown",
             runtime,
+            continents: continentsForMovie,
             directedByWoman,
             writtenByWoman,
             notAmerican,
@@ -897,13 +917,6 @@ const filteredRows = rows.filter((row) => {
     Array.from(filteredUris).map(canonicalizeUri)
   );
   
-  const getContinentCode = (countryCode: string | undefined | null) => {
-    if (!countryCode) return null;
-    const upper = countryCode.toUpperCase();
-    const entry = (countries as Record<string, any>)[upper];
-    return entry?.continent || null;
-  };
-
   const getProductionCountryCodes = (movie: any): string[] => {
     const codes = movie?.tmdb_data?.production_countries?.codes;
     return Array.isArray(codes) ? codes.filter(Boolean) : [];
@@ -2216,13 +2229,8 @@ const filteredRows = rows.filter((row) => {
         {/* World map by country/continent */}
         {moviesWithDataBase.length > 0 && (() => {
           const worldMap = world as any;
-          const continentOrder = ["AF", "AS", "EU", "NA", "SA", "OC", "AN"];
-
           const getCountryName = (code: string, fallback?: string) =>
             (countries as Record<string, any>)[code]?.name || fallback || code;
-
-          const getContinentLabel = (code: string) =>
-            (continents as Record<string, string>)[code] || code;
 
           const getFillForLocation = (codeLower: string) => {
             const code = codeLower.toUpperCase();
@@ -2413,7 +2421,7 @@ const filteredRows = rows.filter((row) => {
               </div>
 
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "center" }}>
-                {continentOrder.map((cont) => {
+                {CONTINENT_ORDER.map((cont) => {
                   const count = continentCounts[cont] || 0;
                   const label = getContinentLabel(cont);
                   const isActive = geoFilter?.type === "continent" && geoFilter.value === cont;
@@ -2634,6 +2642,7 @@ const filteredRows = rows.filter((row) => {
             // Filter movies based on active filters
             const hasActiveFilter = Object.values(watchlistFilters).some(Boolean);
             const hasActiveRuntimeFilter = watchlistRuntimeFilter !== "all";
+            const hasActiveContinentFilter = watchlistContinentFilter !== null;
             let filteredMovies = watchlistMovies.filter((movie) => {
               // Check criteria filters
               if (watchlistFilters.directedByWoman && !movie.directedByWoman) return false;
@@ -2641,6 +2650,7 @@ const filteredRows = rows.filter((row) => {
               if (watchlistFilters.notAmerican && !movie.notAmerican) return false;
               if (watchlistFilters.notEnglish && !movie.notEnglish) return false;
               if (watchlistFilters.inCriterion && !movie.inCriterion) return false;
+              if (watchlistContinentFilter && !movie.continents.includes(watchlistContinentFilter)) return false;
               // Check runtime filter
               if (!passesRuntimeFilter(movie.runtime)) return false;
               return true;
@@ -2671,6 +2681,19 @@ const filteredRows = rows.filter((row) => {
               }
             };
 
+            const cycleContinentFilter = () => {
+              if (!watchlistContinentFilter) {
+                setWatchlistContinentFilter(CONTINENT_ORDER[0]);
+                return;
+              }
+              const idx = CONTINENT_ORDER.indexOf(watchlistContinentFilter as (typeof CONTINENT_ORDER)[number]);
+              if (idx === -1 || idx === CONTINENT_ORDER.length - 1) {
+                setWatchlistContinentFilter(null);
+                return;
+              }
+              setWatchlistContinentFilter(CONTINENT_ORDER[idx + 1]);
+            };
+
             const getSortIndicator = (column: WatchlistSortColumn) => {
               if (watchlistSortColumn !== column) return "";
               if (watchlistSortState === "asc") return " ↑";
@@ -2689,6 +2712,19 @@ const filteredRows = rows.filter((row) => {
               backgroundColor: isActive ? "#00e054" : "transparent",
               borderRadius: "4px",
               transition: "all 0.2s ease",
+            });
+
+            const continentHeaderStyle = (isActive: boolean) => ({
+              textAlign: "center" as const,
+              padding: "8px 6px",
+              fontWeight: 600,
+              cursor: "pointer",
+              userSelect: "none" as const,
+              color: isActive ? "#14181c" : "#def",
+              backgroundColor: isActive ? "#00e054" : "transparent",
+              borderRadius: "4px",
+              transition: "all 0.2s ease",
+              width: "120px",
             });
 
             const sortHeaderStyle = (column: WatchlistSortColumn) => ({
@@ -2713,7 +2749,7 @@ const filteredRows = rows.filter((row) => {
               transition: "all 0.2s ease",
             });
 
-            const hasAnyFilter = hasActiveFilter || hasActiveRuntimeFilter;
+            const hasAnyFilter = hasActiveFilter || hasActiveRuntimeFilter || hasActiveContinentFilter;
 
             return (
               <div style={{ overflowX: "auto" }}>
@@ -2765,6 +2801,7 @@ const filteredRows = rows.filter((row) => {
                           inCriterion: false,
                         });
                         setWatchlistRuntimeFilter("all");
+                        setWatchlistContinentFilter(null);
                       }}
                       style={{
                         marginLeft: "8px",
@@ -2782,7 +2819,7 @@ const filteredRows = rows.filter((row) => {
                   </p>
                 )}
                 <div className="table-container" style={{ overflowX: "auto", maxHeight: "500px", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
-                <table style={{ width: "100%", minWidth: "650px", borderCollapse: "collapse", fontSize: "14px" }}>
+                <table style={{ width: "100%", minWidth: "760px", borderCollapse: "collapse", fontSize: "14px" }}>
                   <thead style={{ position: "sticky", top: 0, backgroundColor: "#14181c", zIndex: 1 }}>
                     <tr style={{ borderBottom: "2px solid #456" }}>
                       <th
@@ -2812,6 +2849,18 @@ const filteredRows = rows.filter((row) => {
                         onClick={() => toggleSort("runtime")}
                       >
                         Time{getSortIndicator("runtime")}
+                      </th>
+                      <th
+                        style={continentHeaderStyle(watchlistContinentFilter !== null)}
+                        title="Click to cycle continent filter"
+                        onClick={cycleContinentFilter}
+                      >
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
+                          <span>Cont</span>
+                          <span style={{ fontSize: "11px", fontWeight: 500, color: watchlistContinentFilter ? "#14181c" : "#9ab" }}>
+                            {watchlistContinentFilter ? getContinentLabel(watchlistContinentFilter) : "All"}
+                          </span>
+                        </div>
                       </th>
                       <th
                         style={filterHeaderStyle(watchlistFilters.directedByWoman)}
@@ -2874,6 +2923,11 @@ const filteredRows = rows.filter((row) => {
                         <td style={{ padding: "10px 8px", color: "#9ab" }}>{movie.director}</td>
                         <td style={{ textAlign: "center", padding: "10px 8px", color: "#9ab" }}>{movie.year}</td>
                         <td style={{ textAlign: "center", padding: "10px 8px", color: "#9ab", fontSize: "12px" }}>{formatRuntime(movie.runtime)}</td>
+                        <td style={{ textAlign: "center", padding: "10px 6px", color: "#9ab", fontSize: "12px" }}>
+                          {movie.continents.length > 0
+                            ? movie.continents.map(getContinentLabel).join(", ")
+                            : "—"}
+                        </td>
                         <td style={{ textAlign: "center", padding: "10px 4px", color: movie.directedByWoman ? "#00e054" : "#456" }}>
                           {movie.directedByWoman ? "✓" : "✗"}
                         </td>
