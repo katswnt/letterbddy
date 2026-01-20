@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import world from "@svg-maps/world";
@@ -277,7 +277,6 @@ function App() {
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [movieIndex, setMovieIndex] = useState<Record<string, any> | null>(null);
   const [uriMap, setUriMap] = useState<Record<string, string> | null>(null);
-  const [movieLookup, setMovieLookup] = useState<Record<string, any> | null>(null);
   const [scrapeStatus, setScrapeStatus] = useState<string | null>(null);
   const [scrapeProgress, setScrapeProgress] = useState<{ current: number; total: number } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -363,7 +362,6 @@ function App() {
     setScrapeStatus("Starting TMDb scraping…");
     setScrapeProgress(null);
     setMovieIndex(null);
-    setMovieLookup(null);
     setUriMap(null);
 
     // Detect environment: use local server in dev, relative URL in production
@@ -517,42 +515,6 @@ function App() {
 
     setMovieIndex(extractedIndex);
     setUriMap(extractedUriMap);
-
-    // Build a lookup keyed by many URI forms so we can match diary shortlinks (boxd.it)
-    // and user-scoped URLs to the canonical keys (https://letterboxd.com/film/<slug>/)
-    const lookup: Record<string, any> = {};
-    for (const [key, movie] of Object.entries(extractedIndex as Record<string, any>)) {
-      // Canonical key
-      lookup[key] = movie;
-
-      // Common alias fields (be liberal; harmless if missing)
-      const aliases: string[] = [];
-      if (typeof movie?.letterboxd_url === "string") aliases.push(movie.letterboxd_url);
-      if (Array.isArray(movie?.letterboxd_urls)) aliases.push(...movie.letterboxd_urls);
-      if (Array.isArray(movie?.source_uris)) aliases.push(...movie.source_uris);
-      if (Array.isArray(movie?.aliases)) aliases.push(...movie.aliases);
-      if (typeof movie?.original_uri === "string") aliases.push(movie.original_uri);
-      if (typeof movie?.shortlink === "string") aliases.push(movie.shortlink);
-      if (typeof movie?.boxd_shortlink === "string") aliases.push(movie.boxd_shortlink);
-
-      for (const a of aliases) {
-        if (typeof a !== "string") continue;
-        const trimmed = a.trim();
-        if (!trimmed) continue;
-        lookup[trimmed] = movie;
-      }
-
-      // Also support user-scoped film URLs by canonicalizing them to /film/<slug>/
-      if (typeof key === "string") {
-        const m = key.match(/https?:\/\/letterboxd\.com\/(?:[^/]+\/)?film\/([^/]+)\/?/i);
-        if (m) {
-          const canonical = `https://letterboxd.com/film/${m[1]}/`;
-          lookup[canonical] = movie;
-        }
-      }
-    }
-
-    setMovieLookup(lookup);
     setScrapeProgress(null);
     setScrapeStatus(`Movie index ready: ${Object.keys(extractedIndex).length} films`);
     setIsLoading(false);
@@ -821,58 +783,106 @@ function App() {
     return new File([blob], fileName, { type: "text/csv" });
   };
 
-// Extract unique years from diary entries, sorted descending (newest first)
+  const movieLookup = useMemo(() => {
+    if (!movieIndex) return null;
+
+    const lookup: Record<string, any> = {};
+    for (const [key, movie] of Object.entries(movieIndex)) {
+      // Canonical key
+      lookup[key] = movie;
+
+      // Common alias fields (be liberal; harmless if missing)
+      const aliases: string[] = [];
+      if (typeof movie?.letterboxd_url === "string") aliases.push(movie.letterboxd_url);
+      if (Array.isArray(movie?.letterboxd_urls)) aliases.push(...movie.letterboxd_urls);
+      if (Array.isArray(movie?.source_uris)) aliases.push(...movie.source_uris);
+      if (Array.isArray(movie?.aliases)) aliases.push(...movie.aliases);
+      if (typeof movie?.original_uri === "string") aliases.push(movie.original_uri);
+      if (typeof movie?.shortlink === "string") aliases.push(movie.shortlink);
+      if (typeof movie?.boxd_shortlink === "string") aliases.push(movie.boxd_shortlink);
+
+      for (const a of aliases) {
+        if (typeof a !== "string") continue;
+        const trimmed = a.trim();
+        if (!trimmed) continue;
+        lookup[trimmed] = movie;
+      }
+
+      // Also support user-scoped film URLs by canonicalizing them to /film/<slug>/
+      if (typeof key === "string") {
+        const m = key.match(/https?:\/\/letterboxd\.com\/(?:[^/]+\/)?film\/([^/]+)\/?/i);
+        if (m) {
+          const canonical = `https://letterboxd.com/film/${m[1]}/`;
+          lookup[canonical] = movie;
+        }
+      }
+    }
+
+    return lookup;
+  }, [movieIndex]);
+
+  // Extract unique years from diary entries, sorted descending (newest first)
   const getWatchedDate = (row: DiaryRow) =>
     (row["Watched Date"] || (row as any).Date || "").trim();
 
-  const availableYears = Array.from(
-    new Set(
-      rows
-        .map((row) => getWatchedDate(row).slice(0, 4))
-        .filter((year) => year && /^\d{4}$/.test(year))
-    )
-  ).sort((a, b) => parseInt(b) - parseInt(a));
+  const availableYears = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          rows
+            .map((row) => getWatchedDate(row).slice(0, 4))
+            .filter((year) => year && /^\d{4}$/.test(year))
+        )
+      ).sort((a, b) => parseInt(b) - parseInt(a)),
+    [rows]
+  );
 
-// Filter rows based on selected time range
-const filteredRows = rows.filter((row) => {
-  if (dateFilter === "all") return true;
+  // Filter rows based on selected time range
+  const filteredRows = useMemo(
+    () =>
+      rows.filter((row) => {
+        if (dateFilter === "all") return true;
 
-  // diary "Watched Date" or watched list "Date" is "YYYY-MM-DD"
-  const watched = getWatchedDate(row);
-  if (!watched) return false;
+        // diary "Watched Date" or watched list "Date" is "YYYY-MM-DD"
+        const watched = getWatchedDate(row);
+        if (!watched) return false;
 
-  const year = watched.slice(0, 4); // "2025-04-12" -> "2025"
-  return year === dateFilter;
-});
+        const year = watched.slice(0, 4); // "2025-04-12" -> "2025"
+        return year === dateFilter;
+      }),
+    [rows, dateFilter]
+  );
 
   // Build a map of unique films (dedupe rewatches)
-  const filmMap = new Map<string, FilmSummary>();
+  const films = useMemo(() => {
+    const filmMap = new Map<string, FilmSummary>();
 
-  for (const row of filteredRows) {
-    const name = (row.Name ?? "").trim();
-    const year = (row.Year ?? "").trim();
+    for (const row of filteredRows) {
+      const name = (row.Name ?? "").trim();
+      const year = (row.Year ?? "").trim();
 
-    if (!name) continue; // skip malformed rows
+      if (!name) continue; // skip malformed rows
 
-    const key = `${name} (${year || "????"})`;
-    const isRewatch = (row.Rewatch || "").toLowerCase() === "yes";
+      const key = `${name} (${year || "????"})`;
+      const isRewatch = (row.Rewatch || "").toLowerCase() === "yes";
 
-    const existing = filmMap.get(key);
-    if (!existing) {
-      filmMap.set(key, {
-        key,
-        name,
-        year,
-        entryCount: 1,
-        hasRewatch: isRewatch,
-      });
-    } else {
-      existing.entryCount += 1;
-      existing.hasRewatch = existing.hasRewatch || isRewatch;
+      const existing = filmMap.get(key);
+      if (!existing) {
+        filmMap.set(key, {
+          key,
+          name,
+          year,
+          entryCount: 1,
+          hasRewatch: isRewatch,
+        });
+      } else {
+        existing.entryCount += 1;
+        existing.hasRewatch = existing.hasRewatch || isRewatch;
+      }
     }
-  }
 
-  const films = Array.from(filmMap.values());
+    return Array.from(filmMap.values());
+  }, [filteredRows]);
 
   // Basic stats
   const totalEntries = filteredRows.length; // diary rows incl. rewatches
@@ -883,27 +893,35 @@ const filteredRows = rows.filter((row) => {
 
   // TMDb stats (from movieIndex, filtered to match current date range)
   // Get unique Letterboxd URIs from filtered diary rows
-  const filteredUris = new Set(
-    filteredRows
-      .map((row) => (row["Letterboxd URI"] || "").trim())
-      .filter((uri) => uri)
+  const filteredUris = useMemo(
+    () =>
+      new Set(
+        filteredRows
+          .map((row) => (row["Letterboxd URI"] || "").trim())
+          .filter((uri) => uri)
+      ),
+    [filteredRows]
   );
 
-  const ratingFilteredUris = new Set(
-    (ratingFilter
-      ? filteredRows.filter((row) => {
-          const value = parseFloat(row.Rating);
-          return !Number.isNaN(value) && value.toFixed(1) === ratingFilter;
-        })
-      : filteredRows
-    )
-      .map((row) => (row["Letterboxd URI"] || "").trim())
-      .filter((uri) => uri)
+  const ratingFilteredUris = useMemo(
+    () =>
+      new Set(
+        (ratingFilter
+          ? filteredRows.filter((row) => {
+              const value = parseFloat(row.Rating);
+              return !Number.isNaN(value) && value.toFixed(1) === ratingFilter;
+            })
+          : filteredRows
+        )
+          .map((row) => (row["Letterboxd URI"] || "").trim())
+          .filter((uri) => uri)
+      ),
+    [filteredRows, ratingFilter]
   );
   
   // Normalize URIs for matching - convert user-scoped URLs to canonical /film/<slug>/ format,
   // and canonicalize boxd.it shortlinks using uriMap if available
-  const canonicalizeUri = (uri: string): string => {
+  const canonicalizeUri = useCallback((uri: string): string => {
     uri = (uri || "").trim();
     if (!uri) return uri;
 
@@ -926,19 +944,20 @@ const filteredRows = rows.filter((row) => {
     }
 
     return uri;
-  };
+  }, [uriMap]);
   
   // Create sets of both original and canonicalized URIs for matching
-  const canonicalizedFilteredUris = new Set(
-    Array.from(filteredUris).map(canonicalizeUri)
+  const canonicalizedFilteredUris = useMemo(
+    () => new Set(Array.from(filteredUris).map(canonicalizeUri)),
+    [filteredUris, canonicalizeUri]
   );
   
-  const getProductionCountryCodes = (movie: any): string[] => {
+  const getProductionCountryCodes = useCallback((movie: any): string[] => {
     const codes = movie?.tmdb_data?.production_countries?.codes;
     return Array.isArray(codes) ? codes.filter(Boolean) : [];
-  };
+  }, []);
 
-  const matchesDecadeFilter = (movie: any) => {
+  const matchesDecadeFilter = useCallback((movie: any) => {
     if (!decadeFilter) return true;
     const releaseDate = movie?.tmdb_data?.release_date;
     if (typeof releaseDate !== "string" || releaseDate.length < 4) return false;
@@ -954,9 +973,9 @@ const filteredRows = rows.filter((row) => {
     const decadeEnd = decadeStart + 9;
     const label = `${decadeStart}-${decadeEnd}`;
     return label === decadeFilter.label;
-  };
+  }, [decadeFilter]);
 
-  const matchesGeoFilter = (movie: any) => {
+  const matchesGeoFilter = useCallback((movie: any) => {
     if (!geoFilter) return true;
     const codes = getProductionCountryCodes(movie);
     if (geoFilter.type === "country") {
@@ -966,47 +985,64 @@ const filteredRows = rows.filter((row) => {
       codes.map(getContinentCode).filter(Boolean) as string[]
     );
     return continentsForFilm.has(geoFilter.value);
-  };
+  }, [geoFilter, getProductionCountryCodes]);
 
   // Match movieIndex entries to filtered diary entries using the alias lookup
-  const matchedMovies = movieLookup
-    ? (() => {
-        const matched = new Map<string, any>();
-        for (const raw of ratingFilteredUris) {
-          const canon = canonicalizeUri(raw);
-          const movie = movieLookup[canon] || movieLookup[raw];
-          if (movie) {
-            const idKey = (movie.letterboxd_url as string) || canon || raw;
-            matched.set(idKey, movie);
-          }
-        }
-        return Array.from(matched.values());
-      })()
-    : [];
-  const moviesWithDataBase = matchedMovies.filter((movie: any) => {
-    if (!movie.tmdb_data) return false;
-    return matchesDecadeFilter(movie);
-  });
-  const moviesWithData = moviesWithDataBase.filter(matchesGeoFilter);
+  const matchedMovies = useMemo(() => {
+    if (!movieLookup) return [];
+    const matched = new Map<string, any>();
+    for (const raw of ratingFilteredUris) {
+      const canon = canonicalizeUri(raw);
+      const movie = movieLookup[canon] || movieLookup[raw];
+      if (movie) {
+        const idKey = (movie.letterboxd_url as string) || canon || raw;
+        matched.set(idKey, movie);
+      }
+    }
+    return Array.from(matched.values());
+  }, [movieLookup, ratingFilteredUris, canonicalizeUri]);
+
+  const moviesWithDataBase = useMemo(
+    () =>
+      matchedMovies.filter((movie: any) => {
+        if (!movie.tmdb_data) return false;
+        return matchesDecadeFilter(movie);
+      }),
+    [matchedMovies, matchesDecadeFilter]
+  );
+
+  const moviesWithData = useMemo(
+    () => moviesWithDataBase.filter(matchesGeoFilter),
+    [moviesWithDataBase, matchesGeoFilter]
+  );
   const totalMoviesWithData = moviesWithData.length;
 
-  const countryCounts: Record<string, number> = {};
-  const continentCounts: Record<string, number> = {};
-  for (const movie of moviesWithDataBase) {
-    const codes = getProductionCountryCodes(movie).map((c) => c.toUpperCase());
-    for (const code of codes) {
-      countryCounts[code] = (countryCounts[code] || 0) + 1;
+  const { countryCounts, continentCounts } = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const contCounts: Record<string, number> = {};
+    for (const movie of moviesWithDataBase) {
+      const codes = getProductionCountryCodes(movie).map((c) => c.toUpperCase());
+      for (const code of codes) {
+        counts[code] = (counts[code] || 0) + 1;
+      }
+      const continentsForFilm = new Set(
+        codes.map(getContinentCode).filter(Boolean) as string[]
+      );
+      for (const cont of continentsForFilm) {
+        contCounts[cont] = (contCounts[cont] || 0) + 1;
+      }
     }
-    const continentsForFilm = new Set(
-      codes.map(getContinentCode).filter(Boolean) as string[]
-    );
-    for (const cont of continentsForFilm) {
-      continentCounts[cont] = (continentCounts[cont] || 0) + 1;
-    }
-  }
+    return { countryCounts: counts, continentCounts: contCounts };
+  }, [moviesWithDataBase, getProductionCountryCodes]);
 
-  const maxCountryCount = Math.max(1, ...Object.values(countryCounts));
-  const maxContinentCount = Math.max(1, ...Object.values(continentCounts));
+  const maxCountryCount = useMemo(
+    () => Math.max(1, ...Object.values(countryCounts)),
+    [countryCounts]
+  );
+  const maxContinentCount = useMemo(
+    () => Math.max(1, ...Object.values(continentCounts)),
+    [continentCounts]
+  );
 
   const continentColors: Record<string, string> = {
     AF: "#f97316",
@@ -1033,22 +1069,32 @@ const filteredRows = rows.filter((row) => {
     return `#${mix(ar.r, br.r).toString(16).padStart(2, "0")}${mix(ar.g, br.g).toString(16).padStart(2, "0")}${mix(ar.b, br.b).toString(16).padStart(2, "0")}`;
   };
 
-  const tmdbErrorCounts = matchedMovies.reduce<Record<string, number>>((acc, movie: any) => {
-    const err = movie.tmdb_error || movie.tmdb_api_error;
-    if (!err) return acc;
-    const key = String(err).slice(0, 80);
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {});
-  const topTmdbErrors = Object.entries(tmdbErrorCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 2);
+  const tmdbErrorCounts = useMemo(
+    () =>
+      matchedMovies.reduce<Record<string, number>>((acc, movie: any) => {
+        const err = movie.tmdb_error || movie.tmdb_api_error;
+        if (!err) return acc;
+        const key = String(err).slice(0, 80);
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {}),
+    [matchedMovies]
+  );
+  const topTmdbErrors = useMemo(
+    () => Object.entries(tmdbErrorCounts).sort((a, b) => b[1] - a[1]).slice(0, 2),
+    [tmdbErrorCounts]
+  );
   
-  const directedByWoman = moviesWithData.filter((m: any) => m.tmdb_data?.directed_by_woman === true).length;
-  const writtenByWoman = moviesWithData.filter((m: any) => m.tmdb_data?.written_by_woman === true).length;
-  const notAmerican = moviesWithData.filter((m: any) => m.tmdb_data?.is_american === false).length;
-  const notEnglish = moviesWithData.filter((m: any) => m.tmdb_data?.is_english === false).length;
-  const inCriterion = moviesWithData.filter((m: any) => m.is_in_criterion_collection === true).length;
+  const { directedByWoman, writtenByWoman, notAmerican, notEnglish, inCriterion } = useMemo(
+    () => ({
+      directedByWoman: moviesWithData.filter((m: any) => m.tmdb_data?.directed_by_woman === true).length,
+      writtenByWoman: moviesWithData.filter((m: any) => m.tmdb_data?.written_by_woman === true).length,
+      notAmerican: moviesWithData.filter((m: any) => m.tmdb_data?.is_american === false).length,
+      notEnglish: moviesWithData.filter((m: any) => m.tmdb_data?.is_english === false).length,
+      inCriterion: moviesWithData.filter((m: any) => m.is_in_criterion_collection === true).length,
+    }),
+    [moviesWithData]
+  );
   
   logDebug("=== TMDb Stats Debug ===", {
     hasMovieIndex: !!movieIndex,
@@ -1088,62 +1134,80 @@ const filteredRows = rows.filter((row) => {
   });
 
   // Rewatch vs first-watch stats (entry-based, not deduped by film)
-  const rewatchEntryCount = filteredRows.filter(
-    (row) => (row.Rewatch || "").toLowerCase() === "yes"
-  ).length;
+  const rewatchEntryCount = useMemo(
+    () =>
+      filteredRows.filter((row) => (row.Rewatch || "").toLowerCase() === "yes").length,
+    [filteredRows]
+  );
   const firstWatchEntryCount = totalEntries - rewatchEntryCount;
 
 
-    // Rating stats for the current range (only rows with a numeric Rating)
-    const numericRatings = filteredRows
-    .map((row) => parseFloat(row.Rating))
-    .filter((r) => !Number.isNaN(r));
+  // Rating stats for the current range (only rows with a numeric Rating)
+  const numericRatings = useMemo(
+    () =>
+      filteredRows
+        .map((row) => parseFloat(row.Rating))
+        .filter((r) => !Number.isNaN(r)),
+    [filteredRows]
+  );
 
-  const ratingCount = numericRatings.length;
-  const ratingSum = numericRatings.reduce((sum, r) => sum + r, 0);
-  const averageRating = ratingCount === 0 ? 0 : ratingSum / ratingCount;
+  const {
+    ratingCount,
+    averageRating,
+    medianRating,
+    fourPlusCount,
+    ratingChartData,
+  } = useMemo(() => {
+    const ratingCount = numericRatings.length;
+    const ratingSum = numericRatings.reduce((sum, r) => sum + r, 0);
+    const averageRating = ratingCount === 0 ? 0 : ratingSum / ratingCount;
 
-  // Median rating
-  const sortedRatings = [...numericRatings].sort((a, b) => a - b);
-  let medianRating = 0;
-  if (ratingCount > 0) {
-    const mid = Math.floor(ratingCount / 2);
-    if (ratingCount % 2 === 1) {
-      medianRating = sortedRatings[mid];
-    } else {
-      medianRating = (sortedRatings[mid - 1] + sortedRatings[mid]) / 2;
+    const sortedRatings = [...numericRatings].sort((a, b) => a - b);
+    let medianRating = 0;
+    if (ratingCount > 0) {
+      const mid = Math.floor(ratingCount / 2);
+      if (ratingCount % 2 === 1) {
+        medianRating = sortedRatings[mid];
+      } else {
+        medianRating = (sortedRatings[mid - 1] + sortedRatings[mid]) / 2;
+      }
     }
-  }
 
-  const fourPlusCount = numericRatings.filter((r) => r >= 4).length;
+    const fourPlusCount = numericRatings.filter((r) => r >= 4).length;
 
-  // Bucket ratings in 0.5 steps from 0.5 to 5.0
-  const ratingBuckets: Record<string, number> = {
-    "0.5": 0,
-    "1.0": 0,
-    "1.5": 0,
-    "2.0": 0,
-    "2.5": 0,
-    "3.0": 0,
-    "3.5": 0,
-    "4.0": 0,
-    "4.5": 0,
-    "5.0": 0,
-  };
+    const ratingBuckets: Record<string, number> = {
+      "0.5": 0,
+      "1.0": 0,
+      "1.5": 0,
+      "2.0": 0,
+      "2.5": 0,
+      "3.0": 0,
+      "3.5": 0,
+      "4.0": 0,
+      "4.5": 0,
+      "5.0": 0,
+    };
 
-  numericRatings.forEach((r) => {
-    const key = r.toFixed(1); // e.g. 3.5 -> "3.5"
-    if (ratingBuckets[key] !== undefined) {
-      ratingBuckets[key] += 1;
-    }
-  });
+    numericRatings.forEach((r) => {
+      const key = r.toFixed(1); // e.g. 3.5 -> "3.5"
+      if (ratingBuckets[key] !== undefined) {
+        ratingBuckets[key] += 1;
+      }
+    });
 
-  const bucketEntries = Object.entries(ratingBuckets);
+    const ratingChartData = Object.entries(ratingBuckets).map(([rating, count]) => ({
+      rating,
+      count,
+    }));
 
-  const ratingChartData = bucketEntries.map(([rating, count]) => ({
-    rating,
-    count,
-  }));
+    return {
+      ratingCount,
+      averageRating,
+      medianRating,
+      fourPlusCount,
+      ratingChartData,
+    };
+  }, [numericRatings]);
 
   const toggleRatingFilter = (rating: string) => {
     setRatingFilter((prev) => (prev === rating ? null : rating));
