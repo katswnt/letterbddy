@@ -153,6 +153,15 @@ const PIE_COLORS = {
   secondary: "#456",     // Muted slate for "other" segment
 };
 
+const shouldLogDebug = () =>
+  import.meta.env.DEV && typeof window !== "undefined" && (window as any).DEBUG_TMDB;
+
+const logDebug = (...args: any[]) => {
+  if (shouldLogDebug()) {
+    console.log(...args);
+  }
+};
+
 const PieTooltip = ({ active, payload }: any) => {
   if (!active || !payload || payload.length === 0) return null;
 
@@ -463,7 +472,9 @@ function App() {
           const batchMovies = Object.keys(enrichResult.movieIndex).length;
           const moviesWithTmdb = Object.values(enrichResult.movieIndex).filter((m: any) => m.tmdb_data).length;
           const moviesWithErrors = Object.values(enrichResult.movieIndex).filter((m: any) => m.tmdb_error || m.tmdb_api_error).length;
-          console.log(`Batch ${batchNum}/${Math.ceil(allUrls.length / batchSize)}: ${batchMovies} movies, ${moviesWithTmdb} with TMDb, ${moviesWithErrors} errors, cache: ${batchStats.cacheHits || 0} hits`);
+          logDebug(
+            `Batch ${batchNum}/${Math.ceil(allUrls.length / batchSize)}: ${batchMovies} movies, ${moviesWithTmdb} with TMDb, ${moviesWithErrors} errors, cache: ${batchStats.cacheHits || 0} hits`
+          );
           mergedMovieIndex = { ...mergedMovieIndex, ...enrichResult.movieIndex };
         } else {
           console.warn(`Batch ${batchNum}: No movieIndex in response!`, enrichResult);
@@ -480,11 +491,16 @@ function App() {
       const totalMerged = Object.keys(mergedMovieIndex).length;
       const totalWithTmdb = Object.values(mergedMovieIndex).filter((m: any) => m.tmdb_data).length;
       const totalWithErrors = Object.values(mergedMovieIndex).filter((m: any) => m.tmdb_error || m.tmdb_api_error).length;
-      console.log(`=== ENRICHMENT COMPLETE: ${totalWithTmdb}/${totalMerged} movies with TMDb data, ${totalWithErrors} errors ===`);
+      logDebug(
+        `=== ENRICHMENT COMPLETE: ${totalWithTmdb}/${totalMerged} movies with TMDb data, ${totalWithErrors} errors ===`
+      );
     }
-    console.log("Raw result from server:", json);
-    console.log("Type of result:", typeof json);
-    console.log("Is object?", typeof json === "object" && json !== null);
+    logDebug("Raw result summary:", {
+      isObject: typeof json === "object" && json !== null,
+      keys: json ? Object.keys(json) : [],
+      movieIndexSize: json?.movieIndex ? Object.keys(json.movieIndex).length : 0,
+      uriMapSize: json?.uriMap ? Object.keys(json.uriMap).length : 0,
+    });
     
     if (!json || typeof json !== "object") {
       console.error("Invalid JSON result:", json);
@@ -542,10 +558,10 @@ function App() {
     setIsLoading(false);
 
     // Log the data structure for sanity checking
-    console.log("Movie index loaded:", Object.keys(extractedIndex).length, "films");
-    console.log("Sample entry:", Object.entries(extractedIndex)[0]);
+    logDebug("Movie index loaded:", Object.keys(extractedIndex).length, "films");
+    logDebug("Sample entry:", Object.entries(extractedIndex)[0]);
     const firstEntry = Object.entries(extractedIndex)[0];
-    console.log("Sample entry keys:", firstEntry ? Object.keys(firstEntry[1] as any) : "none");
+    logDebug("Sample entry keys:", firstEntry ? Object.keys(firstEntry[1] as any) : "none");
   }
 
   const processDiaryFile = (file: File) => {
@@ -579,7 +595,7 @@ function App() {
           (row: DiaryRow) => Object.keys(row).length > 1
         );
         // Optional: peek at the first row in DevTools
-        console.log("Sample diary row:", data[0]);
+        logDebug("Sample diary row:", data[0]);
         setRows(data);
         // Note: isLoading will be set to false when buildMovieIndex completes
       },
@@ -1034,8 +1050,7 @@ const filteredRows = rows.filter((row) => {
   const notEnglish = moviesWithData.filter((m: any) => m.tmdb_data?.is_english === false).length;
   const inCriterion = moviesWithData.filter((m: any) => m.is_in_criterion_collection === true).length;
   
-  // Debug logging - always log to help diagnose
-  console.log("=== TMDb Stats Debug ===", {
+  logDebug("=== TMDb Stats Debug ===", {
     hasMovieIndex: !!movieIndex,
     hasMovieLookup: !!movieLookup,
     hasUriMap: !!uriMap,
