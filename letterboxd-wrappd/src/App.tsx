@@ -436,13 +436,16 @@ function App() {
         }
 
         const enrichResult = await enrichResponse.json();
-        console.log(`Batch ${batchNum} result:`, enrichResult);
-        console.log(`Batch ${batchNum} stats:`, enrichResult.stats);
+        const batchStats = enrichResult.stats || {};
 
         if (enrichResult.movieIndex) {
+          const batchMovies = Object.keys(enrichResult.movieIndex).length;
           const moviesWithTmdb = Object.values(enrichResult.movieIndex).filter((m: any) => m.tmdb_data).length;
-          console.log(`Batch ${batchNum}: ${Object.keys(enrichResult.movieIndex).length} movies, ${moviesWithTmdb} with TMDb data`);
+          const moviesWithErrors = Object.values(enrichResult.movieIndex).filter((m: any) => m.tmdb_error || m.tmdb_api_error).length;
+          console.log(`Batch ${batchNum}/${Math.ceil(allUrls.length / batchSize)}: ${batchMovies} movies, ${moviesWithTmdb} with TMDb, ${moviesWithErrors} errors, cache: ${batchStats.cacheHits || 0} hits`);
           mergedMovieIndex = { ...mergedMovieIndex, ...enrichResult.movieIndex };
+        } else {
+          console.warn(`Batch ${batchNum}: No movieIndex in response!`, enrichResult);
         }
 
         processed += batch.length;
@@ -451,6 +454,12 @@ function App() {
       }
 
       json = { movieIndex: mergedMovieIndex, uriMap };
+
+      // Log final stats
+      const totalMerged = Object.keys(mergedMovieIndex).length;
+      const totalWithTmdb = Object.values(mergedMovieIndex).filter((m: any) => m.tmdb_data).length;
+      const totalWithErrors = Object.values(mergedMovieIndex).filter((m: any) => m.tmdb_error || m.tmdb_api_error).length;
+      console.log(`=== ENRICHMENT COMPLETE: ${totalWithTmdb}/${totalMerged} movies with TMDb data, ${totalWithErrors} errors ===`);
     }
     console.log("Raw result from server:", json);
     console.log("Type of result:", typeof json);
