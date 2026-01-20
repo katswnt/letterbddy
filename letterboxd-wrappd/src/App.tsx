@@ -114,17 +114,17 @@ const RatingTooltip = ({ active, payload, label }: any) => {
   return (
     <div
       style={{
-        borderRadius: "6px",
-        border: "1px solid rgba(0, 224, 84, 0.6)",
-        backgroundColor: "#0b0f12",
-        padding: "8px 10px",
-        fontSize: "13px",
-        color: "#ffffff",
-        boxShadow: "0 6px 16px rgba(0, 0, 0, 0.45)",
+        fontSize: "12px",
+        color: "#9ab",
+        backgroundColor: "rgba(20, 24, 28, 0.95)",
+        border: "1px solid #345",
+        borderRadius: "4px",
+        padding: "6px 10px",
+        boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
       }}
     >
-      <div style={{ fontSize: "14px", fontWeight: 600 }}>{label}★</div>
-      <div style={{ marginTop: "4px", color: "#e5e7eb" }}>
+      <div style={{ fontWeight: 600, color: "#fff", marginBottom: "2px" }}>{label}★</div>
+      <div>
         {count} {count === 1 ? "entry" : "entries"}
       </div>
     </div>
@@ -145,9 +145,19 @@ const PieTooltip = ({ active, payload }: any) => {
   const percent = total > 0 ? Math.round((value / total) * 100) : 0;
 
   return (
-    <div className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-100 shadow-lg">
-      <div className="text-sm font-semibold">{name}</div>
-      <div className="mt-1 text-slate-300">
+    <div
+      style={{
+        fontSize: "12px",
+        color: "#9ab",
+        backgroundColor: "rgba(20, 24, 28, 0.95)",
+        border: "1px solid #345",
+        borderRadius: "4px",
+        padding: "6px 10px",
+        boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+      }}
+    >
+      <div style={{ fontWeight: 600, color: "#fff", marginBottom: "2px" }}>{name}</div>
+      <div>
         {value} {value === 1 ? "film" : "films"} ({percent}%)
       </div>
     </div>
