@@ -2450,7 +2450,7 @@ function App() {
           <section id="film-breakdown" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "24px" }}>
             <div style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%", textAlign: "center" }}>
               <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#fff", marginBottom: "4px" }}>Film Breakdown</h2>
-              {!movieIndex && (
+              {isLocalDev && !movieIndex && (
                 <p style={{ fontSize: "14px", color: "#f87171", textAlign: "center" }}>
                   Warning: movieIndex is null/undefined. Check console for errors.
                 </p>
@@ -2461,13 +2461,17 @@ function App() {
                 <p style={{ fontSize: "12px", color: "#9ab", textAlign: "center" }}>
                   Based on {totalMoviesWithData} films with TMDb data
                 </p>
-                <p style={{ fontSize: "11px", color: "#678", textAlign: "center" }}>
-                  Debug: {filteredUris.size} filtered URIs, {movieLookup ? Object.keys(movieLookup).length : 0} in lookup, {matchedMovies.filter((m: any) => m.tmdb_movie_id).length} tmdb_movie_id, {matchedMovies.filter((m: any) => m.tmdb_data).length} tmdb_data, {matchedMovies.filter((m: any) => m.tmdb_error || m.tmdb_api_error).length} TMDb errors
-                </p>
-                {topTmdbErrors.length > 0 && (
-                  <p style={{ fontSize: "11px", color: "#678", textAlign: "center" }}>
-                    Top errors: {topTmdbErrors.map(([msg, count]) => `${msg} (${count})`).join(", ")}
-                  </p>
+                {isLocalDev && (
+                  <>
+                    <p style={{ fontSize: "11px", color: "#678", textAlign: "center" }}>
+                      Debug: {filteredUris.size} filtered URIs, {movieLookup ? Object.keys(movieLookup).length : 0} in lookup, {matchedMovies.filter((m: any) => m.tmdb_movie_id).length} tmdb_movie_id, {matchedMovies.filter((m: any) => m.tmdb_data).length} tmdb_data, {matchedMovies.filter((m: any) => m.tmdb_error || m.tmdb_api_error).length} TMDb errors
+                    </p>
+                    {topTmdbErrors.length > 0 && (
+                      <p style={{ fontSize: "11px", color: "#678", textAlign: "center" }}>
+                        Top errors: {topTmdbErrors.map(([msg, count]) => `${msg} (${count})`).join(", ")}
+                      </p>
+                    )}
+                  </>
                 )}
 
                 {/* Pie charts grid */}
