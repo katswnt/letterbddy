@@ -1170,7 +1170,7 @@ function App() {
           );
           mergedMovieIndex = { ...mergedMovieIndex, ...enrichResult.movieIndex };
         } else {
-          console.warn(`Batch ${batchNum}: No movieIndex in response!`, enrichResult);
+          console.warn(`Batch ${batchNum}: No movieIndex in response! Keys:`, Object.keys(enrichResult || {}));
         }
 
         processed += batch.length;
@@ -1196,7 +1196,7 @@ function App() {
     });
     
     if (!json || typeof json !== "object") {
-      console.error("Invalid JSON result:", json);
+      console.error("Invalid JSON result, type:", typeof json);
       throw new Error("Invalid result format from server");
     }
     
@@ -1911,42 +1911,16 @@ function App() {
     [moviesWithData]
   );
   
-  logDebug("=== TMDb Stats Debug ===", {
-    hasMovieIndex: !!movieIndex,
-    hasMovieLookup: !!movieLookup,
-    hasUriMap: !!uriMap,
-    uriMapSize: uriMap ? Object.keys(uriMap).length : 0,
-    movieIndexSize: movieIndex ? Object.keys(movieIndex).length : 0,
-    movieLookupSize: movieLookup ? Object.keys(movieLookup).length : 0,
-    movieIndexKeys: movieIndex ? Object.keys(movieIndex).slice(0, 3) : [],
-    filteredUrisCount: filteredUris.size,
-    filteredUrisSample: Array.from(filteredUris).slice(0, 3),
-    ratingFilter,
-    decadeFilter,
-    ratingFilteredUrisCount: ratingFilteredUris.size,
-    canonicalizedFilteredUrisSample: Array.from(canonicalizedFilteredUris).slice(0, 3),
-    moviesWithDataCount: totalMoviesWithData,
-    allMoviesInIndex: movieIndex ? Object.values(movieIndex).slice(0, 2).map((m: any) => ({
-      hasTmdbData: !!m.tmdb_data,
-      uri: m.letterboxd_url,
-    })) : [],
-    sampleMovieWithData: moviesWithData[0] ? {
-      hasTmdbData: !!moviesWithData[0].tmdb_data,
-      directedByWoman: moviesWithData[0].tmdb_data?.directed_by_woman,
-      writtenByWoman: moviesWithData[0].tmdb_data?.written_by_woman,
-      isAmerican: moviesWithData[0].tmdb_data?.is_american,
-      isEnglish: moviesWithData[0].tmdb_data?.is_english,
-      inCriterion: moviesWithData[0].is_in_criterion_collection,
-      tmdbDataKeys: Object.keys(moviesWithData[0].tmdb_data || {}),
-    } : null,
-    stats: {
-      directedByWoman,
-      writtenByWoman,
-      notAmerican,
-      notEnglish,
-      inCriterion,
-    },
-  });
+  // Debug logging - only create the object if debugging is actually enabled
+  if (shouldLogDebug()) {
+    logDebug("=== TMDb Stats Debug ===", {
+      movieIndexSize: movieIndex ? Object.keys(movieIndex).length : 0,
+      movieLookupSize: movieLookup ? Object.keys(movieLookup).length : 0,
+      filteredUrisCount: filteredUris.size,
+      moviesWithDataCount: totalMoviesWithData,
+      stats: { directedByWoman, writtenByWoman, notAmerican, notEnglish, inCriterion },
+    });
+  }
 
   // Rewatch vs first-watch stats (entry-based, not deduped by film)
   const rewatchEntryCount = useMemo(
