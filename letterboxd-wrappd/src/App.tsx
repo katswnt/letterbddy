@@ -2758,39 +2758,31 @@ function App() {
 
               return (
                 <div style={{ width: "100%" }}>
-                      <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
-                        Films by Decade
-                      </h3>
+                  <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "6px", textAlign: "center" }}>
+                    Films by Decade
+                  </h3>
                   <div style={{ position: "relative" }}>
-                    {/* Fixed-height tooltip area - no layout shift */}
-                    <div
-                      style={{
-                        height: "24px",
-                        marginBottom: "8px",
-                        position: "relative",
-                        pointerEvents: "none",
-                      }}
-                    >
-                      {decadeHover && (
-                        <span
-                          style={{
-                            position: "absolute",
-                            left: `${decadeHover.midPercent}%`,
-                            transform: "translateX(-50%)",
-                            fontSize: "12px",
-                            color: "#9ab",
-                            backgroundColor: "rgba(20, 24, 28, 0.9)",
-                            border: "1px solid #345",
-                            borderRadius: "4px",
-                            padding: "2px 6px",
-                            whiteSpace: "nowrap",
-                            boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
-                          }}
-                        >
-                          {decadeHover.label}: {decadeHover.count} films ({Math.round(decadeHover.percent)}%)
-                        </span>
-                      )}
-                    </div>
+                    {decadeHover && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: "-28px",
+                          left: `${decadeHover.midPercent}%`,
+                          transform: "translateX(-50%)",
+                          fontSize: "12px",
+                          color: "#9ab",
+                          backgroundColor: "rgba(20, 24, 28, 0.9)",
+                          border: "1px solid #345",
+                          borderRadius: "4px",
+                          padding: "2px 6px",
+                          whiteSpace: "nowrap",
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        {decadeHover.label}: {decadeHover.count} films ({Math.round(decadeHover.percent)}%)
+                      </span>
+                    )}
                     <div
                       style={{
                         display: "flex",
@@ -2908,39 +2900,31 @@ function App() {
 
               return (
                 <div style={{ width: "100%" }}>
-                  <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "12px", textAlign: "center" }}>
+                  <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "6px", textAlign: "center" }}>
                     Films by Offset Decade
                   </h3>
                   <div style={{ position: "relative" }}>
-                    {/* Fixed-height tooltip area - no layout shift */}
-                    <div
-                      style={{
-                        height: "24px",
-                        marginBottom: "8px",
-                        position: "relative",
-                        pointerEvents: "none",
-                      }}
-                    >
-                      {offsetDecadeHover && (
-                        <span
-                          style={{
-                            position: "absolute",
-                            left: `${offsetDecadeHover.midPercent}%`,
-                            transform: "translateX(-50%)",
-                            fontSize: "12px",
-                            color: "#9ab",
-                            backgroundColor: "rgba(20, 24, 28, 0.9)",
-                            border: "1px solid #345",
-                            borderRadius: "4px",
-                            padding: "2px 6px",
-                            whiteSpace: "nowrap",
-                            boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
-                          }}
-                        >
-                          {offsetDecadeHover.label}: {offsetDecadeHover.count} films ({Math.round(offsetDecadeHover.percent)}%)
-                        </span>
-                      )}
-                    </div>
+                    {offsetDecadeHover && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: "-28px",
+                          left: `${offsetDecadeHover.midPercent}%`,
+                          transform: "translateX(-50%)",
+                          fontSize: "12px",
+                          color: "#9ab",
+                          backgroundColor: "rgba(20, 24, 28, 0.9)",
+                          border: "1px solid #345",
+                          borderRadius: "4px",
+                          padding: "2px 6px",
+                          whiteSpace: "nowrap",
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        {offsetDecadeHover.label}: {offsetDecadeHover.count} films ({Math.round(offsetDecadeHover.percent)}%)
+                      </span>
+                    )}
                     <div
                       style={{
                         display: "flex",
