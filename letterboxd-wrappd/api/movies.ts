@@ -147,13 +147,20 @@ async function getTmdbRefFromLetterboxd(url: string): Promise<TmdbRef | null> {
     console.log('Fetching Letterboxd page:', canonicalUrl, '(original:', url, ')');
     const response = await fetch(canonicalUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; LetterboxdWrappd/1.0)',
-        'Accept': 'text/html',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
       },
     });
     console.log('Letterboxd response status:', response.status);
     const html = await response.text();
     console.log('Got HTML, length:', html.length);
+
+    // Detect Cloudflare challenge page - DO NOT use this data
+    if (html.includes('Just a moment') || html.includes('cf-browser-verification') || html.includes('challenge-platform')) {
+      console.log('Cloudflare challenge detected, cannot scrape:', canonicalUrl);
+      return null;
+    }
 
     // Look for TMDb link in the page (handle both http and https, with or without www)
     const tmdbMovieMatch = html.match(/href=["']https?:\/\/(www\.)?themoviedb\.org\/movie\/(\d+)/);
