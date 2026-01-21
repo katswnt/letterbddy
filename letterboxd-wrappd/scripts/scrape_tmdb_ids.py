@@ -158,14 +158,26 @@ def resolve_letterboxd_film_url(url: str, *, timeout: int = 30, cache: dict[str,
     return url
 
 
+class CloudflareBlockedError(Exception):
+    """Raised when Cloudflare blocks the request with a challenge page."""
+    pass
+
+
 def fetch_html(url: str, *, timeout: int = 30) -> str:
     headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; LetterboxdToTMDb/1.0; +https://example.invalid)",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
     }
     resp = SESSION.get(url, headers=headers, timeout=timeout)
     resp.raise_for_status()
-    return resp.text
+    html = resp.text
+
+    # Detect Cloudflare challenge page
+    if "Just a moment" in html or "cf-browser-verification" in html or "challenge-platform" in html:
+        raise CloudflareBlockedError(f"Cloudflare blocked request to {url}")
+
+    return html
 
 
 def expand_boxd_shortlink(url: str, *, timeout: int = 30, cache: dict[str, Any] | None = None) -> str:
@@ -176,8 +188,9 @@ def expand_boxd_shortlink(url: str, *, timeout: int = 30, cache: dict[str, Any] 
             return cached
     # Prefer HEAD (lighter), but fall back to GET because some sites don't fully support HEAD.
     headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; LetterboxdToTMDb/1.0; +https://example.invalid)",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
     }
     try:
         resp = SESSION.head(url, headers=headers, timeout=timeout, allow_redirects=True)

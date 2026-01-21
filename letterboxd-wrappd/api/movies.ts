@@ -382,9 +382,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       totalRows = rows.length;
 
-      // Get unique URIs
+      // Get unique URIs and their associated Name/Year from CSV
       const uriColumn = 'Letterboxd URI';
-      const uniqueUris = [...new Set(rows.map(r => r[uriColumn]).filter(Boolean))];
+      const nameColumn = 'Name';
+      const yearColumn = 'Year';
+
+      // Build a map from URI to the row data (for Name/Year)
+      const uriToRowData: Record<string, { name?: string; year?: string }> = {};
+      for (const row of rows) {
+        const uri = row[uriColumn];
+        if (uri && !uriToRowData[uri]) {
+          uriToRowData[uri] = {
+            name: row[nameColumn] || undefined,
+            year: row[yearColumn] || undefined,
+          };
+        }
+      }
+
+      const uniqueUris = Object.keys(uriToRowData);
 
       // Phase 1: Resolve shortlinks (limited concurrency)
       const resolvedPairs = await mapWithConcurrency(uniqueUris, 6, async (uri) => {
@@ -395,18 +410,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       for (const [uri, resolved] of resolvedPairs) {
         uriMap[uri] = resolved;
         if (!movieIndex[resolved]) {
+          const rowData = uriToRowData[uri];
           movieIndex[resolved] = {
             letterboxd_url: resolved,
+            // Include name/year from CSV for TMDb search fallback
+            csv_name: rowData?.name,
+            csv_year: rowData?.year,
           };
         }
       }
 
-      // If parse_only, return early with just the uriMap and URLs
+      // If parse_only, return early with the movieIndex (includes csv_name/csv_year)
       if (parseOnly) {
         const allUrls = Object.keys(movieIndex);
         return res.status(200).json({
           uriMap,
           urls: allUrls,
+          movieIndex, // Include full index with csv_name/csv_year for batch enrichment
           stats: {
             totalRows,
             uniqueFilms: allUrls.length,
@@ -415,9 +435,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
     } else if (urlsToEnrich) {
-      // Batch mode: create index from provided URLs
+      // Batch mode: create index from provided URLs (may include name/year from frontend)
+      const filmsData = body?.films as Record<string, { name?: string; year?: string }> | undefined;
       for (const url of urlsToEnrich) {
-        movieIndex[url] = { letterboxd_url: url };
+        const filmData = filmsData?.[url];
+        movieIndex[url] = {
+          letterboxd_url: url,
+          csv_name: filmData?.name,
+          csv_year: filmData?.year,
+        };
       }
     }
 
@@ -458,37 +484,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }
 
-          // Fetch from Letterboxd if not cached
+          // If not cached, search TMDb directly using CSV name/year
+          // (Skip Letterboxd scraping - Cloudflare blocks it)
           if (!movieIndex[resolved].tmdb_movie_id) {
-            console.log('Fetching TMDb ID from Letterboxd for:', resolved);
-            const tmdbRef = await getTmdbRefFromLetterboxd(resolved);
-            console.log('TMDb ref result:', tmdbRef);
-            if (tmdbRef?.id) {
-              movieIndex[resolved].tmdb_movie_id = tmdbRef.id;
-              networkFetches++;
+            const csvName = movieIndex[resolved].csv_name;
+            const csvYear = movieIndex[resolved].csv_year;
 
-              // Cache the mapping
-              if (redisAvailable) {
-                await setCachedLetterboxdMapping(resolved, tmdbRef.id);
-              }
-            } else if (tmdbRef?.title) {
-              // Fallback: search TMDb by title/year (mark as fallback for validation later)
-              const fallback = await searchTmdbByTitle(tmdbRef.title, tmdbRef.year, tmdbApiKey!);
-              if (fallback) {
-                movieIndex[resolved].tmdb_movie_id = fallback.id;
-                movieIndex[resolved].tmdb_source = 'fallback_search'; // Mark for runtime validation
+            if (csvName) {
+              console.log(`Searching TMDb for: "${csvName}" (${csvYear || 'no year'})`);
+              const searchResult = await searchTmdbByTitle(csvName, csvYear, tmdbApiKey!);
+
+              if (searchResult) {
+                movieIndex[resolved].tmdb_movie_id = searchResult.id;
+                movieIndex[resolved].tmdb_source = 'csv_title_search';
                 networkFetches++;
+
+                // Cache the mapping
                 if (redisAvailable) {
-                  await setCachedLetterboxdMapping(resolved, fallback.id);
+                  await setCachedLetterboxdMapping(resolved, searchResult.id);
                 }
               } else {
-                movieIndex[resolved].tmdb_error = `No strong TMDb match for "${tmdbRef.title}" (${tmdbRef.year || 'no year'})`;
+                movieIndex[resolved].tmdb_error = `No strong TMDb match for "${csvName}" (${csvYear || 'no year'})`;
                 cacheMisses++;
               }
             } else {
-              // Track that we couldn't find a TMDb ID
-              movieIndex[resolved].tmdb_error = 'No TMDb ID found on Letterboxd page';
-              cacheMisses++;
+              // No CSV name available, try Letterboxd as last resort
+              console.log('No CSV name, trying Letterboxd for:', resolved);
+              const tmdbRef = await getTmdbRefFromLetterboxd(resolved);
+
+              if (tmdbRef?.id) {
+                movieIndex[resolved].tmdb_movie_id = tmdbRef.id;
+                networkFetches++;
+                if (redisAvailable) {
+                  await setCachedLetterboxdMapping(resolved, tmdbRef.id);
+                }
+              } else if (tmdbRef?.title) {
+                const fallback = await searchTmdbByTitle(tmdbRef.title, tmdbRef.year, tmdbApiKey!);
+                if (fallback) {
+                  movieIndex[resolved].tmdb_movie_id = fallback.id;
+                  movieIndex[resolved].tmdb_source = 'letterboxd_fallback';
+                  networkFetches++;
+                  if (redisAvailable) {
+                    await setCachedLetterboxdMapping(resolved, fallback.id);
+                  }
+                } else {
+                  movieIndex[resolved].tmdb_error = `No TMDb match found`;
+                  cacheMisses++;
+                }
+              } else {
+                movieIndex[resolved].tmdb_error = 'No title available for TMDb search';
+                cacheMisses++;
+              }
             }
           }
         }

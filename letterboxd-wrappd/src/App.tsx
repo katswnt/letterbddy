@@ -980,6 +980,10 @@ function App() {
   const [scrapeStatus, setScrapeStatus] = useState<string | null>(null);
   const [scrapeProgress, setScrapeProgress] = useState<{ current: number; total: number } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [diaryUseVercelApi, setDiaryUseVercelApi] = useState<boolean>(() =>
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+  );
 
   // Reviews state
   const [reviews, setReviews] = useState<ReviewRow[]>([]);
@@ -1060,12 +1064,13 @@ function App() {
     setUriMap(null);
 
     // Detect environment: use local server in dev, relative URL in production
-    const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const baseUrl = isLocalDev ? 'http://localhost:5050' : '';
+    const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const useRemoteApi = isLocalHost && diaryUseVercelApi;
+    const baseUrl = useRemoteApi ? 'https://letterbddy.vercel.app' : isLocalHost ? 'http://localhost:5050' : '';
 
     let json: any;
 
-    if (isLocalDev) {
+    if (isLocalHost && !useRemoteApi) {
       // Local development: use the Express server with job polling
       const form = new FormData();
       form.append("file", file);
@@ -1121,7 +1126,7 @@ function App() {
       setScrapeStatus("Parsing CSV...");
 
       const csvContent = await file.text();
-      const parseResponse = await fetch(`/api/movies?parse_only=1`, {
+      const parseResponse = await fetch(`${baseUrl}/api/movies?parse_only=1`, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: csvContent,
@@ -1134,6 +1139,7 @@ function App() {
       const parseResult = await parseResponse.json();
       const uriMap = parseResult.uriMap || {};
       const allUrls: string[] = parseResult.urls || [];
+      const parsedMovieIndex = parseResult.movieIndex || {}; // Contains csv_name/csv_year
       const totalFilms = allUrls.length;
 
       setScrapeStatus(`Found ${totalFilms} films. Enriching with TMDb data...`);
@@ -1148,10 +1154,22 @@ function App() {
         const batch = allUrls.slice(i, i + batchSize);
         const batchNum = Math.floor(i / batchSize) + 1;
 
-        const enrichResponse = await fetch(`/api/movies?enrich=1`, {
+        // Build films data with name/year for this batch
+        const filmsData: Record<string, { name?: string; year?: string }> = {};
+        for (const url of batch) {
+          const movieData = parsedMovieIndex[url];
+          if (movieData) {
+            filmsData[url] = {
+              name: movieData.csv_name,
+              year: movieData.csv_year,
+            };
+          }
+        }
+
+        const enrichResponse = await fetch(`${baseUrl}/api/movies?enrich=1`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ urls: batch }),
+          body: JSON.stringify({ urls: batch, films: filmsData }),
         });
 
         if (!enrichResponse.ok) {
@@ -1353,6 +1371,7 @@ function App() {
         const parseResult = await parseResponse.json();
         const uriMap = parseResult.uriMap || {};
         const allUrls: string[] = parseResult.urls || [];
+        const parsedMovieIndex = parseResult.movieIndex || {}; // Contains csv_name/csv_year
         const totalFilms = allUrls.length;
 
         setWatchlistStatus(`Found ${totalFilms} films. Enriching...`);
@@ -1367,10 +1386,22 @@ function App() {
           const batch = allUrls.slice(i, i + batchSize);
           const batchNum = Math.floor(i / batchSize) + 1;
 
+          // Build films data with name/year for this batch
+          const filmsData: Record<string, { name?: string; year?: string }> = {};
+          for (const url of batch) {
+            const movieData = parsedMovieIndex[url];
+            if (movieData) {
+              filmsData[url] = {
+                name: movieData.csv_name,
+                year: movieData.csv_year,
+              };
+            }
+          }
+
           const enrichResponse = await fetch(`${baseUrl}/api/movies?enrich=1`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ urls: batch }),
+            body: JSON.stringify({ urls: batch, films: filmsData }),
           });
 
           if (!enrichResponse.ok) {
@@ -2126,6 +2157,19 @@ function App() {
                   </p>
                 )}
               </div>
+            </div>
+          )}
+
+          {!isLoading && isLocalDev && (
+            <div style={{ display: "flex", justifyContent: "center", marginTop: "8px" }}>
+              <label style={{ fontSize: "12px", color: "#9ab", display: "flex", alignItems: "center", gap: "8px" }}>
+                <input
+                  type="checkbox"
+                  checked={diaryUseVercelApi}
+                  onChange={(e) => setDiaryUseVercelApi(e.target.checked)}
+                />
+                Use Vercel API for diary (uses prod cache)
+              </label>
             </div>
           )}
 
