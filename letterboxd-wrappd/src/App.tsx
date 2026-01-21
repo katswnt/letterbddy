@@ -402,6 +402,141 @@ const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, cl
   );
 });
 
+const HEAT_COLORS = ["#1c232a", "#21462c", "#2f6f3a", "#3fbf5a", "#00e054"];
+
+type HeatCell = {
+  date: Date;
+  dateKey: string;
+  count: number;
+  inYear: boolean;
+};
+
+const buildYearHeatmap = (year: number, counts?: Map<string, number>) => {
+  const start = new Date(year, 0, 1);
+  const today = new Date();
+  const isCurrentYear = today.getFullYear() === year;
+  const end = isCurrentYear ? new Date(today.getFullYear(), today.getMonth(), today.getDate()) : new Date(year, 11, 31);
+
+  const startSunday = new Date(start);
+  startSunday.setDate(start.getDate() - start.getDay());
+
+  const endSaturday = new Date(end);
+  endSaturday.setDate(end.getDate() + (6 - end.getDay()));
+
+  const weeks: HeatCell[][] = [];
+  const monthLabels: Array<{ index: number; label: string }> = [];
+  let current = new Date(startSunday);
+  let weekIndex = 0;
+  let maxCount = 0;
+
+  while (current <= endSaturday) {
+    const week: HeatCell[] = [];
+    for (let i = 0; i < 7; i += 1) {
+      const dateKey = current.toISOString().slice(0, 10);
+      const count = counts?.get(dateKey) || 0;
+      if (count > maxCount) maxCount = count;
+      week.push({
+        date: new Date(current),
+        dateKey,
+        count,
+        inYear: current.getFullYear() === year,
+      });
+      current.setDate(current.getDate() + 1);
+    }
+    weeks.push(week);
+
+    const month = week[0].date.getMonth();
+    const dayOfMonth = week[0].date.getDate();
+    if (week[0].date.getFullYear() === year && dayOfMonth <= 7) {
+      const label = week[0].date.toLocaleString("en-US", { month: "short" });
+      monthLabels.push({ index: weekIndex, label });
+    }
+    weekIndex += 1;
+  }
+
+  return { weeks, monthLabels, maxCount };
+};
+
+const getHeatColor = (count: number, maxCount: number) => {
+  if (count <= 0) return HEAT_COLORS[0];
+  if (maxCount <= 1) return HEAT_COLORS[4];
+  const ratio = count / maxCount;
+  if (ratio < 0.34) return HEAT_COLORS[1];
+  if (ratio < 0.67) return HEAT_COLORS[2];
+  if (ratio < 0.9) return HEAT_COLORS[3];
+  return HEAT_COLORS[4];
+};
+
+const getOrdinal = (day: number) => {
+  const mod10 = day % 10;
+  const mod100 = day % 100;
+  if (mod10 === 1 && mod100 !== 11) return "st";
+  if (mod10 === 2 && mod100 !== 12) return "nd";
+  if (mod10 === 3 && mod100 !== 13) return "rd";
+  return "th";
+};
+
+const formatHeatmapLabel = (date: Date, count: number) => {
+  const month = date.toLocaleDateString("en-US", { month: "long" });
+  const day = date.getDate();
+  return `${count} movie${count === 1 ? "" : "s"} on ${month} ${day}${getOrdinal(day)}`;
+};
+
+type HeatmapYearProps = {
+  year: string;
+  counts?: Map<string, number>;
+  compact?: boolean;
+};
+
+const HeatmapYear = memo(({ year, counts, compact = false }: HeatmapYearProps) => {
+  const { weeks, monthLabels, maxCount } = useMemo(
+    () => buildYearHeatmap(parseInt(year, 10), counts),
+    [year, counts]
+  );
+  const weeksCount = weeks.length;
+
+  return (
+    <div
+      className={`lb-heatmap-year ${compact ? "is-compact" : ""}`}
+      style={{ ["--lb-heatmap-weeks" as any]: weeksCount }}
+    >
+      <div className="lb-heatmap-year-title">{year}</div>
+      <div className="lb-heatmap-grid-wrap">
+        <div className="lb-heatmap-months">
+          {monthLabels.map((m) => (
+            <span key={`${year}-${m.label}-${m.index}`} style={{ gridColumnStart: m.index + 1 }}>
+              {m.label}
+            </span>
+          ))}
+        </div>
+        <div className="lb-heatmap-grid">
+          {weeks.map((week, weekIdx) => (
+            <div key={`${year}-w-${weekIdx}`} className="lb-heatmap-week">
+              {week.map((cell) => (
+                <div
+                  key={cell.dateKey}
+                  className={`lb-heatmap-cell ${cell.inYear ? "" : "is-muted"}`}
+                  style={{ backgroundColor: cell.inYear ? getHeatColor(cell.count, maxCount) : "#151b20" }}
+                  data-tooltip={formatHeatmapLabel(cell.date, cell.count)}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      {!compact && (
+        <div className="lb-heatmap-legend">
+          <span>Less</span>
+          {HEAT_COLORS.map((color, idx) => (
+            <span key={`${year}-legend-${idx}`} className="lb-heatmap-legend-swatch" style={{ backgroundColor: color }} />
+          ))}
+          <span>More</span>
+        </div>
+      )}
+    </div>
+  );
+});
+
 type DiaryMovie = {
   name: string;
   year: string;
@@ -1152,6 +1287,7 @@ function App() {
   const [geoView, setGeoView] = useState<GeoView>("continent");
   const [geoHover, setGeoHover] = useState<{ label: string; count: number; x: number; y: number } | null>(null);
   const mapWrapperRef = useRef<HTMLDivElement | null>(null);
+  const heatmapScrollRef = useRef<HTMLDivElement | null>(null);
 
   async function buildMovieIndex(file: File) {
     setScrapeStatus("Starting TMDb scraping…");
@@ -1778,6 +1914,44 @@ function App() {
       ).sort((a, b) => parseInt(b) - parseInt(a)),
     [rows]
   );
+
+  const heatmapYears = useMemo(
+    () => [...availableYears].sort((a, b) => parseInt(a) - parseInt(b)),
+    [availableYears]
+  );
+
+  useEffect(() => {
+    if (dateFilter !== "all") return;
+    const container = heatmapScrollRef.current;
+    if (!container) return;
+    let frame = 0;
+    const scrollToEnd = () => {
+      container.scrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+    };
+    frame = window.requestAnimationFrame(scrollToEnd);
+    const timeout = window.setTimeout(scrollToEnd, 50);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+    };
+  }, [dateFilter, heatmapYears]);
+
+  const diaryDateCounts = useMemo(() => {
+    const byYear = new Map<string, Map<string, number>>();
+    for (const row of rows) {
+      const raw = getWatchedDate(row);
+      if (!raw) continue;
+      const dateKey = raw.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
+      const date = new Date(dateKey);
+      if (Number.isNaN(date.getTime())) continue;
+      const year = dateKey.slice(0, 4);
+      if (!byYear.has(year)) byYear.set(year, new Map());
+      const yearMap = byYear.get(year)!;
+      yearMap.set(dateKey, (yearMap.get(dateKey) || 0) + 1);
+    }
+    return byYear;
+  }, [rows]);
 
   // Filter rows based on selected time range
   const filteredRows = useMemo(
@@ -2442,6 +2616,35 @@ function App() {
               </div>
             </div>
 
+          </section>
+        )}
+
+        {availableYears.length > 0 && (
+          <section className="lb-heatmap-section">
+            <div className="lb-heatmap-header">
+              <h2>Watching Activity</h2>
+              <p>Daily watches from your diary</p>
+            </div>
+            {dateFilter === "all" ? (
+              <>
+                <div ref={heatmapScrollRef} className="lb-heatmap-scroll">
+                  {heatmapYears.map((year) => (
+                    <HeatmapYear key={year} year={year} counts={diaryDateCounts.get(year)} compact />
+                  ))}
+                </div>
+                <div className="lb-heatmap-legend">
+                  <span>Less</span>
+                  {HEAT_COLORS.map((color, idx) => (
+                    <span key={`all-legend-${idx}`} className="lb-heatmap-legend-swatch" style={{ backgroundColor: color }} />
+                  ))}
+                  <span>More</span>
+                </div>
+              </>
+            ) : (
+              <div className="lb-heatmap-single">
+                <HeatmapYear year={dateFilter} counts={diaryDateCounts.get(dateFilter)} />
+              </div>
+            )}
           </section>
         )}
 
