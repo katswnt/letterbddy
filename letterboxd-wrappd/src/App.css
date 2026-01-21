@@ -81,7 +81,7 @@
 
 .lb-table-container {
   overflow-x: auto;
-  overflow-y: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   border-top: 1px solid #345;
   position: relative;
@@ -128,10 +128,15 @@
   color: #9ab;
   font-size: 14px;
   box-sizing: border-box;
+  line-height: 1.2;
+  overflow: hidden;
 }
 
-.lb-cell-title {
+.lb-cell-title,
+.lb-cell-director {
   color: #fff;
+  overflow: visible;
+  white-space: normal;
 }
 
 .lb-cell-center {
@@ -204,7 +209,9 @@
 
 .lb-measure {
   position: absolute;
-  inset: 0;
+  left: 0;
+  top: 0;
+  width: 100%;
   visibility: hidden;
   pointer-events: none;
   height: auto;
@@ -215,10 +222,12 @@
   min-width: var(--lb-table-min-width);
   width: max-content;
   margin: 0 auto;
+  position: relative;
 }
 
 .lb-list {
   width: 100%;
+  overscroll-behavior: contain;
 }
 
 .lb-runtime-filters {
@@ -263,6 +272,7 @@
   .table-container,
   .lb-table-container {
     overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     margin: 0 -1rem;
     padding: 0 1rem;

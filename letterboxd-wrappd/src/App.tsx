@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -328,6 +329,7 @@ type VirtualListProps = {
 
 const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, className, renderRow }: VirtualListProps) => {
   const [scrollTop, setScrollTop] = useState(0);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const hasHeights = Array.isArray(heights) && heights.length === items.length;
   const offsets = useMemo(() => {
@@ -369,7 +371,18 @@ const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, cl
     <div
       className={className}
       style={{ height, overflowY: "auto", overflowX: "visible", position: "relative" }}
+      ref={containerRef}
       onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+      onWheel={(event) => {
+        const el = containerRef.current;
+        if (!el) return;
+        const atTop = el.scrollTop <= 0;
+        const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+        if ((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
     >
       <div style={{ height: totalHeight, position: "relative" }}>
         {items.slice(startIndex, endIndex).map((item, idx) => {
@@ -434,15 +447,19 @@ const DiaryTable = memo(({
   diarySortState,
   setDiarySortState,
 }: DiaryTableProps) => {
-  const diaryMovieList = useMemo<DiaryMovie[]>(() => (
-    moviesWithData.map((movie: any) => {
+  const diaryMovieList = useMemo<DiaryMovie[]>(() => {
+    const map = new Map<string, DiaryMovie>();
+    for (const movie of moviesWithData) {
       const tmdbData = movie.tmdb_data || {};
       const directors = tmdbData.directors || [];
       const directorNames = directors.map((d: any) => d.name).filter(Boolean).join(", ");
-
-      return {
-        name: tmdbData.title || "Unknown Title",
-        year: tmdbData.release_date?.slice(0, 4) || "",
+      const name = tmdbData.title || "Unknown Title";
+      const year = tmdbData.release_date?.slice(0, 4) || "";
+      const key = `${name.toLowerCase()}|${year}`;
+      if (map.has(key)) continue;
+      map.set(key, {
+        name,
+        year,
         uri: movie.letterboxd_url || "",
         director: directorNames || "Unknown",
         runtime: typeof tmdbData.runtime === "number" ? tmdbData.runtime : null,
@@ -458,14 +475,24 @@ const DiaryTable = memo(({
           tmdbData.is_english === false,
           movie.is_in_criterion_collection === true,
         ].filter(Boolean).length,
-      };
-    })
-  ), [moviesWithData]);
-
+      });
+    }
+    return Array.from(map.values());
+  }, [moviesWithData]);
   const measureRef = useRef<HTMLDivElement | null>(null);
   const hasMeasuredRef = useRef(false);
   const [rowHeightsByKey, setRowHeightsByKey] = useState<Record<string, number> | null>(null);
   const estimatedRowHeight = 56;
+
+  const getDiaryKey = useCallback((movie: DiaryMovie) => {
+    if (movie.uri) return movie.uri;
+    return `${movie.name.toLowerCase()}|${movie.year}`;
+  }, []);
+
+  useEffect(() => {
+    hasMeasuredRef.current = false;
+    setRowHeightsByKey(null);
+  }, [diaryMovieList]);
 
   const filteredDiaryMovies = useMemo(() => {
     const hasActiveFilter = Object.values(diaryFilters).some(Boolean);
@@ -527,30 +554,59 @@ const DiaryTable = memo(({
     return "";
   };
 
-  const getDiaryKey = useCallback((movie: DiaryMovie) => movie.uri || `${movie.name}|${movie.year}`, []);
-
   useLayoutEffect(() => {
     if (hasMeasuredRef.current) return;
     const container = measureRef.current;
     if (!container) return;
-    const rows = Array.from(container.querySelectorAll(".lb-row"));
-    if (!rows.length) return;
-    const nextMap: Record<string, number> = {};
-    rows.forEach((row) => {
-      const key = row.getAttribute("data-key");
-      if (!key) return;
-      nextMap[key] = Math.ceil(row.getBoundingClientRect().height);
-    });
-    if (Object.keys(nextMap).length) {
-      setRowHeightsByKey(nextMap);
-      hasMeasuredRef.current = true;
-    }
-  }, [diaryMovieList]);
 
-  const rowHeights = useMemo(
-    () => filteredDiaryMovies.map((movie) => rowHeightsByKey?.[getDiaryKey(movie)] || estimatedRowHeight),
-    [filteredDiaryMovies, rowHeightsByKey, getDiaryKey, estimatedRowHeight]
-  );
+    let frame = 0;
+    let retry = 0;
+    let cancelled = false;
+
+    const measure = () => {
+      if (cancelled || hasMeasuredRef.current) return;
+      const nodes = Array.from(container.querySelectorAll<HTMLElement>("[data-measure-key]"));
+      if (!nodes.length) return;
+      const next: Record<string, number> = {};
+      nodes.forEach((node) => {
+        const key = node.dataset.measureKey;
+        if (!key) return;
+        const rect = node.getBoundingClientRect();
+        if (rect.height) next[key] = Math.ceil(rect.height);
+      });
+      if (Object.keys(next).length) {
+        setRowHeightsByKey(next);
+        hasMeasuredRef.current = true;
+        return;
+      }
+      retry += 1;
+      if (retry < 3) {
+        frame = window.requestAnimationFrame(measure);
+      }
+    };
+
+    frame = window.requestAnimationFrame(measure);
+
+    if ("fonts" in document && (document as any).fonts?.ready) {
+      (document as any).fonts.ready.then(() => {
+        if (cancelled || hasMeasuredRef.current) return;
+        frame = window.requestAnimationFrame(measure);
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [diaryMovieList, getDiaryKey]);
+
+  const rowHeights = useMemo(() => (
+    filteredDiaryMovies.map((movie) => rowHeightsByKey?.[getDiaryKey(movie)] || estimatedRowHeight)
+  ), [filteredDiaryMovies, getDiaryKey, rowHeightsByKey, estimatedRowHeight]);
+  const diaryListHeight = useMemo(() => {
+    const total = rowHeights.reduce((sum, height) => sum + height, 0);
+    return Math.min(400, total || 0);
+  }, [rowHeights]);
 
   const renderRow = useCallback((movie: DiaryMovie, index: number, style: React.CSSProperties) => {
     const isAlt = index % 2 === 1;
@@ -566,7 +622,7 @@ const DiaryTable = memo(({
             {movie.name}
           </a>
         </div>
-        <div className="lb-cell">{movie.director}</div>
+        <div className="lb-cell lb-cell-director">{movie.director}</div>
         <div className="lb-cell lb-cell-center">{movie.year}</div>
         <div className="lb-cell lb-cell-flag" style={{ color: movie.directedByWoman ? "#00e054" : "#456" }}>
           {movie.directedByWoman ? "✓" : "✗"}
@@ -610,26 +666,10 @@ const DiaryTable = memo(({
       )}
       <div
         className="lb-table-container"
-        style={{ maxHeight: "400px", ["--lb-table-min-width" as any]: "600px" }}
+        style={{ ["--lb-table-min-width" as any]: "600px" }}
       >
         <div className="lb-table-inner">
-          {!hasMeasuredRef.current && (
-            <div ref={measureRef} className="lb-measure lb-diary-grid">
-              {diaryMovieList.map((movie, index) => (
-                <div key={movie.uri || index} data-key={getDiaryKey(movie)} className="lb-row lb-diary-grid">
-                  <div className="lb-cell lb-cell-title">{movie.name}</div>
-                  <div className="lb-cell">{movie.director}</div>
-                  <div className="lb-cell lb-cell-center">{movie.year}</div>
-                  <div className="lb-cell lb-cell-flag">{movie.directedByWoman ? "✓" : "✗"}</div>
-                  <div className="lb-cell lb-cell-flag">{movie.writtenByWoman ? "✓" : "✗"}</div>
-                  <div className="lb-cell lb-cell-flag">{movie.notAmerican ? "✓" : "✗"}</div>
-                  <div className="lb-cell lb-cell-flag">{movie.notEnglish ? "✓" : "✗"}</div>
-                  <div className="lb-cell lb-cell-flag">{movie.inCriterion ? "✓" : "✗"}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="lb-table-head lb-diary-grid">
+        <div className="lb-table-head lb-diary-grid">
             <button className="lb-header-cell lb-header-left" title="Click to sort by title" onClick={() => toggleSort("name")}>
               Title{getSortIndicator("name")}
             </button>
@@ -655,14 +695,32 @@ const DiaryTable = memo(({
               CC
             </button>
           </div>
-          <VirtualList
-            height={400}
-            itemHeight={estimatedRowHeight}
-            heights={rowHeights}
-            items={filteredDiaryMovies}
-            renderRow={renderRow}
-            className="lb-list"
-          />
+          <div ref={measureRef} className="lb-measure">
+            {diaryMovieList.map((movie, index) => (
+              <div
+                key={`${getDiaryKey(movie)}-${index}`}
+                data-measure-key={getDiaryKey(movie)}
+                className="lb-row lb-diary-grid"
+              >
+                <div className="lb-cell lb-cell-title">{movie.name}</div>
+                <div className="lb-cell lb-cell-director">{movie.director}</div>
+                <div className="lb-cell lb-cell-center">{movie.year}</div>
+                <div className="lb-cell lb-cell-flag">{movie.directedByWoman ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.writtenByWoman ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.notAmerican ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.notEnglish ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.inCriterion ? "✓" : "✗"}</div>
+              </div>
+            ))}
+          </div>
+        <VirtualList
+          height={diaryListHeight}
+          itemHeight={estimatedRowHeight}
+          heights={rowHeights}
+          items={filteredDiaryMovies}
+          renderRow={renderRow}
+          className="lb-list"
+        />
         </div>
       </div>
     </div>
@@ -712,6 +770,13 @@ const WatchlistTable = memo(({
   const hasMeasuredRef = useRef(false);
   const [rowHeightsByKey, setRowHeightsByKey] = useState<Record<string, number> | null>(null);
   const estimatedRowHeight = 56;
+
+  useEffect(() => {
+    hasMeasuredRef.current = false;
+    setRowHeightsByKey(null);
+  }, [watchlistMovies]);
+
+  const getWatchlistKey = useCallback((movie: WatchlistMovie) => movie.uri, []);
 
   const passesRuntimeFilter = useCallback((runtime: number | null) => {
     if (watchlistRuntimeFilter === "all") return true;
@@ -777,6 +842,60 @@ const WatchlistTable = memo(({
     return "";
   };
 
+  useLayoutEffect(() => {
+    if (hasMeasuredRef.current) return;
+    const container = measureRef.current;
+    if (!container) return;
+
+    let frame = 0;
+    let retry = 0;
+    let cancelled = false;
+
+    const measure = () => {
+      if (cancelled || hasMeasuredRef.current) return;
+      const nodes = Array.from(container.querySelectorAll<HTMLElement>("[data-measure-key]"));
+      if (!nodes.length) return;
+      const next: Record<string, number> = {};
+      nodes.forEach((node) => {
+        const key = node.dataset.measureKey;
+        if (!key) return;
+        const rect = node.getBoundingClientRect();
+        if (rect.height) next[key] = Math.ceil(rect.height);
+      });
+      if (Object.keys(next).length) {
+        setRowHeightsByKey(next);
+        hasMeasuredRef.current = true;
+        return;
+      }
+      retry += 1;
+      if (retry < 3) {
+        frame = window.requestAnimationFrame(measure);
+      }
+    };
+
+    frame = window.requestAnimationFrame(measure);
+
+    if ("fonts" in document && (document as any).fonts?.ready) {
+      (document as any).fonts.ready.then(() => {
+        if (cancelled || hasMeasuredRef.current) return;
+        frame = window.requestAnimationFrame(measure);
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [getWatchlistKey, watchlistMovies]);
+
+  const rowHeights = useMemo(() => (
+    filteredMovies.map((movie) => rowHeightsByKey?.[getWatchlistKey(movie)] || estimatedRowHeight)
+  ), [filteredMovies, getWatchlistKey, rowHeightsByKey, estimatedRowHeight]);
+  const watchlistListHeight = useMemo(() => {
+    const total = rowHeights.reduce((sum, height) => sum + height, 0);
+    return Math.min(500, total || 0);
+  }, [rowHeights]);
+
   const cycleContinentFilter = () => {
     if (!watchlistContinentFilter) {
       setWatchlistContinentFilter(CONTINENT_ORDER[0]);
@@ -789,31 +908,6 @@ const WatchlistTable = memo(({
     }
     setWatchlistContinentFilter(CONTINENT_ORDER[idx + 1]);
   };
-
-  const getWatchlistKey = useCallback((movie: WatchlistMovie) => movie.uri, []);
-
-  useLayoutEffect(() => {
-    if (hasMeasuredRef.current) return;
-    const container = measureRef.current;
-    if (!container) return;
-    const rows = Array.from(container.querySelectorAll(".lb-row"));
-    if (!rows.length) return;
-    const nextMap: Record<string, number> = {};
-    rows.forEach((row) => {
-      const key = row.getAttribute("data-key");
-      if (!key) return;
-      nextMap[key] = Math.ceil(row.getBoundingClientRect().height);
-    });
-    if (Object.keys(nextMap).length) {
-      setRowHeightsByKey(nextMap);
-      hasMeasuredRef.current = true;
-    }
-  }, [watchlistMovies]);
-
-  const rowHeights = useMemo(
-    () => filteredMovies.map((movie) => rowHeightsByKey?.[getWatchlistKey(movie)] || estimatedRowHeight),
-    [filteredMovies, rowHeightsByKey, getWatchlistKey, estimatedRowHeight]
-  );
 
   const renderRow = useCallback((movie: WatchlistMovie, index: number, style: React.CSSProperties) => {
     const isAlt = index % 2 === 1;
@@ -829,7 +923,7 @@ const WatchlistTable = memo(({
             {movie.name}
           </a>
         </div>
-        <div className="lb-cell">{movie.director}</div>
+        <div className="lb-cell lb-cell-director">{movie.director}</div>
         <div className="lb-cell lb-cell-center">{movie.year}</div>
         <div className="lb-cell lb-cell-center lb-cell-small">{formatRuntime(movie.runtime)}</div>
         <div className="lb-cell lb-cell-center lb-cell-small">
@@ -899,30 +993,10 @@ const WatchlistTable = memo(({
 
       <div
         className="lb-table-container"
-        style={{ maxHeight: "500px", ["--lb-table-min-width" as any]: "760px" }}
+        style={{ ["--lb-table-min-width" as any]: "760px" }}
       >
         <div className="lb-table-inner">
-          {!hasMeasuredRef.current && (
-            <div ref={measureRef} className="lb-measure lb-watchlist-grid">
-              {watchlistMovies.map((movie) => (
-                <div key={movie.uri} data-key={getWatchlistKey(movie)} className="lb-row lb-watchlist-grid">
-                  <div className="lb-cell lb-cell-title">{movie.name}</div>
-                  <div className="lb-cell">{movie.director}</div>
-                  <div className="lb-cell lb-cell-center">{movie.year}</div>
-                  <div className="lb-cell lb-cell-center lb-cell-small">{formatRuntime(movie.runtime)}</div>
-                  <div className="lb-cell lb-cell-center lb-cell-small">
-                    {movie.continents.length > 0 ? movie.continents.map(getContinentLabel).join(", ") : "—"}
-                  </div>
-                  <div className="lb-cell lb-cell-flag">{movie.directedByWoman ? "✓" : "✗"}</div>
-                  <div className="lb-cell lb-cell-flag">{movie.writtenByWoman ? "✓" : "✗"}</div>
-                  <div className="lb-cell lb-cell-flag">{movie.notAmerican ? "✓" : "✗"}</div>
-                  <div className="lb-cell lb-cell-flag">{movie.notEnglish ? "✓" : "✗"}</div>
-                  <div className="lb-cell lb-cell-flag">{movie.inCriterion ? "✓" : "✗"}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="lb-table-head lb-watchlist-grid">
+        <div className="lb-table-head lb-watchlist-grid">
             <button className="lb-header-cell lb-header-left" title="Click to sort by title" onClick={() => toggleSort("name")}>
               Title{getSortIndicator("name")}
             </button>
@@ -957,14 +1031,36 @@ const WatchlistTable = memo(({
               CC
             </button>
           </div>
-          <VirtualList
-            height={500}
-            itemHeight={estimatedRowHeight}
-            heights={rowHeights}
-            items={filteredMovies}
-            renderRow={renderRow}
-            className="lb-list"
-          />
+          <div ref={measureRef} className="lb-measure">
+            {watchlistMovies.map((movie) => (
+              <div
+                key={movie.uri}
+                data-measure-key={getWatchlistKey(movie)}
+                className="lb-row lb-watchlist-grid"
+              >
+                <div className="lb-cell lb-cell-title">{movie.name}</div>
+                <div className="lb-cell lb-cell-director">{movie.director}</div>
+                <div className="lb-cell lb-cell-center">{movie.year}</div>
+                <div className="lb-cell lb-cell-center lb-cell-small">{formatRuntime(movie.runtime)}</div>
+                <div className="lb-cell lb-cell-center lb-cell-small">
+                  {movie.continents.length > 0 ? movie.continents.map(getContinentLabel).join(", ") : "—"}
+                </div>
+                <div className="lb-cell lb-cell-flag">{movie.directedByWoman ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.writtenByWoman ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.notAmerican ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.notEnglish ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.inCriterion ? "✓" : "✗"}</div>
+              </div>
+            ))}
+          </div>
+        <VirtualList
+          height={watchlistListHeight}
+          itemHeight={estimatedRowHeight}
+          heights={rowHeights}
+          items={filteredMovies}
+          renderRow={renderRow}
+          className="lb-list"
+        />
         </div>
       </div>
     </div>
