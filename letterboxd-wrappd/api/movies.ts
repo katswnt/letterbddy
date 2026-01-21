@@ -121,8 +121,26 @@ function toCanonicalUrl(url: string): string {
   return url;
 }
 
-// Extract TMDb ID from Letterboxd page
-async function getTmdbIdFromLetterboxd(url: string): Promise<number | null> {
+type TmdbRef = {
+  id: number | null;
+  type: 'movie' | 'tv' | null;
+  title?: string | null;
+  year?: string | null;
+};
+
+function extractTitleYearFromHtml(html: string): { title?: string; year?: string } {
+  const ogMatch = html.match(/property=["']og:title["']\s+content=["']([^"']+)["']/i);
+  const titleTagMatch = html.match(/<title>([^<]+)<\/title>/i);
+  const raw = ogMatch?.[1] || titleTagMatch?.[1] || '';
+  const cleaned = raw.replace(/\s+—\s+Letterboxd/i, '').trim();
+  const yearMatch = cleaned.match(/\((\d{4})\)\s*$/);
+  const year = yearMatch ? yearMatch[1] : undefined;
+  const title = yearMatch ? cleaned.replace(/\s*\(\d{4}\)\s*$/, '').trim() : cleaned;
+  return { title, year };
+}
+
+// Extract TMDb ID from Letterboxd page (movie or TV)
+async function getTmdbRefFromLetterboxd(url: string): Promise<TmdbRef | null> {
   try {
     // Convert to canonical URL (user-scoped pages don't have TMDb links)
     const canonicalUrl = toCanonicalUrl(url);
@@ -138,17 +156,26 @@ async function getTmdbIdFromLetterboxd(url: string): Promise<number | null> {
     console.log('Got HTML, length:', html.length);
 
     // Look for TMDb link in the page (handle both http and https, with or without www)
-    const tmdbMatch = html.match(/href=["']https?:\/\/(www\.)?themoviedb\.org\/movie\/(\d+)/);
-    if (tmdbMatch) {
-      console.log('Found TMDb ID:', tmdbMatch[2]);
-      return parseInt(tmdbMatch[2], 10);
+    const tmdbMovieMatch = html.match(/href=["']https?:\/\/(www\.)?themoviedb\.org\/movie\/(\d+)/);
+    if (tmdbMovieMatch) {
+      console.log('Found TMDb movie ID:', tmdbMovieMatch[2]);
+      const { title, year } = extractTitleYearFromHtml(html);
+      return { id: parseInt(tmdbMovieMatch[2], 10), type: 'movie', title, year };
+    }
+
+    const tmdbTvMatch = html.match(/href=["']https?:\/\/(www\.)?themoviedb\.org\/tv\/(\d+)/);
+    if (tmdbTvMatch) {
+      console.log('Found TMDb TV ID:', tmdbTvMatch[2]);
+      const { title, year } = extractTitleYearFromHtml(html);
+      return { id: parseInt(tmdbTvMatch[2], 10), type: 'tv', title, year };
     }
 
     // Alternative: look for data attribute
     const dataMatch = html.match(/data-tmdb-id=["'](\d+)["']/);
     if (dataMatch) {
       console.log('Found TMDb ID (data attr):', dataMatch[1]);
-      return parseInt(dataMatch[1], 10);
+      const { title, year } = extractTitleYearFromHtml(html);
+      return { id: parseInt(dataMatch[1], 10), type: 'movie', title, year };
     }
 
     // Log a snippet of HTML around "themoviedb" to help debug
@@ -157,28 +184,79 @@ async function getTmdbIdFromLetterboxd(url: string): Promise<number | null> {
       console.log('Found themoviedb at index', tmdbIndex, '- snippet:', html.slice(Math.max(0, tmdbIndex - 50), tmdbIndex + 100));
     }
 
+    const { title, year } = extractTitleYearFromHtml(html);
     console.log('No TMDb ID found in page');
-    return null;
+    return { id: null, type: null, title, year };
   } catch (e) {
     console.error('Error fetching Letterboxd page:', e);
     return null;
   }
 }
 
-// Fetch TMDb movie details
-async function fetchTmdbDetails(tmdbId: number, apiKey: string): Promise<any> {
-  const url = `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${apiKey}`;
+async function fetchTmdbDetails(tmdbId: number, apiKey: string, type: 'movie' | 'tv'): Promise<any> {
+  const url = `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${apiKey}`;
   const response = await fetch(url);
   if (!response.ok) return null;
   return response.json();
 }
 
-// Fetch TMDb movie credits
-async function fetchTmdbCredits(tmdbId: number, apiKey: string): Promise<any> {
-  const url = `https://api.themoviedb.org/3/movie/${tmdbId}/credits?api_key=${apiKey}`;
+async function fetchTmdbCredits(tmdbId: number, apiKey: string, type: 'movie' | 'tv'): Promise<any> {
+  const url = `https://api.themoviedb.org/3/${type}/${tmdbId}/credits?api_key=${apiKey}`;
   const response = await fetch(url);
   if (!response.ok) return null;
   return response.json();
+}
+
+async function searchTmdbByTitle(
+  title: string,
+  year: string | null | undefined,
+  apiKey: string
+): Promise<{ id: number; type: 'movie' | 'tv' } | null> {
+  const query = encodeURIComponent(title);
+  const movieUrl = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${query}${year ? `&year=${year}` : ''}`;
+  const tvUrl = `https://api.themoviedb.org/3/search/tv?api_key=${apiKey}&query=${query}${year ? `&first_air_date_year=${year}` : ''}`;
+
+  const [movieRes, tvRes] = await Promise.all([fetch(movieUrl), fetch(tvUrl)]);
+  const movieJson = movieRes.ok ? await movieRes.json() : null;
+  const tvJson = tvRes.ok ? await tvRes.json() : null;
+
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const target = normalize(title);
+
+  const pickBest = (items: any[], type: 'movie' | 'tv') => {
+    let best: any = null;
+    let bestScore = -1;
+    for (const item of items || []) {
+      const itemTitle = type === 'movie' ? item.title : item.name;
+      if (!itemTitle) continue;
+      const itemNorm = normalize(itemTitle);
+      const itemYear = (type === 'movie' ? item.release_date : item.first_air_date)?.slice(0, 4);
+      let score = 0;
+      if (itemNorm === target) score += 2;
+      if (year && itemYear === year) score += 1;
+      if (score > bestScore) {
+        bestScore = score;
+        best = item;
+      }
+    }
+    return best ? { id: best.id, type } : null;
+  };
+
+  const movieBest = pickBest(movieJson?.results || [], 'movie');
+  const tvBest = pickBest(tvJson?.results || [], 'tv');
+
+  if (movieBest && tvBest) {
+    if (movieBest.type === 'movie' && tvBest.type === 'tv') {
+      // Prefer the one with higher score; if tie, prefer movie.
+      const movieYear = (movieJson?.results || []).find((r: any) => r.id === movieBest.id)?.release_date?.slice(0, 4);
+      const tvYear = (tvJson?.results || []).find((r: any) => r.id === tvBest.id)?.first_air_date?.slice(0, 4);
+      const movieScore = (movieYear && year && movieYear === year ? 1 : 0);
+      const tvScore = (tvYear && year && tvYear === year ? 1 : 0);
+      return tvScore > movieScore ? tvBest : movieBest;
+    }
+  }
+
+  return movieBest || tvBest || null;
 }
 
 // Concurrency helper for async work
@@ -207,20 +285,20 @@ async function mapWithConcurrency<T, R>(
 const FEMALE_GENDER = 1;
 
 // Cache helper functions using ioredis
-async function getCachedTmdbData(tmdbId: number): Promise<any | null> {
-  return getCached(`${CACHE_KEYS.TMDB_DATA}${tmdbId}`);
+async function getCachedTmdbData(tmdbId: number, type: 'movie' | 'tv'): Promise<any | null> {
+  return getCached(`${CACHE_KEYS.TMDB_DATA}${type}:${tmdbId}`);
 }
 
-async function setCachedTmdbData(tmdbId: number, data: any): Promise<void> {
-  await setCached(`${CACHE_KEYS.TMDB_DATA}${tmdbId}`, data, CACHE_DURATION.TMDB_DATA);
+async function setCachedTmdbData(tmdbId: number, type: 'movie' | 'tv', data: any): Promise<void> {
+  await setCached(`${CACHE_KEYS.TMDB_DATA}${type}:${tmdbId}`, data, CACHE_DURATION.TMDB_DATA);
 }
 
-async function getCachedLetterboxdMapping(url: string): Promise<number | null> {
+async function getCachedLetterboxdMapping(url: string): Promise<any | null> {
   return getCached(`${CACHE_KEYS.LETTERBOXD_MAPPING}${url}`);
 }
 
-async function setCachedLetterboxdMapping(url: string, tmdbId: number): Promise<void> {
-  await setCached(`${CACHE_KEYS.LETTERBOXD_MAPPING}${url}`, tmdbId, CACHE_DURATION.LETTERBOXD_MAPPING);
+async function setCachedLetterboxdMapping(url: string, value: any): Promise<void> {
+  await setCached(`${CACHE_KEYS.LETTERBOXD_MAPPING}${url}`, value, CACHE_DURATION.LETTERBOXD_MAPPING);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -372,10 +450,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!movieIndex[resolved].tmdb_movie_id) {
           // Check cache for Letterboxd -> TMDb ID mapping
           if (redisAvailable) {
-            const cachedId = await getCachedLetterboxdMapping(resolved);
-            console.log('Cache lookup for', resolved, ':', cachedId);
-            if (cachedId) {
-              movieIndex[resolved].tmdb_movie_id = cachedId;
+            const cached = await getCachedLetterboxdMapping(resolved);
+            console.log('Cache lookup for', resolved, ':', cached);
+            if (cached) {
+              if (typeof cached === 'number') {
+                movieIndex[resolved].tmdb_movie_id = cached;
+                movieIndex[resolved].tmdb_type = 'movie';
+              } else if (typeof cached === 'object' && cached.id) {
+                movieIndex[resolved].tmdb_movie_id = cached.id;
+                movieIndex[resolved].tmdb_type = cached.type || 'movie';
+              }
               cacheHits++;
             }
           }
@@ -383,15 +467,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Fetch from Letterboxd if not cached
           if (!movieIndex[resolved].tmdb_movie_id) {
             console.log('Fetching TMDb ID from Letterboxd for:', resolved);
-            const tmdbId = await getTmdbIdFromLetterboxd(resolved);
-            console.log('TMDb ID result:', tmdbId);
-            if (tmdbId) {
-              movieIndex[resolved].tmdb_movie_id = tmdbId;
+            const tmdbRef = await getTmdbRefFromLetterboxd(resolved);
+            console.log('TMDb ref result:', tmdbRef);
+            if (tmdbRef?.id) {
+              movieIndex[resolved].tmdb_movie_id = tmdbRef.id;
+              movieIndex[resolved].tmdb_type = tmdbRef.type || 'movie';
               networkFetches++;
 
               // Cache the mapping
               if (redisAvailable) {
-                await setCachedLetterboxdMapping(resolved, tmdbId);
+                await setCachedLetterboxdMapping(resolved, { id: tmdbRef.id, type: tmdbRef.type || 'movie' });
+              }
+            } else if (tmdbRef?.title) {
+              // Fallback: search TMDb by title/year
+              const fallback = await searchTmdbByTitle(tmdbRef.title, tmdbRef.year, tmdbApiKey!);
+              if (fallback) {
+                movieIndex[resolved].tmdb_movie_id = fallback.id;
+                movieIndex[resolved].tmdb_type = fallback.type;
+                networkFetches++;
+                if (redisAvailable) {
+                  await setCachedLetterboxdMapping(resolved, { id: fallback.id, type: fallback.type });
+                }
+              } else {
+                movieIndex[resolved].tmdb_error = 'No TMDb ID found on Letterboxd page';
+                cacheMisses++;
               }
             } else {
               // Track that we couldn't find a TMDb ID
@@ -403,6 +502,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Phase 3: Get TMDb details
         const tmdbId = movieIndex[resolved].tmdb_movie_id;
+        const tmdbType = (movieIndex[resolved].tmdb_type || 'movie') as 'movie' | 'tv';
         if (tmdbId && !movieIndex[resolved].tmdb_data) {
           // Check if in Criterion Collection
           const slug = getSlugFromUrl(resolved);
@@ -410,7 +510,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // Check cache for TMDb data
           if (redisAvailable) {
-            const cachedData = await getCachedTmdbData(tmdbId);
+            const cachedData = await getCachedTmdbData(tmdbId, tmdbType);
             if (cachedData) {
               movieIndex[resolved].tmdb_data = cachedData;
               cacheHits++;
@@ -421,15 +521,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // Fetch from TMDb API
           try {
-            const [details, credits] = await Promise.all([
-              fetchTmdbDetails(tmdbId, tmdbApiKey!),
-              fetchTmdbCredits(tmdbId, tmdbApiKey!),
-            ]);
+            let details = await fetchTmdbDetails(tmdbId, tmdbApiKey!, tmdbType);
+            let credits = await fetchTmdbCredits(tmdbId, tmdbApiKey!, tmdbType);
+            let usedType = tmdbType;
+
+            if (!details && tmdbType === 'movie') {
+              const tvDetails = await fetchTmdbDetails(tmdbId, tmdbApiKey!, 'tv');
+              const tvCredits = await fetchTmdbCredits(tmdbId, tmdbApiKey!, 'tv');
+              if (tvDetails) {
+                details = tvDetails;
+                credits = tvCredits;
+                usedType = 'tv';
+                movieIndex[resolved].tmdb_type = 'tv';
+              }
+            } else if (!details && tmdbType === 'tv') {
+              const movieDetails = await fetchTmdbDetails(tmdbId, tmdbApiKey!, 'movie');
+              const movieCredits = await fetchTmdbCredits(tmdbId, tmdbApiKey!, 'movie');
+              if (movieDetails) {
+                details = movieDetails;
+                credits = movieCredits;
+                usedType = 'movie';
+                movieIndex[resolved].tmdb_type = 'movie';
+              }
+            }
 
             if (details) {
               const productionCountries = details.production_countries || [];
-              const countryCodes = productionCountries.map((c: any) => c.iso_3166_1);
-              const countryNames = productionCountries.map((c: any) => c.name);
+              const originCountries = details.origin_country || [];
+              const countryCodes = productionCountries.length
+                ? productionCountries.map((c: any) => c.iso_3166_1)
+                : originCountries;
+              const countryNames = productionCountries.length
+                ? productionCountries.map((c: any) => c.name)
+                : [];
 
               const spokenLanguages = details.spoken_languages || [];
               const languageCodes = spokenLanguages.map((l: any) => l.iso_639_1);
@@ -453,13 +577,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               const directedByWoman = directors.some((d: any) => d.gender === FEMALE_GENDER);
               const writtenByWoman = writers.some((w: any) => w.gender === FEMALE_GENDER);
 
+              const runtime = usedType === 'tv'
+                ? (Array.isArray(details.episode_run_time) ? details.episode_run_time[0] : null)
+                : details.runtime;
+
               const tmdbData = {
-                title: details.title,
-                original_title: details.original_title,
+                title: usedType === 'tv' ? details.name : details.title,
+                original_title: usedType === 'tv' ? details.original_name : details.original_title,
                 original_language: originalLanguage,
-                release_date: details.release_date,
+                release_date: usedType === 'tv' ? details.first_air_date : details.release_date,
                 overview: details.overview,
-                runtime: details.runtime,
+                runtime,
                 genres: (details.genres || []).map((g: any) => g.name),
                 popularity: details.popularity,
                 vote_average: details.vote_average,
@@ -482,7 +610,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
               // Cache the TMDb data
               if (redisAvailable) {
-                await setCachedTmdbData(tmdbId, tmdbData);
+                await setCachedTmdbData(tmdbId, usedType, tmdbData);
               }
             } else {
               movieIndex[resolved].tmdb_api_error = 'TMDb API returned no details';
