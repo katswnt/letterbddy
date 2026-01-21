@@ -214,6 +214,11 @@ async function searchTmdbByTitle(
   const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
   const target = normalize(title);
 
+  // STRICT MATCHING: Only return results with high confidence
+  // Score >= 2 means exact title match (required)
+  // Score >= 3 means exact title + year match (ideal)
+  const MIN_SCORE = 2; // Require at least exact title match
+
   const pickBest = (items: any[], type: 'movie') => {
     let best: any = null;
     let bestScore = -1;
@@ -230,7 +235,13 @@ async function searchTmdbByTitle(
         best = item;
       }
     }
-    return best ? { id: best.id, type } : null;
+    // Only return if we have a strong match (at least exact title)
+    if (bestScore >= MIN_SCORE) {
+      console.log(`TMDb search: "${title}" (${year}) -> matched "${best.title}" (${best.release_date?.slice(0,4)}) score=${bestScore}`);
+      return { id: best.id, type };
+    }
+    console.log(`TMDb search: "${title}" (${year}) -> no strong match found (best score=${bestScore})`);
+    return null;
   };
 
   const movieBest = pickBest(movieJson?.results || [], 'movie');
@@ -454,16 +465,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 await setCachedLetterboxdMapping(resolved, tmdbRef.id);
               }
             } else if (tmdbRef?.title) {
-              // Fallback: search TMDb by title/year
+              // Fallback: search TMDb by title/year (mark as fallback for validation later)
               const fallback = await searchTmdbByTitle(tmdbRef.title, tmdbRef.year, tmdbApiKey!);
               if (fallback) {
                 movieIndex[resolved].tmdb_movie_id = fallback.id;
+                movieIndex[resolved].tmdb_source = 'fallback_search'; // Mark for runtime validation
                 networkFetches++;
                 if (redisAvailable) {
                   await setCachedLetterboxdMapping(resolved, fallback.id);
                 }
               } else {
-                movieIndex[resolved].tmdb_error = 'No TMDb ID found on Letterboxd page';
+                movieIndex[resolved].tmdb_error = `No strong TMDb match for "${tmdbRef.title}" (${tmdbRef.year || 'no year'})`;
                 cacheMisses++;
               }
             } else {
@@ -498,6 +510,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const credits = await fetchTmdbCredits(tmdbId, tmdbApiKey!);
 
             if (details) {
+              // Validate: reject likely wrong matches (very short runtime from fallback search)
+              const runtime = details.runtime;
+              const wasFromFallback = movieIndex[resolved].tmdb_source === 'fallback_search';
+              if (wasFromFallback && typeof runtime === 'number' && runtime < 40) {
+                console.log(`Rejecting fallback match for ${resolved}: runtime ${runtime}min is too short`);
+                movieIndex[resolved].tmdb_error = `Fallback match rejected: ${runtime}min runtime too short`;
+                delete movieIndex[resolved].tmdb_movie_id;
+                delete movieIndex[resolved].tmdb_source;
+                processed++;
+                return;
+              }
+
               const productionCountries = details.production_countries || [];
               const countryCodes = productionCountries.map((c: any) => c.iso_3166_1);
               const countryNames = productionCountries.map((c: any) => c.name);
