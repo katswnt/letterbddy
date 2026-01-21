@@ -106,7 +106,7 @@ export async function setCached(key: string, value: unknown, expiresInSeconds?: 
 // Cache key prefixes
 export const CACHE_KEYS = {
   TMDB_DATA: 'tmdb:',
-  LETTERBOXD_MAPPING: 'lb:',
+  LETTERBOXD_MAPPING: 'lb:v2:',
 } as const;
 
 // Cache durations
