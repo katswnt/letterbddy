@@ -1412,7 +1412,7 @@ function App() {
         );
       };
 
-      const canonicalizeUriWithMap = (uri: string, map: Record<string, string>) => {
+      const canonicalizeUriWithMap = (uri: string) => {
         let next = (uri || "").trim();
         if (!next) return next;
         next = next.replace(/\/+$/, "");
@@ -1485,8 +1485,8 @@ function App() {
 
         // Resolve shortlink to canonical URL using uriMap, then look up in index
         const resolvedUri = resolveFromUriMap(originalUri) || originalUri;
-        const canonical = canonicalizeUriWithMap(resolvedUri, uriMap);
-        const canonicalOriginal = canonicalizeUriWithMap(originalUri, uriMap);
+        const canonical = canonicalizeUriWithMap(resolvedUri);
+        const canonicalOriginal = canonicalizeUriWithMap(originalUri);
         const movie =
           lookup[canonical] ||
           lookup[resolvedUri] ||
