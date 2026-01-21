@@ -85,6 +85,9 @@
   -webkit-overflow-scrolling: touch;
   border-top: 1px solid #345;
   position: relative;
+  --lb-table-min-width: 600px;
+  display: flex;
+  justify-content: center;
 }
 
 .lb-table-head {
@@ -95,6 +98,7 @@
   align-items: center;
   background-color: #14181c;
   border-bottom: 2px solid #456;
+  width: 100%;
 }
 
 .lb-row {
@@ -102,6 +106,7 @@
   align-items: center;
   border-bottom: 1px solid #345;
   box-sizing: border-box;
+  width: 100%;
 }
 
 .lb-row-alt {
@@ -204,6 +209,16 @@
   pointer-events: none;
   height: auto;
   z-index: -1;
+}
+
+.lb-table-inner {
+  min-width: var(--lb-table-min-width);
+  width: max-content;
+  margin: 0 auto;
+}
+
+.lb-list {
+  width: 100%;
 }
 
 .lb-runtime-filters {

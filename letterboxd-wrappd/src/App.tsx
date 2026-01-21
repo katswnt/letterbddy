@@ -608,56 +608,62 @@ const DiaryTable = memo(({
           </button>
         </p>
       )}
-      <div className="lb-table-container" style={{ maxHeight: "400px" }}>
-        {!hasMeasuredRef.current && (
-          <div ref={measureRef} className="lb-measure lb-diary-grid">
-            {diaryMovieList.map((movie, index) => (
-              <div key={movie.uri || index} data-key={getDiaryKey(movie)} className="lb-row lb-diary-grid">
-                <div className="lb-cell lb-cell-title">{movie.name}</div>
-                <div className="lb-cell">{movie.director}</div>
-                <div className="lb-cell lb-cell-center">{movie.year}</div>
-                <div className="lb-cell lb-cell-flag">{movie.directedByWoman ? "✓" : "✗"}</div>
-                <div className="lb-cell lb-cell-flag">{movie.writtenByWoman ? "✓" : "✗"}</div>
-                <div className="lb-cell lb-cell-flag">{movie.notAmerican ? "✓" : "✗"}</div>
-                <div className="lb-cell lb-cell-flag">{movie.notEnglish ? "✓" : "✗"}</div>
-                <div className="lb-cell lb-cell-flag">{movie.inCriterion ? "✓" : "✗"}</div>
-              </div>
-            ))}
+      <div
+        className="lb-table-container"
+        style={{ maxHeight: "400px", ["--lb-table-min-width" as any]: "600px" }}
+      >
+        <div className="lb-table-inner">
+          {!hasMeasuredRef.current && (
+            <div ref={measureRef} className="lb-measure lb-diary-grid">
+              {diaryMovieList.map((movie, index) => (
+                <div key={movie.uri || index} data-key={getDiaryKey(movie)} className="lb-row lb-diary-grid">
+                  <div className="lb-cell lb-cell-title">{movie.name}</div>
+                  <div className="lb-cell">{movie.director}</div>
+                  <div className="lb-cell lb-cell-center">{movie.year}</div>
+                  <div className="lb-cell lb-cell-flag">{movie.directedByWoman ? "✓" : "✗"}</div>
+                  <div className="lb-cell lb-cell-flag">{movie.writtenByWoman ? "✓" : "✗"}</div>
+                  <div className="lb-cell lb-cell-flag">{movie.notAmerican ? "✓" : "✗"}</div>
+                  <div className="lb-cell lb-cell-flag">{movie.notEnglish ? "✓" : "✗"}</div>
+                  <div className="lb-cell lb-cell-flag">{movie.inCriterion ? "✓" : "✗"}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="lb-table-head lb-diary-grid">
+            <button className="lb-header-cell lb-header-left" title="Click to sort by title" onClick={() => toggleSort("name")}>
+              Title{getSortIndicator("name")}
+            </button>
+            <button className="lb-header-cell" title="Click to sort by director" onClick={() => toggleSort("director")}>
+              Director{getSortIndicator("director")}
+            </button>
+            <button className="lb-header-cell" title="Click to sort by year" onClick={() => toggleSort("year")}>
+              Year{getSortIndicator("year")}
+            </button>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.directedByWoman ? "lb-header-active" : ""}`} title="Directed by Woman (click to filter)" onClick={() => toggleFilter("directedByWoman")}>
+              Dir♀
+            </button>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.writtenByWoman ? "lb-header-active" : ""}`} title="Written by Woman (click to filter)" onClick={() => toggleFilter("writtenByWoman")}>
+              Writ♀
+            </button>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.notAmerican ? "lb-header-active" : ""}`} title="Not American (click to filter)" onClick={() => toggleFilter("notAmerican")}>
+              !US
+            </button>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.notEnglish ? "lb-header-active" : ""}`} title="Not in English (click to filter)" onClick={() => toggleFilter("notEnglish")}>
+              !EN
+            </button>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.inCriterion ? "lb-header-active" : ""}`} title="Criterion Collection (click to filter)" onClick={() => toggleFilter("inCriterion")}>
+              CC
+            </button>
           </div>
-        )}
-        <div className="lb-table-head lb-diary-grid">
-          <button className="lb-header-cell lb-header-left" title="Click to sort by title" onClick={() => toggleSort("name")}>
-            Title{getSortIndicator("name")}
-          </button>
-          <button className="lb-header-cell" title="Click to sort by director" onClick={() => toggleSort("director")}>
-            Director{getSortIndicator("director")}
-          </button>
-          <button className="lb-header-cell" title="Click to sort by year" onClick={() => toggleSort("year")}>
-            Year{getSortIndicator("year")}
-          </button>
-          <button className={`lb-header-cell lb-header-flag ${diaryFilters.directedByWoman ? "lb-header-active" : ""}`} title="Directed by Woman (click to filter)" onClick={() => toggleFilter("directedByWoman")}>
-            Dir♀
-          </button>
-          <button className={`lb-header-cell lb-header-flag ${diaryFilters.writtenByWoman ? "lb-header-active" : ""}`} title="Written by Woman (click to filter)" onClick={() => toggleFilter("writtenByWoman")}>
-            Writ♀
-          </button>
-          <button className={`lb-header-cell lb-header-flag ${diaryFilters.notAmerican ? "lb-header-active" : ""}`} title="Not American (click to filter)" onClick={() => toggleFilter("notAmerican")}>
-            !US
-          </button>
-          <button className={`lb-header-cell lb-header-flag ${diaryFilters.notEnglish ? "lb-header-active" : ""}`} title="Not in English (click to filter)" onClick={() => toggleFilter("notEnglish")}>
-            !EN
-          </button>
-          <button className={`lb-header-cell lb-header-flag ${diaryFilters.inCriterion ? "lb-header-active" : ""}`} title="Criterion Collection (click to filter)" onClick={() => toggleFilter("inCriterion")}>
-            CC
-          </button>
+          <VirtualList
+            height={400}
+            itemHeight={estimatedRowHeight}
+            heights={rowHeights}
+            items={filteredDiaryMovies}
+            renderRow={renderRow}
+            className="lb-list"
+          />
         </div>
-        <VirtualList
-          height={400}
-          itemHeight={estimatedRowHeight}
-          heights={rowHeights}
-          items={filteredDiaryMovies}
-          renderRow={renderRow}
-        />
       </div>
     </div>
   );
@@ -891,69 +897,75 @@ const WatchlistTable = memo(({
         </p>
       )}
 
-      <div className="lb-table-container" style={{ maxHeight: "500px" }}>
-        {!hasMeasuredRef.current && (
-          <div ref={measureRef} className="lb-measure lb-watchlist-grid">
-            {watchlistMovies.map((movie) => (
-              <div key={movie.uri} data-key={getWatchlistKey(movie)} className="lb-row lb-watchlist-grid">
-                <div className="lb-cell lb-cell-title">{movie.name}</div>
-                <div className="lb-cell">{movie.director}</div>
-                <div className="lb-cell lb-cell-center">{movie.year}</div>
-                <div className="lb-cell lb-cell-center lb-cell-small">{formatRuntime(movie.runtime)}</div>
-                <div className="lb-cell lb-cell-center lb-cell-small">
-                  {movie.continents.length > 0 ? movie.continents.map(getContinentLabel).join(", ") : "—"}
+      <div
+        className="lb-table-container"
+        style={{ maxHeight: "500px", ["--lb-table-min-width" as any]: "760px" }}
+      >
+        <div className="lb-table-inner">
+          {!hasMeasuredRef.current && (
+            <div ref={measureRef} className="lb-measure lb-watchlist-grid">
+              {watchlistMovies.map((movie) => (
+                <div key={movie.uri} data-key={getWatchlistKey(movie)} className="lb-row lb-watchlist-grid">
+                  <div className="lb-cell lb-cell-title">{movie.name}</div>
+                  <div className="lb-cell">{movie.director}</div>
+                  <div className="lb-cell lb-cell-center">{movie.year}</div>
+                  <div className="lb-cell lb-cell-center lb-cell-small">{formatRuntime(movie.runtime)}</div>
+                  <div className="lb-cell lb-cell-center lb-cell-small">
+                    {movie.continents.length > 0 ? movie.continents.map(getContinentLabel).join(", ") : "—"}
+                  </div>
+                  <div className="lb-cell lb-cell-flag">{movie.directedByWoman ? "✓" : "✗"}</div>
+                  <div className="lb-cell lb-cell-flag">{movie.writtenByWoman ? "✓" : "✗"}</div>
+                  <div className="lb-cell lb-cell-flag">{movie.notAmerican ? "✓" : "✗"}</div>
+                  <div className="lb-cell lb-cell-flag">{movie.notEnglish ? "✓" : "✗"}</div>
+                  <div className="lb-cell lb-cell-flag">{movie.inCriterion ? "✓" : "✗"}</div>
                 </div>
-                <div className="lb-cell lb-cell-flag">{movie.directedByWoman ? "✓" : "✗"}</div>
-                <div className="lb-cell lb-cell-flag">{movie.writtenByWoman ? "✓" : "✗"}</div>
-                <div className="lb-cell lb-cell-flag">{movie.notAmerican ? "✓" : "✗"}</div>
-                <div className="lb-cell lb-cell-flag">{movie.notEnglish ? "✓" : "✗"}</div>
-                <div className="lb-cell lb-cell-flag">{movie.inCriterion ? "✓" : "✗"}</div>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="lb-table-head lb-watchlist-grid">
-          <button className="lb-header-cell lb-header-left" title="Click to sort by title" onClick={() => toggleSort("name")}>
-            Title{getSortIndicator("name")}
-          </button>
-          <button className="lb-header-cell" title="Click to sort by director" onClick={() => toggleSort("director")}>
-            Director{getSortIndicator("director")}
-          </button>
-          <button className="lb-header-cell" title="Click to sort by year" onClick={() => toggleSort("year")}>
-            Year{getSortIndicator("year")}
-          </button>
-          <button className="lb-header-cell" title="Click to sort by runtime" onClick={() => toggleSort("runtime")}>
-            Time{getSortIndicator("runtime")}
-          </button>
-          <button className={`lb-header-cell lb-header-continent ${watchlistContinentFilter ? "lb-header-active" : ""}`} title="Click to cycle continent filter" onClick={cycleContinentFilter}>
-            <div className="lb-header-continent-labels">
-              <span>Cont</span>
-              <span className="lb-header-sub">{watchlistContinentFilter ? getContinentLabel(watchlistContinentFilter) : "All"}</span>
+              ))}
             </div>
-          </button>
-          <button className={`lb-header-cell lb-header-flag ${watchlistFilters.directedByWoman ? "lb-header-active" : ""}`} title="Directed by Woman (click to filter)" onClick={() => toggleFilter("directedByWoman")}>
-            Dir♀
-          </button>
-          <button className={`lb-header-cell lb-header-flag ${watchlistFilters.writtenByWoman ? "lb-header-active" : ""}`} title="Written by Woman (click to filter)" onClick={() => toggleFilter("writtenByWoman")}>
-            Writ♀
-          </button>
-          <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notAmerican ? "lb-header-active" : ""}`} title="Not American (click to filter)" onClick={() => toggleFilter("notAmerican")}>
-            !US
-          </button>
-          <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notEnglish ? "lb-header-active" : ""}`} title="Not in English (click to filter)" onClick={() => toggleFilter("notEnglish")}>
-            !EN
-          </button>
-          <button className={`lb-header-cell lb-header-flag ${watchlistFilters.inCriterion ? "lb-header-active" : ""}`} title="Criterion Collection (click to filter)" onClick={() => toggleFilter("inCriterion")}>
-            CC
-          </button>
+          )}
+          <div className="lb-table-head lb-watchlist-grid">
+            <button className="lb-header-cell lb-header-left" title="Click to sort by title" onClick={() => toggleSort("name")}>
+              Title{getSortIndicator("name")}
+            </button>
+            <button className="lb-header-cell" title="Click to sort by director" onClick={() => toggleSort("director")}>
+              Director{getSortIndicator("director")}
+            </button>
+            <button className="lb-header-cell" title="Click to sort by year" onClick={() => toggleSort("year")}>
+              Year{getSortIndicator("year")}
+            </button>
+            <button className="lb-header-cell" title="Click to sort by runtime" onClick={() => toggleSort("runtime")}>
+              Time{getSortIndicator("runtime")}
+            </button>
+            <button className={`lb-header-cell lb-header-continent ${watchlistContinentFilter ? "lb-header-active" : ""}`} title="Click to cycle continent filter" onClick={cycleContinentFilter}>
+              <div className="lb-header-continent-labels">
+                <span>Cont</span>
+                <span className="lb-header-sub">{watchlistContinentFilter ? getContinentLabel(watchlistContinentFilter) : "All"}</span>
+              </div>
+            </button>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.directedByWoman ? "lb-header-active" : ""}`} title="Directed by Woman (click to filter)" onClick={() => toggleFilter("directedByWoman")}>
+              Dir♀
+            </button>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.writtenByWoman ? "lb-header-active" : ""}`} title="Written by Woman (click to filter)" onClick={() => toggleFilter("writtenByWoman")}>
+              Writ♀
+            </button>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notAmerican ? "lb-header-active" : ""}`} title="Not American (click to filter)" onClick={() => toggleFilter("notAmerican")}>
+              !US
+            </button>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notEnglish ? "lb-header-active" : ""}`} title="Not in English (click to filter)" onClick={() => toggleFilter("notEnglish")}>
+              !EN
+            </button>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.inCriterion ? "lb-header-active" : ""}`} title="Criterion Collection (click to filter)" onClick={() => toggleFilter("inCriterion")}>
+              CC
+            </button>
+          </div>
+          <VirtualList
+            height={500}
+            itemHeight={estimatedRowHeight}
+            heights={rowHeights}
+            items={filteredMovies}
+            renderRow={renderRow}
+            className="lb-list"
+          />
         </div>
-        <VirtualList
-          height={500}
-          itemHeight={estimatedRowHeight}
-          heights={rowHeights}
-          items={filteredMovies}
-          renderRow={renderRow}
-        />
       </div>
     </div>
   );
@@ -994,6 +1006,24 @@ function App() {
   const [watchlistSortState, setWatchlistSortState] = useState<WatchlistSortState>("default");
   const [watchlistRuntimeFilter, setWatchlistRuntimeFilter] = useState<RuntimeFilter>("all");
   const [watchlistContinentFilter, setWatchlistContinentFilter] = useState<string | null>(null);
+  const [watchlistUseVercelApi, setWatchlistUseVercelApi] = useState<boolean>(() =>
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+  );
+  const [watchlistMissingCount, setWatchlistMissingCount] = useState<number>(0);
+  const [watchlistMissingSamples, setWatchlistMissingSamples] = useState<WatchlistRow[]>([]);
+  const [watchlistMissingDebug, setWatchlistMissingDebug] = useState<Array<{
+    name: string;
+    year: string;
+    originalUri: string;
+    resolvedUri: string;
+    canonicalUri: string;
+    foundInLookup: boolean;
+    hadUriMap: boolean;
+    tmdbId?: number | null;
+    tmdbError?: string | null;
+  }>>([]);
+  const [watchlistUriMapSize, setWatchlistUriMapSize] = useState<number>(0);
   const [diaryFileName, setDiaryFileName] = useState<string>("No file selected");
   const [watchlistFileName, setWatchlistFileName] = useState<string>("No file selected");
   const [reviewsFileName, setReviewsFileName] = useState<string>("No file selected");
@@ -1252,15 +1282,20 @@ function App() {
     setIsWatchlistLoading(true);
     setWatchlistStatus("Processing watchlist...");
     setWatchlistMovies([]);
+    setWatchlistMissingCount(0);
+    setWatchlistMissingSamples([]);
+    setWatchlistMissingDebug([]);
+    setWatchlistUriMapSize(0);
 
     try {
       // Detect environment
-      const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const baseUrl = isLocalDev ? 'http://localhost:5050' : '';
+      const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const useRemoteApi = isLocalHost && watchlistUseVercelApi;
+      const baseUrl = useRemoteApi ? 'https://letterbddy.vercel.app' : isLocalHost ? 'http://localhost:5050' : '';
 
       let json: any;
 
-      if (isLocalDev) {
+      if (isLocalHost && !useRemoteApi) {
         // Local development: use Express server with job polling
         const form = new FormData();
         form.append("file", file);
@@ -1305,7 +1340,7 @@ function App() {
         setWatchlistStatus("Parsing watchlist...");
 
         const csvContent = await file.text();
-        const parseResponse = await fetch(`/api/movies?parse_only=1`, {
+        const parseResponse = await fetch(`${baseUrl}/api/movies?parse_only=1`, {
           method: "POST",
           headers: { "Content-Type": "text/plain" },
           body: csvContent,
@@ -1332,7 +1367,7 @@ function App() {
           const batch = allUrls.slice(i, i + batchSize);
           const batchNum = Math.floor(i / batchSize) + 1;
 
-          const enrichResponse = await fetch(`/api/movies?enrich=1`, {
+          const enrichResponse = await fetch(`${baseUrl}/api/movies?enrich=1`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ urls: batch }),
@@ -1358,6 +1393,71 @@ function App() {
 
       const index = json?.movieIndex || json || {};
       const uriMap = json?.uriMap || {};
+      setWatchlistUriMapSize(Object.keys(uriMap || {}).length);
+
+      const resolveFromUriMap = (uri: string) => {
+        const trimmed = (uri || "").trim();
+        if (!trimmed) return null;
+        const noSlash = trimmed.replace(/\/+$/, "");
+        const withSlash = `${noSlash}/`;
+        const httpsNoSlash = noSlash.replace(/^http:\/\//i, "https://");
+        const httpsWithSlash = `${httpsNoSlash}/`;
+        return (
+          uriMap[trimmed] ||
+          uriMap[noSlash] ||
+          uriMap[withSlash] ||
+          uriMap[httpsNoSlash] ||
+          uriMap[httpsWithSlash] ||
+          null
+        );
+      };
+
+      const canonicalizeUriWithMap = (uri: string, map: Record<string, string>) => {
+        let next = (uri || "").trim();
+        if (!next) return next;
+        next = next.replace(/\/+$/, "");
+        if (/^https?:\/\/boxd\.it\//i.test(next)) {
+          const mapped = resolveFromUriMap(next);
+          if (typeof mapped === "string" && mapped.trim()) {
+            next = mapped.trim();
+          }
+          return next;
+        }
+        const match = next.match(/https?:\/\/letterboxd\.com\/(?:[^/]+\/)?film\/([^/]+)/i);
+        if (match) {
+          return `https://letterboxd.com/film/${match[1]}/`;
+        }
+        return next;
+      };
+
+      // Build a lookup keyed by many URI forms so we can match boxd.it and other aliases
+      const lookup: Record<string, any> = {};
+      for (const [key, movie] of Object.entries(index as Record<string, any>)) {
+        lookup[key] = movie;
+        const aliases: string[] = [];
+        if (typeof movie?.letterboxd_url === "string") aliases.push(movie.letterboxd_url);
+        if (Array.isArray(movie?.letterboxd_urls)) aliases.push(...movie.letterboxd_urls);
+        if (Array.isArray(movie?.source_uris)) aliases.push(...movie.source_uris);
+        if (Array.isArray(movie?.aliases)) aliases.push(...movie.aliases);
+        if (typeof movie?.original_uri === "string") aliases.push(movie.original_uri);
+        if (typeof movie?.shortlink === "string") aliases.push(movie.shortlink);
+        if (typeof movie?.boxd_shortlink === "string") aliases.push(movie.boxd_shortlink);
+
+        for (const a of aliases) {
+          if (typeof a !== "string") continue;
+          const trimmed = a.trim();
+          if (!trimmed) continue;
+          lookup[trimmed] = movie;
+        }
+
+        if (typeof key === "string") {
+          const m = key.match(/https?:\/\/letterboxd\.com\/(?:[^/]+\/)?film\/([^/]+)\/?/i);
+          if (m) {
+            const canonical = `https://letterboxd.com/film/${m[1]}/`;
+            lookup[canonical] = movie;
+          }
+        }
+      }
 
       // Parse the original CSV to get movie names/years
       const csvText = await file.text();
@@ -1365,14 +1465,35 @@ function App() {
 
       // Build enriched watchlist
       const enrichedMovies: WatchlistMovie[] = [];
+      const missingSamples: WatchlistRow[] = [];
+      const missingDebug: Array<{
+        name: string;
+        year: string;
+        originalUri: string;
+        resolvedUri: string;
+        canonicalUri: string;
+        foundInLookup: boolean;
+        hadUriMap: boolean;
+        tmdbId?: number | null;
+        tmdbError?: string | null;
+      }> = [];
+      let missingCount = 0;
 
       for (const row of parsed.data) {
         const originalUri = row["Letterboxd URI"];
         if (!originalUri) continue;
 
         // Resolve shortlink to canonical URL using uriMap, then look up in index
-        const resolvedUri = uriMap[originalUri] || originalUri;
-        const movie = index[resolvedUri];
+        const resolvedUri = resolveFromUriMap(originalUri) || originalUri;
+        const canonical = canonicalizeUriWithMap(resolvedUri, uriMap);
+        const canonicalOriginal = canonicalizeUriWithMap(originalUri, uriMap);
+        const movie =
+          lookup[canonical] ||
+          lookup[resolvedUri] ||
+          lookup[canonicalOriginal] ||
+          index[canonical] ||
+          index[resolvedUri] ||
+          index[canonicalOriginal];
         const tmdbData = movie?.tmdb_data;
 
         const directedByWoman = tmdbData?.directed_by_woman === true;
@@ -1395,6 +1516,27 @@ function App() {
         const criteriaCount = [directedByWoman, writtenByWoman, notAmerican, notEnglish, inCriterion]
           .filter(Boolean).length;
 
+        if (!tmdbData) {
+          missingCount += 1;
+          if (missingSamples.length < 25) {
+            missingSamples.push(row);
+          }
+          if (missingDebug.length < 25) {
+            missingDebug.push({
+              name: row.Name || "",
+              year: row.Year || "",
+              originalUri,
+              resolvedUri,
+              canonicalUri: canonical,
+              foundInLookup: !!movie,
+              hadUriMap: Boolean(resolveFromUriMap(originalUri)),
+              tmdbId: movie?.tmdb_movie_id ?? null,
+              tmdbError: (movie?.tmdb_error || movie?.tmdb_api_error || null),
+            });
+          }
+          continue;
+        }
+
         // Include all movies with TMDb data (runtime filter can apply to any movie)
         if (tmdbData) {
           enrichedMovies.push({
@@ -1413,6 +1555,10 @@ function App() {
           });
         }
       }
+
+      setWatchlistMissingCount(missingCount);
+      setWatchlistMissingSamples(missingSamples);
+      setWatchlistMissingDebug(missingDebug);
 
       // Sort by criteria count (descending), randomize within same tier
       enrichedMovies.sort((a, b) => {
@@ -1447,6 +1593,10 @@ function App() {
     const blob = await res.blob();
     return new File([blob], fileName, { type: "text/csv" });
   };
+
+  const isLocalDev =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   const movieLookup = useMemo(() => {
     if (!movieIndex) return null;
@@ -1886,7 +2036,7 @@ function App() {
     <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
       <Analytics />
       <SpeedInsights />
-      <div style={{ width: "100%", maxWidth: "800px", display: "flex", flexDirection: "column", gap: "32px" }}>
+      <div style={{ width: "100%", maxWidth: "980px", display: "flex", flexDirection: "column", gap: "32px" }}>
         <header style={{ textAlign: "center" }}>
           <h1 style={{ fontSize: "28px", fontWeight: 700, color: "#fff", marginBottom: "6px", letterSpacing: "0.5px" }}>
             Letterbddy
@@ -3127,6 +3277,45 @@ function App() {
             <p style={{ fontSize: "14px", color: "#9ab", textAlign: "center", marginBottom: "16px" }}>
               {watchlistStatus}
             </p>
+          )}
+
+          {!isWatchlistLoading && isLocalDev && (
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px" }}>
+              <label style={{ fontSize: "12px", color: "#9ab", display: "flex", alignItems: "center", gap: "8px" }}>
+                <input
+                  type="checkbox"
+                  checked={watchlistUseVercelApi}
+                  onChange={(e) => setWatchlistUseVercelApi(e.target.checked)}
+                />
+                Use Vercel API for watchlist (uses prod cache)
+              </label>
+            </div>
+          )}
+
+          {!isWatchlistLoading && isLocalDev && watchlistMissingCount > 0 && (
+            <div style={{ marginBottom: "16px", backgroundColor: "rgba(20, 24, 28, 0.7)", border: "1px solid #345", borderRadius: "6px", padding: "12px" }}>
+              <div style={{ fontSize: "12px", color: "#9ab", marginBottom: "8px" }}>
+                Debug: {watchlistMissingCount} watchlist entries missing TMDb data (showing {watchlistMissingSamples.length}) • uriMap: {watchlistUriMapSize} entries
+              </div>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "6px" }}>
+                {watchlistMissingDebug.map((row, idx) => (
+                  <li key={`${row.originalUri}-${idx}`} style={{ fontSize: "12px", color: "#ccd" }}>
+                    <span style={{ color: "#def" }}>{row.name || "Untitled"}</span>
+                    {row.year ? ` (${row.year})` : ""}
+                    <span style={{ color: "#678", marginLeft: "6px" }}>{row.originalUri}</span>
+                    <span style={{ color: "#678", marginLeft: "6px" }}>
+                      map:{row.hadUriMap ? "yes" : "no"} lookup:{row.foundInLookup ? "yes" : "no"}
+                    </span>
+                    {row.tmdbId ? (
+                      <span style={{ color: "#678", marginLeft: "6px" }}>tmdbId:{row.tmdbId}</span>
+                    ) : null}
+                    {row.tmdbError ? (
+                      <span style={{ color: "#c77", marginLeft: "6px" }}>error:{String(row.tmdbError).slice(0, 80)}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {/* Results table */}
