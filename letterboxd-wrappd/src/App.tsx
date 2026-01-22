@@ -445,7 +445,6 @@ const buildYearHeatmap = (year: number, counts?: Map<string, number>) => {
     }
     weeks.push(week);
 
-    const month = week[0].date.getMonth();
     const dayOfMonth = week[0].date.getDate();
     if (week[0].date.getFullYear() === year && dayOfMonth <= 7) {
       const label = week[0].date.toLocaleString("en-US", { month: "short" });
@@ -1262,6 +1261,7 @@ function App() {
   const [diaryFileName, setDiaryFileName] = useState<string>("No file selected");
   const [watchlistFileName, setWatchlistFileName] = useState<string>("No file selected");
   const [reviewsFileName, setReviewsFileName] = useState<string>("No file selected");
+  const [isDiaryFormat, setIsDiaryFormat] = useState<boolean>(true);
 
   // Diary table state (for Film Breakdown section)
   const [diaryFilters, setDiaryFilters] = useState<{
@@ -1476,6 +1476,7 @@ function App() {
     setDecadeFilter(null);
     setGeoFilter(null);
     setDateFilter("all");
+    setIsDiaryFormat(true);
     if (!file.name.toLowerCase().endsWith(".csv")) {
       setError("Please upload a CSV file.");
       setRows([]);
@@ -1503,6 +1504,8 @@ function App() {
         );
         // Optional: peek at the first row in DevTools
         logDebug("Sample diary row:", data[0]);
+        const hasDiaryFormat = data.length > 0 && Object.prototype.hasOwnProperty.call(data[0], "Watched Date");
+        setIsDiaryFormat(hasDiaryFormat);
         setRows(data);
         // Note: isLoading will be set to false when buildMovieIndex completes
       },
@@ -1904,15 +1907,17 @@ function App() {
     (row["Watched Date"] || (row as any).Date || "").trim();
 
   const availableYears = useMemo(
-    () =>
-      Array.from(
+    () => {
+      if (!isDiaryFormat) return [];
+      return Array.from(
         new Set(
           rows
             .map((row) => getWatchedDate(row).slice(0, 4))
             .filter((year) => year && /^\d{4}$/.test(year))
         )
-      ).sort((a, b) => parseInt(b) - parseInt(a)),
-    [rows]
+      ).sort((a, b) => parseInt(b) - parseInt(a));
+    },
+    [rows, isDiaryFormat]
   );
 
   const heatmapYears = useMemo(
@@ -2557,6 +2562,28 @@ function App() {
         </section>
 
         {/* Time range selector */}
+        {rows.length > 0 && !isDiaryFormat && (
+          <section
+            style={{
+              backgroundColor: "rgba(0, 224, 84, 0.1)",
+              border: "1px solid rgba(0, 224, 84, 0.3)",
+              borderRadius: "8px",
+              padding: "12px 16px",
+              marginBottom: "16px",
+              maxWidth: "600px",
+              margin: "0 auto 16px",
+              textAlign: "center",
+            }}
+          >
+            <p style={{ fontSize: "14px", color: "#9ab", margin: 0 }}>
+              <strong style={{ color: "#00e054" }}>watched.csv detected</strong>
+              {" — "}
+              Year filter and activity calendar are unavailable because this file doesn't include watch dates.
+              For these features, upload your <strong>diary.csv</strong> instead.
+            </p>
+          </section>
+        )}
+
         {rows.length > 0 && availableYears.length > 0 && (
           <section style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "8px" }}>
             <button
