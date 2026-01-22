@@ -1306,6 +1306,8 @@ function App() {
   const [watchlistFileName, setWatchlistFileName] = useState<string>("No file selected");
   const [reviewsFileName, setReviewsFileName] = useState<string>("No file selected");
   const [isDiaryFormat, setIsDiaryFormat] = useState<boolean>(true);
+  const [manualUploadOpen, setManualUploadOpen] = useState<boolean>(false);
+  const [pendingUploadTarget, setPendingUploadTarget] = useState<"diary" | "reviews" | "watchlist" | null>(null);
 
   // Diary table state (for Film Breakdown section)
   const [diaryFilters, setDiaryFilters] = useState<{
@@ -1333,6 +1335,12 @@ function App() {
   const mapWrapperRef = useRef<HTMLDivElement | null>(null);
   const heatmapScrollRef = useRef<HTMLDivElement | null>(null);
   const [heatmapTooltip, setHeatmapTooltip] = useState<{ text: string; x: number; y: number; align: "left" | "center" | "right" } | null>(null);
+  const diaryInputRef = useRef<HTMLInputElement | null>(null);
+  const reviewsInputRef = useRef<HTMLInputElement | null>(null);
+  const watchlistInputRef = useRef<HTMLInputElement | null>(null);
+  const diarySectionRef = useRef<HTMLDivElement | null>(null);
+  const reviewsSectionRef = useRef<HTMLDivElement | null>(null);
+  const watchlistSectionRef = useRef<HTMLDivElement | null>(null);
 
   async function buildMovieIndex(file: File) {
     setScrapeStatus("Starting TMDb scraping…");
@@ -1970,6 +1978,25 @@ function App() {
     [availableYears]
   );
 
+  const diaryLoaded = rows.length > 0;
+  const watchlistLoaded = watchlistMovies.length > 0;
+  const reviewsLoaded = reviews.length > 0;
+  const isAnyLoading = isLoading || isWatchlistLoading;
+
+  // Clear pendingUploadTarget once the targeted upload completes
+  useEffect(() => {
+    if (isAnyLoading) return;
+    if (pendingUploadTarget) {
+      const targetDone =
+        (pendingUploadTarget === "diary" && diaryLoaded) ||
+        (pendingUploadTarget === "reviews" && reviewsLoaded) ||
+        (pendingUploadTarget === "watchlist" && watchlistLoaded);
+      if (targetDone) {
+        setPendingUploadTarget(null);
+      }
+    }
+  }, [isAnyLoading, pendingUploadTarget, diaryLoaded, watchlistLoaded, reviewsLoaded]);
+
   useEffect(() => {
     if (dateFilter !== "all") return;
     const container = heatmapScrollRef.current;
@@ -2372,8 +2399,138 @@ function App() {
           </p>
         </header>
 
-        {/* Input section */}
-        <section style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px" }}>
+        <input
+          ref={diaryInputRef}
+          id="diary-file-input"
+          type="file"
+          accept=".csv"
+          onChange={handleFileChange}
+          style={{ display: "none" }}
+        />
+        <input
+          ref={reviewsInputRef}
+          id="reviews-file-input"
+          type="file"
+          accept=".csv"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            setReviewsFileName(file ? file.name : "No file selected");
+            if (!file) return;
+            Papa.parse<ReviewRow>(file, {
+              header: true,
+              skipEmptyLines: true,
+              complete: (result) => {
+                const data = result.data.filter(
+                  (row: ReviewRow) => row.Review && row.Review.trim().length > 0
+                );
+                setReviews(data);
+              },
+            });
+          }}
+          style={{ display: "none" }}
+        />
+        <input
+          ref={watchlistInputRef}
+          id="watchlist-file-input"
+          type="file"
+          accept=".csv"
+          onChange={handleWatchlistChange}
+          disabled={isWatchlistLoading}
+          style={{ display: "none" }}
+        />
+
+        {(diaryLoaded || watchlistLoaded || reviewsLoaded) && (
+          <section className="lb-upload-pill-row">
+            {diaryLoaded && !isLoading && (
+              <div className="lb-upload-pill">
+                <div>
+                  <div className="lb-upload-pill-title">Diary</div>
+                  <div className="lb-upload-pill-meta">
+                    {rows.length} entries · {films.length} films
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="lb-upload-pill-btn"
+                  onClick={() => {
+                    setRows([]);
+                    setDiaryFileName("No file selected");
+                    setPendingUploadTarget("diary");
+                    requestAnimationFrame(() => {
+                      diarySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    });
+                  }}
+                >
+                  Replace
+                </button>
+              </div>
+            )}
+            {reviewsLoaded && (
+              <div className="lb-upload-pill">
+                <div>
+                  <div className="lb-upload-pill-title">Reviews</div>
+                  <div className="lb-upload-pill-meta">{reviews.length} reviews</div>
+                </div>
+                <button
+                  type="button"
+                  className="lb-upload-pill-btn"
+                  onClick={() => {
+                    setReviews([]);
+                    setReviewsFileName("No file selected");
+                    setPendingUploadTarget("reviews");
+                    requestAnimationFrame(() => {
+                      reviewsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    });
+                  }}
+                >
+                  Replace
+                </button>
+              </div>
+            )}
+            {watchlistLoaded && !isWatchlistLoading && (
+              <div className="lb-upload-pill">
+                <div>
+                  <div className="lb-upload-pill-title">Watchlist</div>
+                  <div className="lb-upload-pill-meta">{watchlistMovies.length} films</div>
+                </div>
+                <button
+                  type="button"
+                  className="lb-upload-pill-btn"
+                  onClick={() => {
+                    setWatchlistMovies([]);
+                    setWatchlistFileName("No file selected");
+                    setPendingUploadTarget("watchlist");
+                    requestAnimationFrame(() => {
+                      watchlistSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    });
+                  }}
+                >
+                  Replace
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              className="lb-upload-pill-toggle"
+              onClick={() => {
+                setManualUploadOpen((prev) => {
+                  const next = !prev;
+                  if (!next) setPendingUploadTarget(null);
+                  return next;
+                });
+              }}
+            >
+              {manualUploadOpen ? "Hide upload sections" : "Manage uploads"}
+            </button>
+          </section>
+        )}
+
+        {/* Input section - also opens for reviews since reviews is nested inside */}
+        {(manualUploadOpen || pendingUploadTarget === "diary" || pendingUploadTarget === "reviews" || !diaryLoaded || isLoading) && (
+          <section
+            ref={diarySectionRef}
+            style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px" }}
+          >
           <div>
             <label style={{ fontSize: "14px", color: "#def", display: "block", marginBottom: "8px" }}>
               Upload Diary CSV
@@ -2381,13 +2538,6 @@ function App() {
             <p style={{ fontSize: "12px", color: "#678", marginBottom: "12px" }}>
               Export from Letterboxd: Settings → Import & Export → Export Your Data
             </p>
-            <input
-              id="diary-file-input"
-              type="file"
-              accept=".csv"
-              onChange={handleFileChange}
-              style={{ display: "none" }}
-            />
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
               <span style={{ fontSize: "13px", color: "#9ab" }}>Choose file:</span>
               <label
@@ -2515,35 +2665,17 @@ function App() {
           )}
 
           {/* Reviews upload (optional) */}
-          {rows.length > 0 && (
-            <div style={{ marginTop: "20px", paddingTop: "16px", borderTop: "1px solid #345" }}>
+          {rows.length > 0 && (manualUploadOpen || pendingUploadTarget === "reviews" || !reviewsLoaded) && (
+            <div
+              ref={reviewsSectionRef}
+              style={{ marginTop: "20px", paddingTop: "16px", borderTop: "1px solid #345" }}
+            >
               <label style={{ fontSize: "14px", color: "#def", display: "block", marginBottom: "8px" }}>
                 Upload Reviews CSV (optional)
               </label>
               <p style={{ fontSize: "12px", color: "#678", marginBottom: "12px" }}>
                 For review word count analysis
               </p>
-              <input
-                id="reviews-file-input"
-                type="file"
-                accept=".csv"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  setReviewsFileName(file ? file.name : "No file selected");
-                  if (!file) return;
-                  Papa.parse<ReviewRow>(file, {
-                    header: true,
-                    skipEmptyLines: true,
-                    complete: (result) => {
-                      const data = result.data.filter(
-                        (row: ReviewRow) => row.Review && row.Review.trim().length > 0
-                      );
-                      setReviews(data);
-                    },
-                  });
-                }}
-                style={{ display: "none" }}
-              />
               <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                 <span style={{ fontSize: "13px", color: "#9ab" }}>Choose file:</span>
                 <label
@@ -2604,7 +2736,8 @@ function App() {
             </div>
           )}
 
-        </section>
+          </section>
+        )}
 
         {/* Time range selector */}
         {rows.length > 0 && !isDiaryFormat && (
@@ -3595,71 +3728,72 @@ function App() {
           );
         })()}
 
-        {/* Watchlist Analysis Section */}
-        <section style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px", marginTop: "32px" }}>
+        {/* Watchlist Analysis Section - always visible, inner parts conditionally shown */}
+        <section
+          ref={watchlistSectionRef}
+          style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px", marginTop: "32px" }}
+        >
           <h2 style={{ fontSize: "20px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
             Watchlist Analysis
           </h2>
-          <p style={{ fontSize: "12px", color: "#678", marginBottom: "16px", textAlign: "center" }}>
-            Upload your watchlist.csv to find films matching your criteria
-          </p>
+          {/* Only show upload description when upload UI is visible */}
+          {(manualUploadOpen || pendingUploadTarget === "watchlist" || !watchlistLoaded || isWatchlistLoading) && (
+            <p style={{ fontSize: "12px", color: "#678", marginBottom: "16px", textAlign: "center" }}>
+              Upload your watchlist.csv to find films matching your criteria
+            </p>
+          )}
 
-          <div style={{ marginBottom: "16px" }}>
-            <input
-              id="watchlist-file-input"
-              type="file"
-              accept=".csv"
-              onChange={handleWatchlistChange}
-              disabled={isWatchlistLoading}
-              style={{ display: "none" }}
-            />
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "13px", color: "#9ab" }}>Choose file:</span>
-              <label
-                htmlFor="watchlist-file-input"
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid #4b5a66",
-                  backgroundColor: "#1b2026",
-                  color: "#e2e8f0",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: isWatchlistLoading ? "not-allowed" : "pointer",
-                  boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.05)",
-                  opacity: isWatchlistLoading ? 0.6 : 1,
-                }}
-              >
-                {watchlistFileName}
-              </label>
-              <button
-                type="button"
-                disabled={isWatchlistLoading}
-                onClick={async () => {
-                  try {
-                    const file = await loadSampleCsv("/kat_watchlist.csv", "kat_watchlist.csv");
-                    setWatchlistFileName(file.name);
-                    await processWatchlistFile(file);
-                  } catch (e: any) {
-                    setError(e.message || "Failed to load sample watchlist");
-                  }
-                }}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: "6px",
-                  border: "1px solid #456",
-                  backgroundColor: "transparent",
-                  color: "#9ab",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: isWatchlistLoading ? "not-allowed" : "pointer",
-                  opacity: isWatchlistLoading ? 0.6 : 1,
-                }}
-              >
-                Try with Kat's
-              </button>
+          {/* Upload UI - hide once data is loaded (unless manually opened or replacing) */}
+          {(manualUploadOpen || pendingUploadTarget === "watchlist" || !watchlistLoaded || isWatchlistLoading) && (
+            <div style={{ marginBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "13px", color: "#9ab" }}>Choose file:</span>
+                <label
+                  htmlFor="watchlist-file-input"
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid #4b5a66",
+                    backgroundColor: "#1b2026",
+                    color: "#e2e8f0",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: isWatchlistLoading ? "not-allowed" : "pointer",
+                    boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+                    opacity: isWatchlistLoading ? 0.6 : 1,
+                  }}
+                >
+                  {watchlistFileName}
+                </label>
+                <button
+                  type="button"
+                  disabled={isWatchlistLoading}
+                  onClick={async () => {
+                    try {
+                      const file = await loadSampleCsv("/kat_watchlist.csv", "kat_watchlist.csv");
+                      setWatchlistFileName(file.name);
+                      await processWatchlistFile(file);
+                    } catch (e: any) {
+                      setError(e.message || "Failed to load sample watchlist");
+                    }
+                  }}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: "6px",
+                    border: "1px solid #456",
+                    backgroundColor: "transparent",
+                    color: "#9ab",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: isWatchlistLoading ? "not-allowed" : "pointer",
+                    opacity: isWatchlistLoading ? 0.6 : 1,
+                  }}
+                >
+                  Try with Kat's
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Loading state */}
           {isWatchlistLoading && (

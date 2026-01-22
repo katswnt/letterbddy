@@ -231,6 +231,57 @@
   scrollbar-width: none;
 }
 
+.lb-upload-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+}
+
+.lb-upload-pill {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid #345;
+  background: rgba(27, 32, 38, 0.8);
+  color: #9ab;
+  font-size: 12px;
+}
+
+.lb-upload-pill-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #def;
+}
+
+.lb-upload-pill-meta {
+  font-size: 11px;
+  color: #9ab;
+}
+
+.lb-upload-pill-btn {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #456;
+  background: transparent;
+  color: #9ab;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.lb-upload-pill-toggle {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #456;
+  background: transparent;
+  color: #9ab;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .lb-list::-webkit-scrollbar {
   width: 0;
   height: 0;
