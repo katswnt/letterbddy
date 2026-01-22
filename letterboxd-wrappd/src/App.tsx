@@ -629,6 +629,7 @@ const DiaryTable = memo(({
   }, [moviesWithData]);
   const measureRef = useRef<HTMLDivElement | null>(null);
   const hasMeasuredRef = useRef(false);
+  const measureSignatureRef = useRef<string>("");
   const [rowHeightsByKey, setRowHeightsByKey] = useState<Record<string, number> | null>(null);
   const estimatedRowHeight = 56;
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
@@ -637,11 +638,6 @@ const DiaryTable = memo(({
     if (movie.uri) return movie.uri;
     return `${movie.name.toLowerCase()}|${movie.year}`;
   }, []);
-
-  useEffect(() => {
-    hasMeasuredRef.current = false;
-    setRowHeightsByKey(null);
-  }, [diaryMovieList]);
 
   const filteredDiaryMovies = useMemo(() => {
     const hasActiveFilter = Object.values(diaryFilters).some(Boolean);
@@ -704,6 +700,12 @@ const DiaryTable = memo(({
   };
 
   useLayoutEffect(() => {
+    const signature = `${diaryMovieList.length}|${getDiaryKey(diaryMovieList[0] as any || { name: "", year: "", uri: "" })}`;
+    if (measureSignatureRef.current !== signature) {
+      measureSignatureRef.current = signature;
+      hasMeasuredRef.current = false;
+      setRowHeightsByKey(null);
+    }
     if (hasMeasuredRef.current) return;
     const container = measureRef.current;
     if (!container) return;
@@ -929,14 +931,10 @@ const WatchlistTable = memo(({
 }: WatchlistTableProps) => {
   const measureRef = useRef<HTMLDivElement | null>(null);
   const hasMeasuredRef = useRef(false);
+  const measureSignatureRef = useRef<string>("");
   const [rowHeightsByKey, setRowHeightsByKey] = useState<Record<string, number> | null>(null);
   const estimatedRowHeight = 56;
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    hasMeasuredRef.current = false;
-    setRowHeightsByKey(null);
-  }, [watchlistMovies]);
 
   const getWatchlistKey = useCallback((movie: WatchlistMovie) => movie.uri, []);
 
@@ -1005,6 +1003,12 @@ const WatchlistTable = memo(({
   };
 
   useLayoutEffect(() => {
+    const signature = `${watchlistMovies.length}|${watchlistMovies[0]?.uri || ""}`;
+    if (measureSignatureRef.current !== signature) {
+      measureSignatureRef.current = signature;
+      hasMeasuredRef.current = false;
+      setRowHeightsByKey(null);
+    }
     if (hasMeasuredRef.current) return;
     const container = measureRef.current;
     if (!container) return;

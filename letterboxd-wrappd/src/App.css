@@ -228,6 +228,12 @@
   width: 100%;
   min-width: var(--lb-table-min-width);
   overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.lb-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .lb-heatmap-section {
