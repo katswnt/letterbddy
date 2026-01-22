@@ -96,7 +96,7 @@
   z-index: 1;
   display: grid;
   align-items: center;
-  background-color: #14181c;
+  background-color: #1b2026;
   border-bottom: 2px solid #456;
   width: 100%;
 }
@@ -114,13 +114,13 @@
 }
 
 .lb-diary-grid {
-  grid-template-columns: minmax(200px, 1fr) 150px 60px 40px 40px 40px 40px 40px;
-  min-width: 600px;
+  grid-template-columns: minmax(200px, 1fr) 150px 60px 48px 48px 48px 48px 48px;
+  min-width: 640px;
 }
 
 .lb-watchlist-grid {
-  grid-template-columns: minmax(200px, 1fr) 150px 60px 70px 120px 40px 40px 40px 40px 40px;
-  min-width: 760px;
+  grid-template-columns: minmax(200px, 1fr) 150px 60px 70px 120px 48px 48px 48px 48px 48px;
+  min-width: 800px;
 }
 
 .lb-cell {
@@ -170,14 +170,12 @@
   color: #def;
   background: transparent;
   border: none;
-}
-
-.lb-header-left {
-  text-align: left;
+  width: 100%;
+  justify-self: stretch;
 }
 
 .lb-header-flag {
-  width: 40px;
+  width: 48px;
 }
 
 .lb-header-continent {
