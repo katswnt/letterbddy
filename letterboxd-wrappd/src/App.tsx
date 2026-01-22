@@ -485,9 +485,11 @@ type HeatmapYearProps = {
   year: string;
   counts?: Map<string, number>;
   compact?: boolean;
+  onHoverCell?: (label: string, x: number, y: number) => void;
+  onLeaveCell?: () => void;
 };
 
-const HeatmapYear = memo(({ year, counts, compact = false }: HeatmapYearProps) => {
+const HeatmapYear = memo(({ year, counts, compact = false, onHoverCell, onLeaveCell }: HeatmapYearProps) => {
   const { weeks, monthLabels, maxCount } = useMemo(
     () => buildYearHeatmap(parseInt(year, 10), counts),
     [year, counts]
@@ -516,7 +518,18 @@ const HeatmapYear = memo(({ year, counts, compact = false }: HeatmapYearProps) =
                   key={cell.dateKey}
                   className={`lb-heatmap-cell ${cell.inYear ? "" : "is-muted"}`}
                   style={{ backgroundColor: cell.inYear ? getHeatColor(cell.count, maxCount) : "#151b20" }}
-                  data-tooltip={formatHeatmapLabel(cell.date, cell.count)}
+                  onMouseEnter={(event) => {
+                    if (!onHoverCell) return;
+                    onHoverCell(formatHeatmapLabel(cell.date, cell.count), event.clientX, event.clientY);
+                  }}
+                  onMouseMove={(event) => {
+                    if (!onHoverCell) return;
+                    onHoverCell(formatHeatmapLabel(cell.date, cell.count), event.clientX, event.clientY);
+                  }}
+                  onMouseLeave={() => {
+                    if (!onLeaveCell) return;
+                    onLeaveCell();
+                  }}
                 />
               ))}
             </div>
@@ -804,7 +817,7 @@ const DiaryTable = memo(({
       >
         <div className="lb-table-inner">
         <div className="lb-table-head lb-diary-grid">
-            <button className="lb-header-cell lb-header-left" title="Click to sort by title" onClick={() => toggleSort("name")}>
+            <button className="lb-header-cell" title="Click to sort by title" onClick={() => toggleSort("name")}>
               Title{getSortIndicator("name")}
             </button>
             <button className="lb-header-cell" title="Click to sort by director" onClick={() => toggleSort("director")}>
@@ -1131,7 +1144,7 @@ const WatchlistTable = memo(({
       >
         <div className="lb-table-inner">
         <div className="lb-table-head lb-watchlist-grid">
-            <button className="lb-header-cell lb-header-left" title="Click to sort by title" onClick={() => toggleSort("name")}>
+            <button className="lb-header-cell" title="Click to sort by title" onClick={() => toggleSort("name")}>
               Title{getSortIndicator("name")}
             </button>
             <button className="lb-header-cell" title="Click to sort by director" onClick={() => toggleSort("director")}>
@@ -1288,6 +1301,7 @@ function App() {
   const [geoHover, setGeoHover] = useState<{ label: string; count: number; x: number; y: number } | null>(null);
   const mapWrapperRef = useRef<HTMLDivElement | null>(null);
   const heatmapScrollRef = useRef<HTMLDivElement | null>(null);
+  const [heatmapTooltip, setHeatmapTooltip] = useState<{ text: string; x: number; y: number; align: "left" | "center" | "right" } | null>(null);
 
   async function buildMovieIndex(file: File) {
     setScrapeStatus("Starting TMDb scraping…");
@@ -2656,7 +2670,19 @@ function App() {
               <>
                 <div ref={heatmapScrollRef} className="lb-heatmap-scroll">
                   {heatmapYears.map((year) => (
-                    <HeatmapYear key={year} year={year} counts={diaryDateCounts.get(year)} compact />
+                    <HeatmapYear
+                      key={year}
+                      year={year}
+                      counts={diaryDateCounts.get(year)}
+                      compact
+                      onHoverCell={(text, x, y) => {
+                        const edge = 140;
+                        const align =
+                          x < edge ? "left" : x > window.innerWidth - edge ? "right" : "center";
+                        setHeatmapTooltip({ text, x, y, align });
+                      }}
+                      onLeaveCell={() => setHeatmapTooltip(null)}
+                    />
                   ))}
                 </div>
                 <div className="lb-heatmap-legend">
@@ -2669,10 +2695,48 @@ function App() {
               </>
             ) : (
               <div className="lb-heatmap-single">
-                <HeatmapYear year={dateFilter} counts={diaryDateCounts.get(dateFilter)} />
+                <HeatmapYear
+                  year={dateFilter}
+                  counts={diaryDateCounts.get(dateFilter)}
+                  onHoverCell={(text, x, y) => {
+                    const edge = 140;
+                    const align =
+                      x < edge ? "left" : x > window.innerWidth - edge ? "right" : "center";
+                    setHeatmapTooltip({ text, x, y, align });
+                  }}
+                  onLeaveCell={() => setHeatmapTooltip(null)}
+                />
               </div>
             )}
           </section>
+        )}
+
+        {heatmapTooltip && (
+          <div
+            style={{
+              position: "fixed",
+              left: heatmapTooltip.x,
+              top: heatmapTooltip.y - 12,
+              transform:
+                heatmapTooltip.align === "left"
+                  ? "translate(0, -100%)"
+                  : heatmapTooltip.align === "right"
+                  ? "translate(-100%, -100%)"
+                  : "translate(-50%, -100%)",
+              background: "rgba(20, 24, 28, 0.95)",
+              color: "#e2e8f0",
+              border: "1px solid #345",
+              borderRadius: "4px",
+              padding: "4px 6px",
+              fontSize: "11px",
+              whiteSpace: "nowrap",
+              boxShadow: "0 4px 10px rgba(0, 0, 0, 0.4)",
+              pointerEvents: "none",
+              zIndex: 1000,
+            }}
+          >
+            {heatmapTooltip.text}
+          </div>
         )}
 
         {/* TMDb enrichment stats - Always show if movieIndex exists or if we should debug */}
@@ -3676,6 +3740,25 @@ function App() {
             />
           )}
         </section>
+      </div>
+      <div style={{ fontSize: "12px", color: "#9ab", margin: "40px 0 24px", textAlign: "center" }}>
+        <a
+          href="https://letterboxd.com/katswnt"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: "#9ab",
+            textDecoration: "none",
+            display: "inline-block",
+            padding: "8px 14px",
+            borderRadius: "6px",
+            border: "1px solid #456",
+            backgroundColor: "rgba(68, 85, 102, 0.25)",
+            fontWeight: 600,
+          }}
+        >
+          Follow me on Letterboxd!
+        </a>
       </div>
     </main>
   );
