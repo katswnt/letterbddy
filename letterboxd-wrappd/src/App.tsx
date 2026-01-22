@@ -2786,10 +2786,15 @@ function App() {
         )}
 
         {/* Rating breakdown for this range */}
-        {ratingCount > 0 && (
+        {rows.length > 0 && (
           <section style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "24px" }}>
             <div style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%", textAlign: "center" }}>
               <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>Ratings</h2>
+              {ratingCount === 0 && (
+                <p style={{ fontSize: "12px", color: "#9ab", marginTop: "-8px" }}>
+                  No ratings found in this file.
+                </p>
+              )}
               {ratingFilter && (
                 <div style={{ fontSize: "12px", color: "#9ab", marginTop: "-8px" }}>
                   Filtering diary list and pie charts for rating {ratingFilter}★ — check Film Breakdown above.
@@ -2833,11 +2838,15 @@ function App() {
             {/* Rating stats row */}
             <div className="stats-row" style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center", flexWrap: "wrap" }}>
               <div>
-                <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{averageRating.toFixed(1)}</div>
+                <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>
+                  {ratingCount > 0 ? averageRating.toFixed(1) : "—"}
+                </div>
                 <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Average</div>
               </div>
               <div>
-                <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{medianRating.toFixed(1)}</div>
+                <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>
+                  {ratingCount > 0 ? medianRating.toFixed(1) : "—"}
+                </div>
                 <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Median</div>
               </div>
               <div>
