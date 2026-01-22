@@ -324,10 +324,11 @@ type VirtualListProps = {
   heights?: number[] | null;
   overscan?: number;
   className?: string;
+  minWidth?: number | string;
   renderRow: (item: any, index: number, style: React.CSSProperties) => ReactNode;
 };
 
-const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, className, renderRow }: VirtualListProps) => {
+const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, className, minWidth, renderRow }: VirtualListProps) => {
   const [scrollTop, setScrollTop] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -384,7 +385,7 @@ const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, cl
         }
       }}
     >
-      <div style={{ height: totalHeight, position: "relative" }}>
+      <div style={{ height: totalHeight, position: "relative", minWidth }}>
         {items.slice(startIndex, endIndex).map((item, idx) => {
           const index = startIndex + idx;
           const top = offsets ? offsets[index] : index * itemHeight;
@@ -758,7 +759,11 @@ const DiaryTable = memo(({
   const renderRow = useCallback((movie: DiaryMovie, index: number, style: React.CSSProperties) => {
     const isAlt = index % 2 === 1;
     return (
-      <div key={movie.uri || index} style={style} className={`lb-row lb-diary-grid ${isAlt ? "lb-row-alt" : ""}`}>
+      <div
+        key={movie.uri || index}
+        style={{ ...style, minWidth: "var(--lb-table-min-width)", width: "max-content" }}
+        className={`lb-row lb-diary-grid ${isAlt ? "lb-row-alt" : ""}`}
+      >
         <div className="lb-cell lb-cell-title">
           <a
             href={movie.uri}
@@ -867,6 +872,7 @@ const DiaryTable = memo(({
           items={filteredDiaryMovies}
           renderRow={renderRow}
           className="lb-list"
+          minWidth={640}
         />
         </div>
       </div>
@@ -1059,7 +1065,11 @@ const WatchlistTable = memo(({
   const renderRow = useCallback((movie: WatchlistMovie, index: number, style: React.CSSProperties) => {
     const isAlt = index % 2 === 1;
     return (
-      <div key={movie.uri} style={style} className={`lb-row lb-watchlist-grid ${isAlt ? "lb-row-alt" : ""}`}>
+      <div
+        key={movie.uri}
+        style={{ ...style, minWidth: "var(--lb-table-min-width)", width: "max-content" }}
+        className={`lb-row lb-watchlist-grid ${isAlt ? "lb-row-alt" : ""}`}
+      >
         <div className="lb-cell lb-cell-title">
           <a
             href={movie.uri}
@@ -1207,6 +1217,7 @@ const WatchlistTable = memo(({
           items={filteredMovies}
           renderRow={renderRow}
           className="lb-list"
+          minWidth={800}
         />
         </div>
       </div>
