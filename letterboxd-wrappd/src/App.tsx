@@ -369,11 +369,11 @@ const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, cl
   const endIndex = Math.min(items.length, endIndexRaw + overscan);
 
   return (
-    <div
-      className={className}
-      style={{ height, overflowY: "auto", overflowX: "visible", position: "relative" }}
-      ref={containerRef}
-      onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+      <div
+        className={className}
+        style={{ height, overflowY: "auto", overflowX: "hidden", position: "relative", width: "100%" }}
+        ref={containerRef}
+        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       onWheel={(event) => {
         const el = containerRef.current;
         if (!el) return;
@@ -385,7 +385,7 @@ const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, cl
         }
       }}
     >
-      <div style={{ height: totalHeight, position: "relative", minWidth }}>
+      <div style={{ height: totalHeight, position: "relative", width: "100%", minWidth }}>
         {items.slice(startIndex, endIndex).map((item, idx) => {
           const index = startIndex + idx;
           const top = offsets ? offsets[index] : index * itemHeight;
@@ -394,8 +394,8 @@ const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, cl
             position: "absolute",
             top,
             left: 0,
-            right: 0,
             height: heightValue,
+            width: "100%",
           });
         })}
       </div>
@@ -631,6 +631,7 @@ const DiaryTable = memo(({
   const hasMeasuredRef = useRef(false);
   const [rowHeightsByKey, setRowHeightsByKey] = useState<Record<string, number> | null>(null);
   const estimatedRowHeight = 56;
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
 
   const getDiaryKey = useCallback((movie: DiaryMovie) => {
     if (movie.uri) return movie.uri;
@@ -756,12 +757,18 @@ const DiaryTable = memo(({
     return Math.min(400, total || 0);
   }, [rowHeights]);
 
+  useEffect(() => {
+    if (tableScrollRef.current) {
+      tableScrollRef.current.scrollLeft = 0;
+    }
+  }, [filteredDiaryMovies.length]);
+
   const renderRow = useCallback((movie: DiaryMovie, index: number, style: React.CSSProperties) => {
     const isAlt = index % 2 === 1;
     return (
       <div
         key={movie.uri || index}
-        style={{ ...style, minWidth: "var(--lb-table-min-width)", width: "max-content" }}
+        style={{ ...style, minWidth: "var(--lb-table-min-width)", width: "100%" }}
         className={`lb-row lb-diary-grid ${isAlt ? "lb-row-alt" : ""}`}
       >
         <div className="lb-cell lb-cell-title">
@@ -818,7 +825,8 @@ const DiaryTable = memo(({
       )}
       <div
         className="lb-table-container"
-        style={{ ["--lb-table-min-width" as any]: "600px" }}
+        style={{ ["--lb-table-min-width" as any]: "650px" }}
+        ref={tableScrollRef}
       >
         <div className="lb-table-inner">
         <div className="lb-table-head lb-diary-grid">
@@ -872,7 +880,7 @@ const DiaryTable = memo(({
           items={filteredDiaryMovies}
           renderRow={renderRow}
           className="lb-list"
-          minWidth={640}
+          minWidth={650}
         />
         </div>
       </div>
@@ -923,6 +931,7 @@ const WatchlistTable = memo(({
   const hasMeasuredRef = useRef(false);
   const [rowHeightsByKey, setRowHeightsByKey] = useState<Record<string, number> | null>(null);
   const estimatedRowHeight = 56;
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     hasMeasuredRef.current = false;
@@ -1049,6 +1058,12 @@ const WatchlistTable = memo(({
     return Math.min(500, total || 0);
   }, [rowHeights]);
 
+  useEffect(() => {
+    if (tableScrollRef.current) {
+      tableScrollRef.current.scrollLeft = 0;
+    }
+  }, [filteredMovies.length]);
+
   const cycleContinentFilter = () => {
     if (!watchlistContinentFilter) {
       setWatchlistContinentFilter(CONTINENT_ORDER[0]);
@@ -1067,7 +1082,7 @@ const WatchlistTable = memo(({
     return (
       <div
         key={movie.uri}
-        style={{ ...style, minWidth: "var(--lb-table-min-width)", width: "max-content" }}
+        style={{ ...style, minWidth: "var(--lb-table-min-width)", width: "100%" }}
         className={`lb-row lb-watchlist-grid ${isAlt ? "lb-row-alt" : ""}`}
       >
         <div className="lb-cell lb-cell-title">
@@ -1150,7 +1165,8 @@ const WatchlistTable = memo(({
 
       <div
         className="lb-table-container"
-        style={{ ["--lb-table-min-width" as any]: "760px" }}
+        style={{ ["--lb-table-min-width" as any]: "840px" }}
+        ref={tableScrollRef}
       >
         <div className="lb-table-inner">
         <div className="lb-table-head lb-watchlist-grid">
@@ -1217,7 +1233,7 @@ const WatchlistTable = memo(({
           items={filteredMovies}
           renderRow={renderRow}
           className="lb-list"
-          minWidth={800}
+          minWidth={840}
         />
         </div>
       </div>
