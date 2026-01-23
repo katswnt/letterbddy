@@ -2798,6 +2798,24 @@ function App() {
     }));
   }, []);
 
+  const getFemaleDirectors = useCallback((movie: any) => {
+    const tmdb = movie.tmdb_data || {};
+    const directors = tmdb.directors || [];
+    if (directors.length === 1 && tmdb.directed_by_woman === true) {
+      return directors;
+    }
+    return directors.filter((d: any) => d.gender === 1);
+  }, []);
+
+  const getFemaleWriters = useCallback((movie: any) => {
+    const tmdb = movie.tmdb_data || {};
+    const writers = tmdb.writers || [];
+    if (writers.length === 1 && tmdb.written_by_woman === true) {
+      return writers;
+    }
+    return writers.filter((w: any) => w.gender === 1);
+  }, []);
+
   const rankPeople = useCallback((items: TastePerson[], minCount: number) => {
     const filtered = items.filter((p) => p.count >= minCount);
     return filtered.sort((a, b) => {
@@ -2823,17 +2841,13 @@ function App() {
   }, [tasteSortMode]);
 
   const tasteData = useMemo(() => {
-    const femaleDirectors = buildPeopleStats(tasteFilmEntries, (movie) =>
-      (movie.tmdb_data?.directors || []).filter((d: any) => d.gender === 1)
-    );
-    const femaleWriters = buildPeopleStats(tasteFilmEntries, (movie) =>
-      (movie.tmdb_data?.writers || []).filter((w: any) => w.gender === 1)
-    );
+    const femaleDirectors = buildPeopleStats(tasteFilmEntries, getFemaleDirectors);
+    const femaleWriters = buildPeopleStats(tasteFilmEntries, getFemaleWriters);
     const womenDirectorsWriters = buildPeopleStats(tasteFilmEntries, (movie) => {
-      const directors = movie.tmdb_data?.directors || [];
-      const writers = movie.tmdb_data?.writers || [];
+      const directors = getFemaleDirectors(movie);
+      const writers = getFemaleWriters(movie);
       const writerNames = new Set(writers.map((w: any) => w.name));
-      return directors.filter((d: any) => d.gender === 1 && writerNames.has(d.name));
+      return directors.filter((d: any) => writerNames.has(d.name));
     });
     const nonAmericanDirectors = buildPeopleStats(
       tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
@@ -2841,11 +2855,11 @@ function App() {
     );
     const nonAmericanFemaleDirectors = buildPeopleStats(
       tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
-      (movie) => (movie.tmdb_data?.directors || []).filter((d: any) => d.gender === 1)
+      getFemaleDirectors
     );
     const nonAmericanFemaleWriters = buildPeopleStats(
       tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
-      (movie) => (movie.tmdb_data?.writers || []).filter((w: any) => w.gender === 1)
+      getFemaleWriters
     );
     const internationalWriters = buildPeopleStats(
       tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
@@ -2921,6 +2935,8 @@ function App() {
     rankCountries,
     personFirstDate,
     tasteSortMode,
+    getFemaleDirectors,
+    getFemaleWriters,
   ]);
 
   const tasteVisibleCategories = useMemo(() => {
