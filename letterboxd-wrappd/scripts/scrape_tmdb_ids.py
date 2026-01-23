@@ -516,8 +516,9 @@ def enrich_with_tmdb(
 
             # Check cache first
             cache_key = str(tmdb_id)
-            if cache_key in tmdb_movie_data_cache:
-                data["tmdb_data"] = tmdb_movie_data_cache[cache_key]
+            cached_tmdb = tmdb_movie_data_cache.get(cache_key)
+            if cached_tmdb and "directed_by_woman" in cached_tmdb:
+                data["tmdb_data"] = cached_tmdb
                 print(f"PROGRESS {i} {total}", file=sys.stderr, flush=True)
                 continue  # Skip API calls and sleep
 

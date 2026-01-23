@@ -549,7 +549,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Check cache for TMDb data
           if (redisAvailable) {
             const cachedData = await getCachedTmdbData(tmdbId);
-            if (cachedData) {
+            if (cachedData && "directed_by_woman" in cachedData) {
               movieIndex[resolved].tmdb_data = cachedData;
               cacheHits++;
               processed++;
