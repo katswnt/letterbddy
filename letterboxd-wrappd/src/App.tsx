@@ -2816,8 +2816,10 @@ function App() {
     return writers.filter((w: any) => w.gender === 1);
   }, []);
 
+
   const rankPeople = useCallback((items: TastePerson[], minCount: number) => {
-    const filtered = items.filter((p) => p.count >= minCount);
+    const effectiveMin = tasteSortMode === "watched" ? 1 : minCount;
+    const filtered = items.filter((p) => p.count >= effectiveMin);
     return filtered.sort((a, b) => {
       if (tasteSortMode === "watched") {
         if (b.count !== a.count) return b.count - a.count;
@@ -2852,10 +2854,6 @@ function App() {
     const nonAmericanDirectors = buildPeopleStats(
       tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
       (movie) => movie.tmdb_data?.directors || []
-    );
-    const nonAmericanFemaleDirectors = buildPeopleStats(
-      tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
-      getFemaleDirectors
     );
     const nonAmericanFemaleWriters = buildPeopleStats(
       tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
@@ -2922,7 +2920,6 @@ function App() {
       { key: "internationalWriters", label: "International Writers", type: "person", items: rankPeople(internationalWriters, 2) },
       { key: "nonEnglishDirectors", label: "Non-English Directors", type: "person", items: rankPeople(nonEnglishDirectors, 2) },
       { key: "nonAmericanDirectors", label: "Non-American Directors", type: "person", items: rankPeople(nonAmericanDirectors, 2) },
-      { key: "nonAmericanWomenDirectors", label: "Non-American Women Directors", type: "person", items: rankPeople(nonAmericanFemaleDirectors, 2) },
       { key: "nonAmericanWomenWriters", label: "Non-American Women Writers", type: "person", items: rankPeople(nonAmericanFemaleWriters, 2) },
       { key: "topCountries", label: "Top Countries", type: "country", items: rankCountries(countries) },
       { key: "newDiscoveries", label: "New Discoveries", type: "person", items: rankPeople(newDiscoveries, 2) },
@@ -2989,7 +2986,7 @@ function App() {
     if (!activeTasteCategory || activeTasteCategory.type !== "person") return new Map<string, Array<{ title: string; year: string; rating: string }>>();
     const map = new Map<string, Array<{ title: string; year: string; rating: string }>>();
     const wantsWriter = ["womenWriters", "internationalWriters", "nonAmericanWomenWriters"].includes(activeTasteCategory.key);
-    const wantsDirector = ["womenDirectors", "nonEnglishDirectors", "nonAmericanDirectors", "nonAmericanWomenDirectors", "newDiscoveries", "badHabit", "womenDirectorsWriters"].includes(activeTasteCategory.key);
+    const wantsDirector = ["womenDirectors", "nonEnglishDirectors", "nonAmericanDirectors", "newDiscoveries", "badHabit", "womenDirectorsWriters"].includes(activeTasteCategory.key);
     for (const entry of tasteFilmEntries) {
       const tmdb = entry.movie.tmdb_data || {};
       const title = tmdb.title || "Untitled";
