@@ -163,6 +163,9 @@
 }
 
 .lb-header-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   padding: 12px 8px;
   font-weight: 600;
@@ -174,6 +177,9 @@
   width: 100%;
   justify-self: stretch;
   position: relative;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 
@@ -181,6 +187,13 @@
   margin-top: 28px;
   font-size: 11px;
   color: #9ab;
+  text-align: center;
+}
+
+.lb-watchlist-pace {
+  margin-top: 18px;
+  font-size: 13px;
+  color: #cfe2d2;
   text-align: center;
 }
 

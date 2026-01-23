@@ -914,6 +914,7 @@ const DiaryTable = memo(({
 
 type WatchlistTableProps = {
   watchlistMovies: WatchlistMovie[];
+  watchlistPaceText?: string | null;
   watchlistFilters: {
     directedByWoman: boolean;
     writtenByWoman: boolean;
@@ -940,6 +941,7 @@ type WatchlistTableProps = {
 
 const WatchlistTable = memo(({
   watchlistMovies,
+  watchlistPaceText,
   watchlistFilters,
   setWatchlistFilters,
   watchlistRuntimeFilter,
@@ -1264,6 +1266,9 @@ const WatchlistTable = memo(({
         <div className="lb-table-key">
           Dir♀ = Directed by women · Writ♀ = Written by women · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
         </div>
+        {watchlistPaceText && (
+          <div className="lb-watchlist-pace">{watchlistPaceText}</div>
+        )}
         </div>
       </div>
     </div>
@@ -2490,6 +2495,88 @@ function App() {
     }
     return labels;
   }, [diaryFilters, ratingFilter, decadeFilter, geoFilter]);
+
+  const joinLabels = useCallback((labels: string[]) => {
+    if (labels.length === 0) return "";
+    if (labels.length === 1) return labels[0];
+    if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+    return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+  }, []);
+
+  const watchlistFilterLabels = useMemo(() => {
+    const labels: string[] = [];
+    if (watchlistRuntimeFilter === "under90") labels.push("under 90 min");
+    if (watchlistRuntimeFilter === "under2h") labels.push("under 2 hours");
+    if (watchlistRuntimeFilter === "under2.5h") labels.push("under 2½ hours");
+    if (watchlistRuntimeFilter === "over2.5h") labels.push("over 2½ hours");
+    if (watchlistFilters.directedByWoman) labels.push("directed by women");
+    if (watchlistFilters.writtenByWoman) labels.push("written by women");
+    if (watchlistFilters.notAmerican) labels.push("non-American");
+    if (watchlistFilters.notEnglish) labels.push("not in English");
+    if (watchlistFilters.inCriterion) labels.push("in the Criterion Collection");
+    if (watchlistContinentFilter) labels.push(`in ${getContinentLabel(watchlistContinentFilter)}`);
+    return labels;
+  }, [watchlistRuntimeFilter, watchlistFilters, watchlistContinentFilter]);
+
+  const watchlistFilteredCount = useMemo(() => {
+    if (watchlistMovies.length === 0) return 0;
+    return watchlistMovies.filter((movie) => {
+      if (watchlistFilters.directedByWoman && !movie.directedByWoman) return false;
+      if (watchlistFilters.writtenByWoman && !movie.writtenByWoman) return false;
+      if (watchlistFilters.notAmerican && !movie.notAmerican) return false;
+      if (watchlistFilters.notEnglish && !movie.notEnglish) return false;
+      if (watchlistFilters.inCriterion && !movie.inCriterion) return false;
+      if (watchlistContinentFilter && !movie.continents.includes(watchlistContinentFilter)) return false;
+      if (watchlistRuntimeFilter === "under90" && (movie.runtime === null || movie.runtime >= 90)) return false;
+      if (watchlistRuntimeFilter === "under2h" && (movie.runtime === null || movie.runtime >= 120)) return false;
+      if (watchlistRuntimeFilter === "under2.5h" && (movie.runtime === null || movie.runtime >= 150)) return false;
+      if (watchlistRuntimeFilter === "over2.5h" && (movie.runtime === null || movie.runtime < 150)) return false;
+      return true;
+    }).length;
+  }, [watchlistMovies, watchlistFilters, watchlistContinentFilter, watchlistRuntimeFilter]);
+
+  const watchlistPaceText = useMemo(() => {
+    if (!isDiaryFormat) return null;
+    if (rows.length === 0 || watchlistMovies.length === 0) return null;
+    if (watchlistFilteredCount === 0) return null;
+
+    const now = new Date();
+    const sixMonthsAgo = new Date(now);
+    sixMonthsAgo.setMonth(now.getMonth() - 6);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+    const daysSpan = Math.max(1, Math.round((now.getTime() - sixMonthsAgo.getTime()) / 86400000));
+
+    const recentCount = rows.filter((row) => {
+      const raw = getWatchedDate(row);
+      if (!raw) return false;
+      const date = new Date(raw);
+      if (Number.isNaN(date.getTime())) return false;
+      return date >= sixMonthsAgo && date <= now;
+    }).length;
+
+    if (recentCount === 0) return null;
+    const pacePerDay = recentCount / daysSpan;
+    if (pacePerDay <= 0) return null;
+    const daysRemaining = watchlistFilteredCount / pacePerDay;
+    const totalMonths = Math.max(1, Math.round(daysRemaining / 30.44));
+    const years = Math.floor(totalMonths / 12);
+    const months = totalMonths % 12;
+
+    const filterPhrase = watchlistFilterLabels.length
+      ? `your watchlist of ${joinLabels(watchlistFilterLabels)} movies`
+      : "your watchlist";
+    const yearLabel = `${years} year${years === 1 ? "" : "s"}`;
+    const monthLabel = `${months} month${months === 1 ? "" : "s"}`;
+
+    return `If you watch movies at the same pace as you have been for the past 6 months, you'll finish ${filterPhrase} in ${yearLabel}, ${monthLabel}!`;
+  }, [
+    isDiaryFormat,
+    rows,
+    watchlistMovies.length,
+    watchlistFilteredCount,
+    watchlistFilterLabels,
+    joinLabels,
+  ]);
 
   return (
     <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
@@ -4015,6 +4102,7 @@ function App() {
           {watchlistMovies.length > 0 && (
             <WatchlistTable
               watchlistMovies={watchlistMovies}
+              watchlistPaceText={watchlistPaceText}
               watchlistFilters={watchlistFilters}
               setWatchlistFilters={setWatchlistFilters}
               watchlistRuntimeFilter={watchlistRuntimeFilter}
