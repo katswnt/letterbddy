@@ -592,6 +592,8 @@ type DiaryTableProps = {
     notEnglish: boolean;
     inCriterion: boolean;
   };
+  diaryFilterMode: "all" | "any";
+  setDiaryFilterMode: Dispatch<SetStateAction<"all" | "any">>;
   setDiaryFilters: Dispatch<SetStateAction<{
     directedByWoman: boolean;
     writtenByWoman: boolean;
@@ -608,6 +610,8 @@ type DiaryTableProps = {
 const DiaryTable = memo(({
   moviesWithData,
   diaryFilters,
+  diaryFilterMode,
+  setDiaryFilterMode,
   setDiaryFilters,
   diarySortColumn,
   setDiarySortColumn,
@@ -660,15 +664,19 @@ const DiaryTable = memo(({
 
   const filteredDiaryMovies = useMemo(() => {
     const hasActiveFilter = Object.values(diaryFilters).some(Boolean);
+    const matchesCriteria = (movie: DiaryMovie) => {
+      const checks: boolean[] = [];
+      if (diaryFilters.directedByWoman) checks.push(movie.directedByWoman);
+      if (diaryFilters.writtenByWoman) checks.push(movie.writtenByWoman);
+      if (diaryFilters.notAmerican) checks.push(movie.notAmerican);
+      if (diaryFilters.notEnglish) checks.push(movie.notEnglish);
+      if (diaryFilters.inCriterion) checks.push(movie.inCriterion);
+      if (checks.length === 0) return true;
+      if (diaryFilterMode === "any") return checks.some(Boolean);
+      return checks.every(Boolean);
+    };
     let filtered = hasActiveFilter
-      ? diaryMovieList.filter((movie) => {
-          if (diaryFilters.directedByWoman && !movie.directedByWoman) return false;
-          if (diaryFilters.writtenByWoman && !movie.writtenByWoman) return false;
-          if (diaryFilters.notAmerican && !movie.notAmerican) return false;
-          if (diaryFilters.notEnglish && !movie.notEnglish) return false;
-          if (diaryFilters.inCriterion && !movie.inCriterion) return false;
-          return true;
-        })
+      ? diaryMovieList.filter((movie) => matchesCriteria(movie))
       : [...diaryMovieList];
 
     if (diarySortColumn && diarySortState !== "default") {
@@ -687,7 +695,7 @@ const DiaryTable = memo(({
     }
 
     return filtered;
-  }, [diaryFilters, diaryMovieList, diarySortColumn, diarySortState]);
+  }, [diaryFilters, diaryFilterMode, diaryMovieList, diarySortColumn, diarySortState]);
 
   const hasActiveFilter = Object.values(diaryFilters).some(Boolean);
 
@@ -830,6 +838,23 @@ const DiaryTable = memo(({
       </h3>
       {hasActiveFilter && (
         <p className="lb-filter-row">
+          <span className="lb-filter-mode">
+            Match:
+            <button
+              className={`lb-filter-mode-btn ${diaryFilterMode === "all" ? "is-active" : ""}`}
+              onClick={() => setDiaryFilterMode("all")}
+              type="button"
+            >
+              All
+            </button>
+            <button
+              className={`lb-filter-mode-btn ${diaryFilterMode === "any" ? "is-active" : ""}`}
+              onClick={() => setDiaryFilterMode("any")}
+              type="button"
+            >
+              Any
+            </button>
+          </span>
           <button
             onClick={() => setDiaryFilters({
               directedByWoman: false,
@@ -922,6 +947,8 @@ type WatchlistTableProps = {
     notEnglish: boolean;
     inCriterion: boolean;
   };
+  watchlistFilterMode: "all" | "any";
+  setWatchlistFilterMode: Dispatch<SetStateAction<"all" | "any">>;
   setWatchlistFilters: Dispatch<SetStateAction<{
     directedByWoman: boolean;
     writtenByWoman: boolean;
@@ -943,6 +970,8 @@ const WatchlistTable = memo(({
   watchlistMovies,
   watchlistPaceText,
   watchlistFilters,
+  watchlistFilterMode,
+  setWatchlistFilterMode,
   setWatchlistFilters,
   watchlistRuntimeFilter,
   setWatchlistRuntimeFilter,
@@ -975,14 +1004,19 @@ const WatchlistTable = memo(({
   const filteredMovies = useMemo(() => {
     const hasActiveFilter = Object.values(watchlistFilters).some(Boolean);
     const hasActiveContinentFilter = watchlistContinentFilter !== null;
+    const matchesCriteria = (movie: WatchlistMovie) => {
+      const checks: boolean[] = [];
+      if (watchlistFilters.directedByWoman) checks.push(movie.directedByWoman);
+      if (watchlistFilters.writtenByWoman) checks.push(movie.writtenByWoman);
+      if (watchlistFilters.notAmerican) checks.push(movie.notAmerican);
+      if (watchlistFilters.notEnglish) checks.push(movie.notEnglish);
+      if (watchlistFilters.inCriterion) checks.push(movie.inCriterion);
+      if (checks.length === 0) return true;
+      if (watchlistFilterMode === "any") return checks.some(Boolean);
+      return checks.every(Boolean);
+    };
     let filtered = watchlistMovies.filter((movie) => {
-      if (hasActiveFilter) {
-        if (watchlistFilters.directedByWoman && !movie.directedByWoman) return false;
-        if (watchlistFilters.writtenByWoman && !movie.writtenByWoman) return false;
-        if (watchlistFilters.notAmerican && !movie.notAmerican) return false;
-        if (watchlistFilters.notEnglish && !movie.notEnglish) return false;
-        if (watchlistFilters.inCriterion && !movie.inCriterion) return false;
-      }
+      if (hasActiveFilter && !matchesCriteria(movie)) return false;
       if (hasActiveContinentFilter && watchlistContinentFilter && !movie.continents.includes(watchlistContinentFilter)) {
         return false;
       }
@@ -992,7 +1026,15 @@ const WatchlistTable = memo(({
 
     filtered = sortMoviesByColumn(filtered, watchlistSortColumn, watchlistSortState);
     return filtered;
-  }, [passesRuntimeFilter, watchlistContinentFilter, watchlistFilters, watchlistMovies, watchlistSortColumn, watchlistSortState]);
+  }, [
+    passesRuntimeFilter,
+    watchlistContinentFilter,
+    watchlistFilters,
+    watchlistFilterMode,
+    watchlistMovies,
+    watchlistSortColumn,
+    watchlistSortState,
+  ]);
 
   const hasActiveFilter = Object.values(watchlistFilters).some(Boolean);
   const hasActiveRuntimeFilter = watchlistRuntimeFilter !== "all";
@@ -1172,6 +1214,25 @@ const WatchlistTable = memo(({
       {hasAnyFilter && (
         <p className="lb-filter-row">
           Showing {filteredMovies.length} of {watchlistMovies.length} movies
+          {Object.values(watchlistFilters).some(Boolean) && (
+            <span className="lb-filter-mode">
+              Match:
+              <button
+                className={`lb-filter-mode-btn ${watchlistFilterMode === "all" ? "is-active" : ""}`}
+                onClick={() => setWatchlistFilterMode("all")}
+                type="button"
+              >
+                All
+              </button>
+              <button
+                className={`lb-filter-mode-btn ${watchlistFilterMode === "any" ? "is-active" : ""}`}
+                onClick={() => setWatchlistFilterMode("any")}
+                type="button"
+              >
+                Any
+              </button>
+            </span>
+          )}
           <button
             onClick={() => {
               setWatchlistFilters({
@@ -1310,6 +1371,7 @@ function App() {
     notEnglish: false,
     inCriterion: false,
   });
+  const [watchlistFilterMode, setWatchlistFilterMode] = useState<"all" | "any">("all");
   const [watchlistSortColumn, setWatchlistSortColumn] = useState<WatchlistSortColumn>(null);
   const [watchlistSortState, setWatchlistSortState] = useState<WatchlistSortState>("default");
   const [watchlistRuntimeFilter, setWatchlistRuntimeFilter] = useState<RuntimeFilter>("all");
@@ -1353,6 +1415,7 @@ function App() {
     notEnglish: false,
     inCriterion: false,
   });
+  const [diaryFilterMode, setDiaryFilterMode] = useState<"all" | "any">("all");
   const [diarySortColumn, setDiarySortColumn] = useState<WatchlistSortColumn>(null);
   const [diarySortState, setDiarySortState] = useState<WatchlistSortState>("default");
   const [decadeHover, setDecadeHover] = useState<{ label: string; count: number; percent: number; midPercent: number } | null>(null);
@@ -2208,11 +2271,17 @@ function App() {
       if (!movie) return false;
       const tmdb = movie.tmdb_data || {};
       if (activeCriteria) {
-        if (diaryFilters.directedByWoman && tmdb.directed_by_woman !== true) return false;
-        if (diaryFilters.writtenByWoman && tmdb.written_by_woman !== true) return false;
-        if (diaryFilters.notAmerican && tmdb.is_american !== false) return false;
-        if (diaryFilters.notEnglish && tmdb.is_english !== false) return false;
-        if (diaryFilters.inCriterion && movie.is_in_criterion_collection !== true) return false;
+        const checks: boolean[] = [];
+        if (diaryFilters.directedByWoman) checks.push(tmdb.directed_by_woman === true);
+        if (diaryFilters.writtenByWoman) checks.push(tmdb.written_by_woman === true);
+        if (diaryFilters.notAmerican) checks.push(tmdb.is_american === false);
+        if (diaryFilters.notEnglish) checks.push(tmdb.is_english === false);
+        if (diaryFilters.inCriterion) checks.push(movie.is_in_criterion_collection === true);
+        if (diaryFilterMode === "any") {
+          if (!checks.some(Boolean)) return false;
+        } else {
+          if (!checks.every(Boolean)) return false;
+        }
       }
       if (decadeFilter && !matchesDecadeFilter(movie)) return false;
       if (geoFilter && !matchesGeoFilter(movie)) return false;
@@ -2221,6 +2290,7 @@ function App() {
   }, [
     rows,
     diaryFilters,
+    diaryFilterMode,
     ratingFilter,
     movieLookup,
     matchesDecadeFilter,
@@ -2493,8 +2563,11 @@ function App() {
           : getCountryName(geoFilter.value)
       );
     }
+    if (labels.length > 0) {
+      labels.unshift(diaryFilterMode === "any" ? "Match any" : "Match all");
+    }
     return labels;
-  }, [diaryFilters, ratingFilter, decadeFilter, geoFilter]);
+  }, [diaryFilters, ratingFilter, decadeFilter, geoFilter, diaryFilterMode]);
 
   const joinLabels = useCallback((labels: string[]) => {
     if (labels.length === 0) return "";
@@ -2514,18 +2587,38 @@ function App() {
     if (watchlistFilters.notAmerican) labels.push("non-American");
     if (watchlistFilters.notEnglish) labels.push("not in English");
     if (watchlistFilters.inCriterion) labels.push("in the Criterion Collection");
-    if (watchlistContinentFilter) labels.push(`in ${getContinentLabel(watchlistContinentFilter)}`);
+    if (watchlistContinentFilter) {
+      const continentText: Record<string, string> = {
+        AF: "African movies",
+        EU: "European movies",
+        NA: "North American movies",
+        SA: "South American movies",
+        AS: "Asian movies",
+        OC: "Oceanic movies",
+        AN: "Antarctic movies",
+      };
+      labels.push(continentText[watchlistContinentFilter] || `${getContinentLabel(watchlistContinentFilter)} movies`);
+    }
     return labels;
-  }, [watchlistRuntimeFilter, watchlistFilters, watchlistContinentFilter]);
+  }, [watchlistRuntimeFilter, watchlistFilters, watchlistContinentFilter, watchlistFilterMode]);
 
   const watchlistFilteredCount = useMemo(() => {
     if (watchlistMovies.length === 0) return 0;
     return watchlistMovies.filter((movie) => {
-      if (watchlistFilters.directedByWoman && !movie.directedByWoman) return false;
-      if (watchlistFilters.writtenByWoman && !movie.writtenByWoman) return false;
-      if (watchlistFilters.notAmerican && !movie.notAmerican) return false;
-      if (watchlistFilters.notEnglish && !movie.notEnglish) return false;
-      if (watchlistFilters.inCriterion && !movie.inCriterion) return false;
+      const hasActiveCriteria = Object.values(watchlistFilters).some(Boolean);
+      if (hasActiveCriteria) {
+        const checks: boolean[] = [];
+        if (watchlistFilters.directedByWoman) checks.push(movie.directedByWoman);
+        if (watchlistFilters.writtenByWoman) checks.push(movie.writtenByWoman);
+        if (watchlistFilters.notAmerican) checks.push(movie.notAmerican);
+        if (watchlistFilters.notEnglish) checks.push(movie.notEnglish);
+        if (watchlistFilters.inCriterion) checks.push(movie.inCriterion);
+        if (watchlistFilterMode === "any") {
+          if (!checks.some(Boolean)) return false;
+        } else {
+          if (!checks.every(Boolean)) return false;
+        }
+      }
       if (watchlistContinentFilter && !movie.continents.includes(watchlistContinentFilter)) return false;
       if (watchlistRuntimeFilter === "under90" && (movie.runtime === null || movie.runtime >= 90)) return false;
       if (watchlistRuntimeFilter === "under2h" && (movie.runtime === null || movie.runtime >= 120)) return false;
@@ -2533,7 +2626,7 @@ function App() {
       if (watchlistRuntimeFilter === "over2.5h" && (movie.runtime === null || movie.runtime < 150)) return false;
       return true;
     }).length;
-  }, [watchlistMovies, watchlistFilters, watchlistContinentFilter, watchlistRuntimeFilter]);
+  }, [watchlistMovies, watchlistFilters, watchlistFilterMode, watchlistContinentFilter, watchlistRuntimeFilter]);
 
   const watchlistPaceText = useMemo(() => {
     if (!isDiaryFormat) return null;
@@ -3187,6 +3280,8 @@ function App() {
                 <DiaryTable
                   moviesWithData={moviesWithData}
                   diaryFilters={diaryFilters}
+                  diaryFilterMode={diaryFilterMode}
+                  setDiaryFilterMode={setDiaryFilterMode}
                   setDiaryFilters={setDiaryFilters}
                   diarySortColumn={diarySortColumn}
                   setDiarySortColumn={setDiarySortColumn}
@@ -4104,6 +4199,8 @@ function App() {
               watchlistMovies={watchlistMovies}
               watchlistPaceText={watchlistPaceText}
               watchlistFilters={watchlistFilters}
+              watchlistFilterMode={watchlistFilterMode}
+              setWatchlistFilterMode={setWatchlistFilterMode}
               setWatchlistFilters={setWatchlistFilters}
               watchlistRuntimeFilter={watchlistRuntimeFilter}
               setWatchlistRuntimeFilter={setWatchlistRuntimeFilter}

@@ -68,6 +68,29 @@
   text-align: center;
 }
 
+.lb-filter-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 10px;
+}
+
+.lb-filter-mode-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  background-color: transparent;
+  border: 1px solid #456;
+  border-radius: 999px;
+  color: #9ab;
+  cursor: pointer;
+}
+
+.lb-filter-mode-btn.is-active {
+  color: #14181c;
+  background-color: #00e054;
+  border-color: #00e054;
+}
+
 .lb-filter-clear {
   margin-left: 8px;
   padding: 2px 8px;
