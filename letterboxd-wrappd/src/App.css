@@ -350,9 +350,9 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 50% 15%;
+  object-position: 50% 12%;
   display: block;
-  transform: translateY(-16px);
+  transform: translateY(-19px);
 }
 
 .lb-taste-avatar.lb-taste-country {
