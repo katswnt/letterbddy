@@ -2851,18 +2851,6 @@ function App() {
       const writerNames = new Set(writers.map((w: any) => w.name));
       return directors.filter((d: any) => writerNames.has(d.name));
     });
-    const nonAmericanDirectors = buildPeopleStats(
-      tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
-      (movie) => movie.tmdb_data?.directors || []
-    );
-    const nonAmericanFemaleWriters = buildPeopleStats(
-      tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
-      getFemaleWriters
-    );
-    const internationalWriters = buildPeopleStats(
-      tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
-      (movie) => movie.tmdb_data?.writers || []
-    );
     const nonEnglishDirectors = buildPeopleStats(
       tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_english === false),
       (movie) => movie.tmdb_data?.directors || []
@@ -2917,10 +2905,7 @@ function App() {
       { key: "womenDirectors", label: "Women Directors", type: "person", items: rankPeople(femaleDirectors, 2) },
       { key: "womenWriters", label: "Women Writers", type: "person", items: rankPeople(femaleWriters, 2) },
       { key: "womenDirectorsWriters", label: "Women Who Direct + Write", type: "person", items: rankPeople(womenDirectorsWriters, 2) },
-      { key: "internationalWriters", label: "International Writers", type: "person", items: rankPeople(internationalWriters, 2) },
       { key: "nonEnglishDirectors", label: "Non-English Directors", type: "person", items: rankPeople(nonEnglishDirectors, 2) },
-      { key: "nonAmericanDirectors", label: "Non-American Directors", type: "person", items: rankPeople(nonAmericanDirectors, 2) },
-      { key: "nonAmericanWomenWriters", label: "Non-American Women Writers", type: "person", items: rankPeople(nonAmericanFemaleWriters, 2) },
       { key: "topCountries", label: "Top Countries", type: "country", items: rankCountries(countries) },
       { key: "newDiscoveries", label: "New Discoveries", type: "person", items: rankPeople(newDiscoveries, 2) },
       { key: "badHabit", label: "Bad Habit Detector", type: "person", items: badHabit },
@@ -2985,8 +2970,8 @@ function App() {
   const tasteExpandedPersonMovies = useMemo(() => {
     if (!activeTasteCategory || activeTasteCategory.type !== "person") return new Map<string, Array<{ title: string; year: string; rating: string }>>();
     const map = new Map<string, Array<{ title: string; year: string; rating: string }>>();
-    const wantsWriter = ["womenWriters", "internationalWriters", "nonAmericanWomenWriters"].includes(activeTasteCategory.key);
-    const wantsDirector = ["womenDirectors", "nonEnglishDirectors", "nonAmericanDirectors", "newDiscoveries", "badHabit", "womenDirectorsWriters"].includes(activeTasteCategory.key);
+    const wantsWriter = ["womenWriters"].includes(activeTasteCategory.key);
+    const wantsDirector = ["womenDirectors", "nonEnglishDirectors", "newDiscoveries", "badHabit", "womenDirectorsWriters"].includes(activeTasteCategory.key);
     for (const entry of tasteFilmEntries) {
       const tmdb = entry.movie.tmdb_data || {};
       const title = tmdb.title || "Untitled";
