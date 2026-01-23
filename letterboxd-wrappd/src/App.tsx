@@ -1,4 +1,5 @@
 import {
+  Fragment,
   memo,
   useCallback,
   useEffect,
@@ -407,6 +408,34 @@ const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, cl
 });
 
 const HEAT_COLORS = ["#1c232a", "#21462c", "#2f6f3a", "#3fbf5a", "#00e054"];
+const TMDB_PROFILE_BASE = "https://image.tmdb.org/t/p/w185";
+const TASTE_DIVERSIFY_NOTES = [
+  "Your watchlist has a type. It’s time to broaden the dating pool.",
+  "The data says: go watch something outside your comfort zone.",
+  "We ran out of people. The algorithm craves variety.",
+  "Your stats are whispering: try new voices.",
+  "We can’t compute this taste DNA. It needs more DNA.",
+  "No top five yet—your watchlist is playing favorites.",
+  "The charts want range. Give them range.",
+  "Variety is the spice. Your stats are a little bland.",
+  "Not enough data yet. Your future self is begging for a broader watchlist.",
+  "We couldn’t fill this one. Your algorithmic destiny demands variety.",
+  "This category is empty. The universe says: diversify your movies.",
+];
+
+type TastePerson = {
+  name: string;
+  count: number;
+  avgRating: number;
+  profilePath?: string | null;
+};
+
+type TasteCountry = {
+  code: string;
+  name: string;
+  count: number;
+  avgRating: number;
+};
 
 type HeatCell = {
   date: Date;
@@ -1376,6 +1405,9 @@ function App() {
   const [watchlistSortState, setWatchlistSortState] = useState<WatchlistSortState>("default");
   const [watchlistRuntimeFilter, setWatchlistRuntimeFilter] = useState<RuntimeFilter>("all");
   const [watchlistContinentFilter, setWatchlistContinentFilter] = useState<string | null>(null);
+  const [tasteSortMode, setTasteSortMode] = useState<"rated" | "watched">("rated");
+  const [tasteCategory, setTasteCategory] = useState<string>("womenDirectors");
+  const [tasteExpandedPerson, setTasteExpandedPerson] = useState<string | null>(null);
   const [watchlistUseVercelApi, setWatchlistUseVercelApi] = useState<boolean>(() =>
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
@@ -2106,6 +2138,16 @@ function App() {
     };
   }, [dateFilter, heatmapYears]);
 
+  useEffect(() => {
+    setTasteExpandedPerson(null);
+  }, [tasteCategory]);
+
+  useEffect(() => {
+    if (tasteSortMode === "watched" && tasteCategory === "badHabit") {
+      setTasteCategory("womenDirectors");
+    }
+  }, [tasteSortMode, tasteCategory]);
+
 
   // Filter rows based on selected time range
   const filteredRows = useMemo(
@@ -2670,6 +2712,302 @@ function App() {
     watchlistFilterLabels,
     joinLabels,
   ]);
+
+  const tasteFilmEntries = useMemo(() => {
+    if (!movieLookup) return [];
+    const map = new Map<string, { movie: any; rating: number; dateKey: string }>();
+    for (const row of filteredRows) {
+      const uriRaw = (row["Letterboxd URI"] || "").trim();
+      if (!uriRaw) continue;
+      const canon = canonicalizeUri(uriRaw);
+      const movie = movieLookup[uriRaw] || movieLookup[canon];
+      if (!movie?.tmdb_data) continue;
+      let rating = parseFloat(row.Rating);
+      if (Number.isNaN(rating)) {
+        const tmdbRating = movie.tmdb_data?.vote_average;
+        if (typeof tmdbRating === "number" && !Number.isNaN(tmdbRating)) {
+          rating = Math.round((tmdbRating / 2) * 10) / 10;
+        } else {
+          continue;
+        }
+      }
+      const dateKey = (getWatchedDate(row) || "").slice(0, 10);
+      const mapKey = movie.tmdb_movie_id ? `tmdb:${movie.tmdb_movie_id}` : (movie.letterboxd_url || canon || uriRaw);
+      const existing = map.get(mapKey);
+      if (!existing || (dateKey && dateKey > existing.dateKey)) {
+        map.set(mapKey, { movie, rating, dateKey });
+      }
+    }
+    return Array.from(map.values());
+  }, [filteredRows, movieLookup, canonicalizeUri]);
+
+  const personFirstDate = useMemo(() => {
+    if (!movieLookup) return new Map<string, number>();
+    const first = new Map<string, number>();
+    for (const row of rows) {
+      const uriRaw = (row["Letterboxd URI"] || "").trim();
+      if (!uriRaw) continue;
+      const canon = canonicalizeUri(uriRaw);
+      const movie = movieLookup[uriRaw] || movieLookup[canon];
+      if (!movie?.tmdb_data) continue;
+      const watched = getWatchedDate(row);
+      if (!watched || watched.length < 4) continue;
+      const time = new Date(watched).getTime();
+      if (Number.isNaN(time)) continue;
+      const directors = movie.tmdb_data?.directors || [];
+      for (const director of directors) {
+        if (!director?.name) continue;
+        const key = director.name;
+        const existing = first.get(key);
+        if (!existing || time < existing) first.set(key, time);
+      }
+    }
+    return first;
+  }, [rows, movieLookup, canonicalizeUri]);
+
+  const diversifyNoteRef = useRef<{ lastIndex: number; map: Record<string, string> }>({ lastIndex: -1, map: {} });
+  const getDiversifyNote = useCallback((key: string) => {
+    if (diversifyNoteRef.current.map[key]) return diversifyNoteRef.current.map[key];
+    let nextIndex = (diversifyNoteRef.current.lastIndex + 1) % TASTE_DIVERSIFY_NOTES.length;
+    diversifyNoteRef.current.lastIndex = nextIndex;
+    const note = TASTE_DIVERSIFY_NOTES[nextIndex];
+    diversifyNoteRef.current.map[key] = note;
+    return note;
+  }, []);
+
+  const buildPeopleStats = useCallback((entries: Array<{ movie: any; rating: number }>, getPeople: (movie: any) => Array<any>) => {
+    const stats = new Map<string, { name: string; count: number; ratingSum: number; profilePath?: string | null }>();
+    for (const entry of entries) {
+      const people = getPeople(entry.movie) || [];
+      const seen = new Set<string>();
+      for (const person of people) {
+        const name = person?.name;
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        const current = stats.get(name) || { name, count: 0, ratingSum: 0, profilePath: null };
+        current.count += 1;
+        current.ratingSum += entry.rating;
+        if (!current.profilePath && person?.profile_path) current.profilePath = person.profile_path;
+        stats.set(name, current);
+      }
+    }
+    return Array.from(stats.values()).map((p) => ({
+      name: p.name,
+      count: p.count,
+      avgRating: p.count ? p.ratingSum / p.count : 0,
+      profilePath: p.profilePath,
+    }));
+  }, []);
+
+  const rankPeople = useCallback((items: TastePerson[], minCount: number) => {
+    const filtered = items.filter((p) => p.count >= minCount);
+    return filtered.sort((a, b) => {
+      if (tasteSortMode === "watched") {
+        if (b.count !== a.count) return b.count - a.count;
+        return b.avgRating - a.avgRating;
+      }
+      if (b.avgRating !== a.avgRating) return b.avgRating - a.avgRating;
+      return b.count - a.count;
+    }).slice(0, 5);
+  }, [tasteSortMode]);
+
+  const rankCountries = useCallback((items: TasteCountry[]) => {
+    const filtered = tasteSortMode === "rated" ? items.filter((c) => c.count >= 2) : items;
+    return filtered.sort((a, b) => {
+      if (tasteSortMode === "watched") {
+        if (b.count !== a.count) return b.count - a.count;
+        return b.avgRating - a.avgRating;
+      }
+      if (b.avgRating !== a.avgRating) return b.avgRating - a.avgRating;
+      return b.count - a.count;
+    }).slice(0, 5);
+  }, [tasteSortMode]);
+
+  const tasteData = useMemo(() => {
+    const femaleDirectors = buildPeopleStats(tasteFilmEntries, (movie) =>
+      (movie.tmdb_data?.directors || []).filter((d: any) => d.gender === 1)
+    );
+    const femaleWriters = buildPeopleStats(tasteFilmEntries, (movie) =>
+      (movie.tmdb_data?.writers || []).filter((w: any) => w.gender === 1)
+    );
+    const womenDirectorsWriters = buildPeopleStats(tasteFilmEntries, (movie) => {
+      const directors = movie.tmdb_data?.directors || [];
+      const writers = movie.tmdb_data?.writers || [];
+      const writerNames = new Set(writers.map((w: any) => w.name));
+      return directors.filter((d: any) => d.gender === 1 && writerNames.has(d.name));
+    });
+    const nonAmericanDirectors = buildPeopleStats(
+      tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
+      (movie) => movie.tmdb_data?.directors || []
+    );
+    const nonAmericanFemaleDirectors = buildPeopleStats(
+      tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
+      (movie) => (movie.tmdb_data?.directors || []).filter((d: any) => d.gender === 1)
+    );
+    const nonAmericanFemaleWriters = buildPeopleStats(
+      tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
+      (movie) => (movie.tmdb_data?.writers || []).filter((w: any) => w.gender === 1)
+    );
+    const internationalWriters = buildPeopleStats(
+      tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_american === false),
+      (movie) => movie.tmdb_data?.writers || []
+    );
+    const nonEnglishDirectors = buildPeopleStats(
+      tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_english === false),
+      (movie) => movie.tmdb_data?.directors || []
+    );
+
+    const countryStatsMap = new Map<string, { code: string; name: string; count: number; ratingSum: number }>();
+    for (const entry of tasteFilmEntries) {
+      const codes = entry.movie.tmdb_data?.production_countries?.codes || [];
+      const names = entry.movie.tmdb_data?.production_countries?.names || [];
+      const seen = new Set<string>();
+      codes.forEach((code: string, idx: number) => {
+        if (!code || seen.has(code)) return;
+        seen.add(code);
+        const name = names[idx] || getCountryName(code);
+        const current = countryStatsMap.get(code) || { code, name, count: 0, ratingSum: 0 };
+        current.count += 1;
+        current.ratingSum += entry.rating;
+        countryStatsMap.set(code, current);
+      });
+    }
+    const countries = Array.from(countryStatsMap.values()).map((c) => ({
+      code: c.code,
+      name: c.name,
+      count: c.count,
+      avgRating: c.count ? c.ratingSum / c.count : 0,
+    }));
+
+    const now = new Date();
+    const cutoffTime = now.getTime() - 365 * 24 * 60 * 60 * 1000;
+    const newDiscoveryEntries = tasteFilmEntries.filter((entry) => {
+      if (!entry.dateKey) return false;
+      const watchedTime = new Date(entry.dateKey).getTime();
+      if (Number.isNaN(watchedTime) || watchedTime < cutoffTime) return false;
+      const directors = entry.movie.tmdb_data?.directors || [];
+      return directors.some((d: any) => {
+        const firstSeen = personFirstDate.get(d.name);
+        return typeof firstSeen === "number" && firstSeen >= cutoffTime;
+      });
+    });
+    const newDiscoveries = buildPeopleStats(newDiscoveryEntries, (movie) => movie.tmdb_data?.directors || []);
+
+    const allDirectors = buildPeopleStats(tasteFilmEntries, (movie) => movie.tmdb_data?.directors || []);
+    const badHabit = allDirectors
+      .filter((p) => p.count >= 3)
+      .sort((a, b) => {
+        if (a.avgRating !== b.avgRating) return a.avgRating - b.avgRating;
+        return b.count - a.count;
+      })
+      .slice(0, 5);
+
+    return [
+      { key: "womenDirectors", label: "Women Directors", type: "person", items: rankPeople(femaleDirectors, 2) },
+      { key: "womenWriters", label: "Women Writers", type: "person", items: rankPeople(femaleWriters, 2) },
+      { key: "womenDirectorsWriters", label: "Women Who Direct + Write", type: "person", items: rankPeople(womenDirectorsWriters, 2) },
+      { key: "internationalWriters", label: "International Writers", type: "person", items: rankPeople(internationalWriters, 2) },
+      { key: "nonEnglishDirectors", label: "Non-English Directors", type: "person", items: rankPeople(nonEnglishDirectors, 2) },
+      { key: "nonAmericanDirectors", label: "Non-American Directors", type: "person", items: rankPeople(nonAmericanDirectors, 2) },
+      { key: "nonAmericanWomenDirectors", label: "Non-American Women Directors", type: "person", items: rankPeople(nonAmericanFemaleDirectors, 2) },
+      { key: "nonAmericanWomenWriters", label: "Non-American Women Writers", type: "person", items: rankPeople(nonAmericanFemaleWriters, 2) },
+      { key: "topCountries", label: "Top Countries", type: "country", items: rankCountries(countries) },
+      { key: "newDiscoveries", label: "New Discoveries", type: "person", items: rankPeople(newDiscoveries, 2) },
+      { key: "badHabit", label: "Bad Habit Detector", type: "person", items: badHabit },
+    ];
+  }, [
+    tasteFilmEntries,
+    buildPeopleStats,
+    rankPeople,
+    rankCountries,
+    personFirstDate,
+    tasteSortMode,
+  ]);
+
+  const tasteVisibleCategories = useMemo(() => {
+    if (tasteSortMode === "watched") {
+      return tasteData.filter((c) => c.key !== "badHabit");
+    }
+    return tasteData;
+  }, [tasteData, tasteSortMode]);
+
+  const activeTasteCategory = tasteVisibleCategories.find((c) => c.key === tasteCategory) || tasteVisibleCategories[0];
+  const diversifyNote = useMemo(() => {
+    if (!activeTasteCategory) return null;
+    const items = activeTasteCategory.items as any[];
+    if (!items || items.length >= 5) return null;
+    return getDiversifyNote(activeTasteCategory.key);
+  }, [activeTasteCategory, getDiversifyNote]);
+
+  const tasteExplainers = useMemo(() => ({
+    newDiscoveries: "Directors you watched for the first time this year.",
+    badHabit: "Creators you watch a lot but rate the lowest.",
+  }), []);
+
+  const tasteCategoryHelper = useMemo(() => {
+    if (!activeTasteCategory) return "";
+    if (activeTasteCategory.key === "newDiscoveries") return tasteExplainers.newDiscoveries;
+    if (activeTasteCategory.key === "badHabit") return tasteExplainers.badHabit;
+    return "";
+  }, [activeTasteCategory, tasteExplainers]);
+
+  const tasteCriteriaLine = useMemo(() => {
+    if (!activeTasteCategory) return "";
+    if (activeTasteCategory.type === "country") {
+      const minNote = tasteSortMode === "rated" ? " (min 2 films)" : "";
+      const ratingNote = !isDiaryFormat ? " (ratings from TMDb)" : "";
+      return `Top 5 by ${tasteSortMode === "rated" ? "highest average rating" : "most watched"}${minNote}${ratingNote}.`;
+    }
+    if (activeTasteCategory.key === "newDiscoveries") {
+      const ratingNote = !isDiaryFormat ? " (ratings from TMDb)" : "";
+      return `Directors first watched in the last 365 days with 2+ films, ranked by ${tasteSortMode === "rated" ? "highest average rating" : "most watched"}${ratingNote}.`;
+    }
+    if (activeTasteCategory.key === "badHabit") {
+      const ratingNote = !isDiaryFormat ? " (ratings from TMDb)" : "";
+      return `Directors with 3+ films, sorted by lowest average rating${ratingNote}.`;
+    }
+    const ratingNote = !isDiaryFormat ? " (ratings from TMDb)" : "";
+    return `Includes people with 2+ films, ranked by ${tasteSortMode === "rated" ? "highest average rating" : "most watched"}${ratingNote}.`;
+  }, [activeTasteCategory, tasteSortMode, isDiaryFormat]);
+
+  const tasteExpandedPersonMovies = useMemo(() => {
+    if (!activeTasteCategory || activeTasteCategory.type !== "person") return new Map<string, Array<{ title: string; year: string; rating: string }>>();
+    const map = new Map<string, Array<{ title: string; year: string; rating: string }>>();
+    const wantsWriter = ["womenWriters", "internationalWriters", "nonAmericanWomenWriters"].includes(activeTasteCategory.key);
+    const wantsDirector = ["womenDirectors", "nonEnglishDirectors", "nonAmericanDirectors", "nonAmericanWomenDirectors", "newDiscoveries", "badHabit", "womenDirectorsWriters"].includes(activeTasteCategory.key);
+    for (const entry of tasteFilmEntries) {
+      const tmdb = entry.movie.tmdb_data || {};
+      const title = tmdb.title || "Untitled";
+      const year = tmdb.release_date?.slice(0, 4) || "";
+      const rating = entry.rating.toFixed(1);
+      const directors = tmdb.directors || [];
+      const writers = tmdb.writers || [];
+      const names = new Set<string>();
+      if (wantsDirector) directors.forEach((d: any) => d?.name && names.add(d.name));
+      if (wantsWriter) writers.forEach((w: any) => w?.name && names.add(w.name));
+      if (activeTasteCategory.key === "womenDirectorsWriters") {
+        const writerNames = new Set(writers.map((w: any) => w.name));
+        names.clear();
+        directors.filter((d: any) => d?.name && writerNames.has(d.name)).forEach((d: any) => names.add(d.name));
+      }
+      if (activeTasteCategory.key === "badHabit" || activeTasteCategory.key === "newDiscoveries") {
+        names.clear();
+        directors.forEach((d: any) => d?.name && names.add(d.name));
+      }
+      for (const name of names) {
+        const list = map.get(name) || [];
+        list.push({ title, year, rating });
+        map.set(name, list);
+      }
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => {
+        if (b.rating !== a.rating) return parseFloat(b.rating) - parseFloat(a.rating);
+        return (a.title || "").localeCompare(b.title || "");
+      });
+    }
+    return map;
+  }, [activeTasteCategory, tasteFilmEntries]);
 
   return (
     <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
@@ -3761,6 +4099,115 @@ function App() {
               );
             })()}
           </section>
+        )}
+
+        {moviesWithDataBase.length > 0 && activeTasteCategory && (
+          <section className="lb-taste-dna">
+            <div className="lb-taste-header">
+              <div>
+                <h2>Taste DNA</h2>
+                <p>Top creators and trends in your diary</p>
+              </div>
+              <div className="lb-taste-toggle">
+                <button
+                  type="button"
+                  className={`lb-taste-toggle-btn ${tasteSortMode === "rated" ? "is-active" : ""}`}
+                  onClick={() => setTasteSortMode("rated")}
+                >
+                  Highest rated
+                </button>
+                <button
+                  type="button"
+                  className={`lb-taste-toggle-btn ${tasteSortMode === "watched" ? "is-active" : ""}`}
+                  onClick={() => setTasteSortMode("watched")}
+                >
+                  Most watched
+                </button>
+              </div>
+            </div>
+            <div className="lb-taste-tabs">
+              {tasteVisibleCategories.map((cat) => (
+                <button
+                  key={cat.key}
+                  type="button"
+                  className={`lb-taste-tab ${tasteCategory === cat.key ? "is-active" : ""}`}
+                  onClick={() => setTasteCategory(cat.key)}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+            <div className="lb-taste-body">
+              {tasteCategoryHelper && (
+                <div className="lb-taste-subnote">{tasteCategoryHelper}</div>
+              )}
+              {activeTasteCategory.type === "person" ? (
+                <div className="lb-taste-grid">
+                  {(activeTasteCategory.items as TastePerson[]).map((person) => (
+                    <button
+                      key={person.name}
+                      type="button"
+                      className="lb-taste-card"
+                      onClick={() => {
+                        setTasteExpandedPerson((prev) => (prev === person.name ? null : person.name));
+                      }}
+                    >
+                      <div className="lb-taste-avatar">
+                        {person.profilePath ? (
+                          <img
+                            src={`${TMDB_PROFILE_BASE}${person.profilePath}`}
+                            alt={person.name}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span>{person.name.split(" ").slice(0, 2).map((p) => p[0]).join("").toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div className="lb-taste-name">{person.name}</div>
+                      <div className="lb-taste-meta">★{person.avgRating.toFixed(1)} · {person.count} films</div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="lb-taste-grid">
+                  {(activeTasteCategory.items as TasteCountry[]).map((country) => (
+                    <div key={country.code} className="lb-taste-card">
+                      <div className="lb-taste-avatar lb-taste-country">
+                        <span>{country.code}</span>
+                      </div>
+                      <div className="lb-taste-name">{country.name}</div>
+                      <div className="lb-taste-meta">★{country.avgRating.toFixed(1)} · {country.count} films</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {tasteExpandedPerson && tasteExpandedPersonMovies.get(tasteExpandedPerson) && (
+                <div className="lb-taste-detail lb-taste-table">
+                  <div className="lb-taste-detail-title">{tasteExpandedPerson} — films you've watched</div>
+                  <div className="lb-taste-detail-head">
+                    <div>Title</div>
+                    <div>Year</div>
+                    <div>Rating</div>
+                  </div>
+                  <div className="lb-taste-detail-body">
+                    {(tasteExpandedPersonMovies.get(tasteExpandedPerson) || []).map((movie, idx) => (
+                      <div key={`${movie.title}-${idx}`} className={`lb-taste-detail-row ${idx % 2 === 1 ? "is-alt" : ""}`}>
+                        <div className="lb-taste-detail-cell">{movie.title}</div>
+                        <div className="lb-taste-detail-cell lb-taste-center">{movie.year || "—"}</div>
+                        <div className="lb-taste-detail-cell lb-taste-center">★{movie.rating}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {diversifyNote && (
+                <div className="lb-taste-note">{diversifyNote}</div>
+              )}
+            </div>
+          </section>
+        )}
+        {moviesWithDataBase.length > 0 && activeTasteCategory && (
+          <div className="lb-taste-criteria lb-taste-criteria-outside">{tasteCriteriaLine}</div>
         )}
 
         {/* World map by country/continent */}

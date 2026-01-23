@@ -591,12 +591,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               const crew = credits?.crew || [];
               const directors = crew
                 .filter((p: any) => p.job === 'Director')
-                .map((p: any) => ({ name: p.name, gender: p.gender }));
+                .map((p: any) => ({ name: p.name, gender: p.gender, profile_path: p.profile_path }));
 
               const writerJobs = ['Writer', 'Screenplay', 'Story', 'Characters'];
               const writers = crew
                 .filter((p: any) => writerJobs.includes(p.job))
-                .map((p: any) => ({ name: p.name, job: p.job, gender: p.gender }));
+                .map((p: any) => ({ name: p.name, job: p.job, gender: p.gender, profile_path: p.profile_path }));
 
               const directedByWoman = directors.some((d: any) => d.gender === FEMALE_GENDER);
               const writtenByWoman = writers.some((w: any) => w.gender === FEMALE_GENDER);
