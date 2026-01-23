@@ -418,6 +418,13 @@ const buildYearHeatmap = (year: number, counts?: Map<string, number>) => {
   const isCurrentYear = today.getFullYear() === year;
   const end = isCurrentYear ? new Date(today.getFullYear(), today.getMonth(), today.getDate()) : new Date(year, 11, 31);
 
+  const toLocalDateKey = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
   const startSunday = new Date(start);
   startSunday.setDate(start.getDate() - start.getDay());
 
@@ -433,7 +440,7 @@ const buildYearHeatmap = (year: number, counts?: Map<string, number>) => {
   while (current <= endSaturday) {
     const week: HeatCell[] = [];
     for (let i = 0; i < 7; i += 1) {
-      const dateKey = current.toISOString().slice(0, 10);
+      const dateKey = toLocalDateKey(current);
       const count = counts?.get(dateKey) || 0;
       if (count > maxCount) maxCount = count;
       week.push({
@@ -486,7 +493,7 @@ type HeatmapYearProps = {
   year: string;
   counts?: Map<string, number>;
   compact?: boolean;
-  onHoverCell?: (label: string, x: number, y: number) => void;
+  onHoverCell?: (label: string, dateKey: string, x: number, y: number) => void;
   onLeaveCell?: () => void;
 };
 
@@ -521,11 +528,11 @@ const HeatmapYear = memo(({ year, counts, compact = false, onHoverCell, onLeaveC
                   style={{ backgroundColor: cell.inYear ? getHeatColor(cell.count, maxCount) : "#151b20" }}
                   onMouseEnter={(event) => {
                     if (!onHoverCell) return;
-                    onHoverCell(formatHeatmapLabel(cell.date, cell.count), event.clientX, event.clientY);
+                    onHoverCell(formatHeatmapLabel(cell.date, cell.count), cell.dateKey, event.clientX, event.clientY);
                   }}
                   onMouseMove={(event) => {
                     if (!onHoverCell) return;
-                    onHoverCell(formatHeatmapLabel(cell.date, cell.count), event.clientX, event.clientY);
+                    onHoverCell(formatHeatmapLabel(cell.date, cell.count), cell.dateKey, event.clientX, event.clientY);
                   }}
                   onMouseLeave={() => {
                     if (!onLeaveCell) return;
@@ -841,19 +848,19 @@ const DiaryTable = memo(({
             <button className="lb-header-cell" title="Click to sort by year" onClick={() => toggleSort("year")}>
               Year{getSortIndicator("year")}
             </button>
-            <button className={`lb-header-cell lb-header-flag ${diaryFilters.directedByWoman ? "lb-header-active" : ""}`} title="Directed by Woman (click to filter)" onClick={() => toggleFilter("directedByWoman")}>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.directedByWoman ? "lb-header-active" : ""}`} onClick={() => toggleFilter("directedByWoman")}>
               Dir♀
             </button>
-            <button className={`lb-header-cell lb-header-flag ${diaryFilters.writtenByWoman ? "lb-header-active" : ""}`} title="Written by Woman (click to filter)" onClick={() => toggleFilter("writtenByWoman")}>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.writtenByWoman ? "lb-header-active" : ""}`} onClick={() => toggleFilter("writtenByWoman")}>
               Writ♀
             </button>
-            <button className={`lb-header-cell lb-header-flag ${diaryFilters.notAmerican ? "lb-header-active" : ""}`} title="Not American (click to filter)" onClick={() => toggleFilter("notAmerican")}>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.notAmerican ? "lb-header-active" : ""}`} onClick={() => toggleFilter("notAmerican")}>
               !US
             </button>
-            <button className={`lb-header-cell lb-header-flag ${diaryFilters.notEnglish ? "lb-header-active" : ""}`} title="Not in English (click to filter)" onClick={() => toggleFilter("notEnglish")}>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.notEnglish ? "lb-header-active" : ""}`} onClick={() => toggleFilter("notEnglish")}>
               !EN
             </button>
-            <button className={`lb-header-cell lb-header-flag ${diaryFilters.inCriterion ? "lb-header-active" : ""}`} title="Criterion Collection (click to filter)" onClick={() => toggleFilter("inCriterion")}>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.inCriterion ? "lb-header-active" : ""}`} onClick={() => toggleFilter("inCriterion")}>
               CC
             </button>
           </div>
@@ -884,6 +891,9 @@ const DiaryTable = memo(({
           className="lb-list"
           minWidth={650}
         />
+        <div className="lb-table-key">
+          Dir♀ = Directed by women · Writ♀ = Written by women · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
+        </div>
         </div>
       </div>
     </div>
@@ -1192,19 +1202,19 @@ const WatchlistTable = memo(({
                 <span className="lb-header-sub">{watchlistContinentFilter ? getContinentLabel(watchlistContinentFilter) : "All"}</span>
               </div>
             </button>
-            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.directedByWoman ? "lb-header-active" : ""}`} title="Directed by Woman (click to filter)" onClick={() => toggleFilter("directedByWoman")}>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.directedByWoman ? "lb-header-active" : ""}`} onClick={() => toggleFilter("directedByWoman")}>
               Dir♀
             </button>
-            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.writtenByWoman ? "lb-header-active" : ""}`} title="Written by Woman (click to filter)" onClick={() => toggleFilter("writtenByWoman")}>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.writtenByWoman ? "lb-header-active" : ""}`} onClick={() => toggleFilter("writtenByWoman")}>
               Writ♀
             </button>
-            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notAmerican ? "lb-header-active" : ""}`} title="Not American (click to filter)" onClick={() => toggleFilter("notAmerican")}>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notAmerican ? "lb-header-active" : ""}`} onClick={() => toggleFilter("notAmerican")}>
               !US
             </button>
-            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notEnglish ? "lb-header-active" : ""}`} title="Not in English (click to filter)" onClick={() => toggleFilter("notEnglish")}>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notEnglish ? "lb-header-active" : ""}`} onClick={() => toggleFilter("notEnglish")}>
               !EN
             </button>
-            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.inCriterion ? "lb-header-active" : ""}`} title="Criterion Collection (click to filter)" onClick={() => toggleFilter("inCriterion")}>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.inCriterion ? "lb-header-active" : ""}`} onClick={() => toggleFilter("inCriterion")}>
               CC
             </button>
           </div>
@@ -1239,6 +1249,9 @@ const WatchlistTable = memo(({
           className="lb-list"
           minWidth={840}
         />
+        <div className="lb-table-key">
+          Dir♀ = Directed by women · Writ♀ = Written by women · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
+        </div>
         </div>
       </div>
     </div>
@@ -1334,7 +1347,7 @@ function App() {
   const [geoHover, setGeoHover] = useState<{ label: string; count: number; x: number; y: number } | null>(null);
   const mapWrapperRef = useRef<HTMLDivElement | null>(null);
   const heatmapScrollRef = useRef<HTMLDivElement | null>(null);
-  const [heatmapTooltip, setHeatmapTooltip] = useState<{ text: string; x: number; y: number; align: "left" | "center" | "right" } | null>(null);
+  const [heatmapTooltip, setHeatmapTooltip] = useState<{ text: string; x: number; y: number; align: "left" | "center" | "right"; movies: Array<{ name: string; year: string }> } | null>(null);
   const diaryInputRef = useRef<HTMLInputElement | null>(null);
   const reviewsInputRef = useRef<HTMLInputElement | null>(null);
   const watchlistInputRef = useRef<HTMLInputElement | null>(null);
@@ -2030,6 +2043,22 @@ function App() {
     return byYear;
   }, [rows]);
 
+  const diaryDateMovies = useMemo(() => {
+    const map = new Map<string, Array<{ name: string; year: string }>>();
+    for (const row of rows) {
+      const raw = getWatchedDate(row);
+      if (!raw) continue;
+      const dateKey = raw.trim().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
+      const name = (row.Name || (row as any).Title || "").trim();
+      if (!name) continue;
+      const year = (row.Year || (row as any).Year || "").trim();
+      if (!map.has(dateKey)) map.set(dateKey, []);
+      map.get(dateKey)!.push({ name, year });
+    }
+    return map;
+  }, [rows]);
+
   // Filter rows based on selected time range
   const filteredRows = useMemo(
     () =>
@@ -2394,9 +2423,6 @@ function App() {
             Letterbddy
           </h1>
           <div style={{ fontSize: "12px", color: "#9ab", marginBottom: "10px" }}>by Kat Swint</div>
-          <p style={{ fontSize: "14px", color: "#9ab" }}>
-            Upload your diary.csv to get started
-          </p>
         </header>
 
         <input
@@ -2839,11 +2865,12 @@ function App() {
                       year={year}
                       counts={diaryDateCounts.get(year)}
                       compact
-                      onHoverCell={(text, x, y) => {
+                      onHoverCell={(text, dateKey, x, y) => {
                         const edge = 140;
                         const align =
                           x < edge ? "left" : x > window.innerWidth - edge ? "right" : "center";
-                        setHeatmapTooltip({ text, x, y, align });
+                        const movies = diaryDateMovies.get(dateKey) || [];
+                        setHeatmapTooltip({ text, x, y, align, movies });
                       }}
                       onLeaveCell={() => setHeatmapTooltip(null)}
                     />
@@ -2862,11 +2889,12 @@ function App() {
                 <HeatmapYear
                   year={dateFilter}
                   counts={diaryDateCounts.get(dateFilter)}
-                  onHoverCell={(text, x, y) => {
+                  onHoverCell={(text, dateKey, x, y) => {
                     const edge = 140;
                     const align =
                       x < edge ? "left" : x > window.innerWidth - edge ? "right" : "center";
-                    setHeatmapTooltip({ text, x, y, align });
+                    const movies = diaryDateMovies.get(dateKey) || [];
+                    setHeatmapTooltip({ text, x, y, align, movies });
                   }}
                   onLeaveCell={() => setHeatmapTooltip(null)}
                 />
@@ -2890,16 +2918,28 @@ function App() {
               background: "rgba(20, 24, 28, 0.95)",
               color: "#e2e8f0",
               border: "1px solid #345",
-              borderRadius: "4px",
-              padding: "4px 6px",
+              borderRadius: "6px",
+              padding: "8px 10px",
               fontSize: "11px",
               whiteSpace: "nowrap",
               boxShadow: "0 4px 10px rgba(0, 0, 0, 0.4)",
               pointerEvents: "none",
               zIndex: 1000,
+              maxWidth: "240px",
             }}
           >
-            {heatmapTooltip.text}
+            <div style={{ fontWeight: 600, marginBottom: heatmapTooltip.movies.length ? "6px" : 0 }}>
+              {heatmapTooltip.text}
+            </div>
+            {heatmapTooltip.movies.length > 0 && (
+              <ul style={{ margin: 0, paddingLeft: "16px", whiteSpace: "normal" }}>
+                {heatmapTooltip.movies.map((movie, idx) => (
+                  <li key={`${movie.name}-${idx}`}>
+                    {movie.name}{movie.year ? ` (${movie.year})` : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 
@@ -2960,13 +3000,13 @@ function App() {
                   />
                   <StatPieChart
                     primaryValue={notEnglish}
-                    primaryLabel="Non-English"
+                    primaryLabel="Not in English"
                     secondaryValue={totalMoviesWithData - notEnglish}
                     secondaryLabel="English"
                   />
                   <StatPieChart
                     primaryValue={inCriterion}
-                    primaryLabel="In Criterion"
+                    primaryLabel="In the Criterion Collection"
                     secondaryValue={totalMoviesWithData - inCriterion}
                     secondaryLabel="Not in Criterion"
                   />

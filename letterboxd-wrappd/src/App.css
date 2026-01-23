@@ -173,6 +173,15 @@
   border: none;
   width: 100%;
   justify-self: stretch;
+  position: relative;
+}
+
+
+.lb-table-key {
+  margin-top: 28px;
+  font-size: 11px;
+  color: #9ab;
+  text-align: center;
 }
 
 .lb-header-flag {
