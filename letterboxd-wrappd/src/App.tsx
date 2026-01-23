@@ -99,6 +99,9 @@ const getContinentCode = (countryCode: string | undefined | null) => {
 const getContinentLabel = (code: string) =>
   (continents as Record<string, string>)[code] || code;
 
+const getCountryName = (code: string, fallback?: string) =>
+  (countries as Record<string, any>)[code]?.name || fallback || code;
+
 const sortMoviesByColumn = <T extends Record<string, any>>(
   items: T[],
   column: WatchlistSortColumn,
@@ -493,15 +496,24 @@ type HeatmapYearProps = {
   year: string;
   counts?: Map<string, number>;
   compact?: boolean;
+  maxCountOverride?: number;
   onHoverCell?: (label: string, dateKey: string, x: number, y: number) => void;
   onLeaveCell?: () => void;
 };
 
-const HeatmapYear = memo(({ year, counts, compact = false, onHoverCell, onLeaveCell }: HeatmapYearProps) => {
+const HeatmapYear = memo(({
+  year,
+  counts,
+  compact = false,
+  maxCountOverride,
+  onHoverCell,
+  onLeaveCell,
+}: HeatmapYearProps) => {
   const { weeks, monthLabels, maxCount } = useMemo(
     () => buildYearHeatmap(parseInt(year, 10), counts),
     [year, counts]
   );
+  const colorMax = typeof maxCountOverride === "number" ? maxCountOverride : maxCount;
   const weeksCount = weeks.length;
 
   return (
@@ -525,7 +537,7 @@ const HeatmapYear = memo(({ year, counts, compact = false, onHoverCell, onLeaveC
                 <div
                   key={cell.dateKey}
                   className={`lb-heatmap-cell ${cell.inYear ? "" : "is-muted"}`}
-                  style={{ backgroundColor: cell.inYear ? getHeatColor(cell.count, maxCount) : "#151b20" }}
+                  style={{ backgroundColor: cell.inYear ? getHeatColor(cell.count, colorMax) : "#151b20" }}
                   onMouseEnter={(event) => {
                     if (!onHoverCell) return;
                     onHoverCell(formatHeatmapLabel(cell.date, cell.count), cell.dateKey, event.clientX, event.clientY);
@@ -2026,38 +2038,6 @@ function App() {
     };
   }, [dateFilter, heatmapYears]);
 
-  const diaryDateCounts = useMemo(() => {
-    const byYear = new Map<string, Map<string, number>>();
-    for (const row of rows) {
-      const raw = getWatchedDate(row);
-      if (!raw) continue;
-      const dateKey = raw.slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
-      const date = new Date(dateKey);
-      if (Number.isNaN(date.getTime())) continue;
-      const year = dateKey.slice(0, 4);
-      if (!byYear.has(year)) byYear.set(year, new Map());
-      const yearMap = byYear.get(year)!;
-      yearMap.set(dateKey, (yearMap.get(dateKey) || 0) + 1);
-    }
-    return byYear;
-  }, [rows]);
-
-  const diaryDateMovies = useMemo(() => {
-    const map = new Map<string, Array<{ name: string; year: string }>>();
-    for (const row of rows) {
-      const raw = getWatchedDate(row);
-      if (!raw) continue;
-      const dateKey = raw.trim().slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
-      const name = (row.Name || (row as any).Title || "").trim();
-      if (!name) continue;
-      const year = (row.Year || (row as any).Year || "").trim();
-      if (!map.has(dateKey)) map.set(dateKey, []);
-      map.get(dateKey)!.push({ name, year });
-    }
-    return map;
-  }, [rows]);
 
   // Filter rows based on selected time range
   const filteredRows = useMemo(
@@ -2208,6 +2188,85 @@ function App() {
     );
     return continentsForFilm.has(geoFilter.value);
   }, [geoFilter, getProductionCountryCodes]);
+
+  const filteredDiaryRowsForHeatmap = useMemo(() => {
+    if (rows.length === 0) return [];
+    const activeCriteria = Object.values(diaryFilters).some(Boolean);
+    const needsMovieData = activeCriteria || !!decadeFilter || !!geoFilter;
+    return rows.filter((row) => {
+      const ratingMatch = ratingFilter ? row.Rating === ratingFilter : true;
+      if (!ratingMatch) return false;
+      if (!needsMovieData) return true;
+      if (!movieLookup) return false;
+      const uri = (row["Letterboxd URI"] || "").trim();
+      const movie = movieLookup[uri] || movieLookup[canonicalizeUri(uri)];
+      if (!movie) return false;
+      const tmdb = movie.tmdb_data || {};
+      if (activeCriteria) {
+        if (diaryFilters.directedByWoman && tmdb.directed_by_woman !== true) return false;
+        if (diaryFilters.writtenByWoman && tmdb.written_by_woman !== true) return false;
+        if (diaryFilters.notAmerican && tmdb.is_american !== false) return false;
+        if (diaryFilters.notEnglish && tmdb.is_english !== false) return false;
+        if (diaryFilters.inCriterion && movie.is_in_criterion_collection !== true) return false;
+      }
+      if (decadeFilter && !matchesDecadeFilter(movie)) return false;
+      if (geoFilter && !matchesGeoFilter(movie)) return false;
+      return true;
+    });
+  }, [
+    rows,
+    diaryFilters,
+    ratingFilter,
+    movieLookup,
+    matchesDecadeFilter,
+    matchesGeoFilter,
+    canonicalizeUri,
+    decadeFilter,
+    geoFilter,
+  ]);
+
+  const diaryDateCounts = useMemo(() => {
+    const byYear = new Map<string, Map<string, number>>();
+    for (const row of filteredDiaryRowsForHeatmap) {
+      const raw = getWatchedDate(row);
+      if (!raw) continue;
+      const dateKey = raw.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
+      const date = new Date(dateKey);
+      if (Number.isNaN(date.getTime())) continue;
+      const year = dateKey.slice(0, 4);
+      if (!byYear.has(year)) byYear.set(year, new Map());
+      const yearMap = byYear.get(year)!;
+      yearMap.set(dateKey, (yearMap.get(dateKey) || 0) + 1);
+    }
+    return byYear;
+  }, [filteredDiaryRowsForHeatmap]);
+
+  const heatmapGlobalMax = useMemo(() => {
+    let max = 0;
+    for (const yearMap of diaryDateCounts.values()) {
+      for (const count of yearMap.values()) {
+        if (count > max) max = count;
+      }
+    }
+    return max;
+  }, [diaryDateCounts]);
+
+  const diaryDateMovies = useMemo(() => {
+    const map = new Map<string, Array<{ name: string; year: string }>>();
+    for (const row of filteredDiaryRowsForHeatmap) {
+      const raw = getWatchedDate(row);
+      if (!raw) continue;
+      const dateKey = raw.trim().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
+      const name = (row.Name || (row as any).Title || "").trim();
+      if (!name) continue;
+      const year = (row.Year || (row as any).Year || "").trim();
+      if (!map.has(dateKey)) map.set(dateKey, []);
+      map.get(dateKey)!.push({ name, year });
+    }
+    return map;
+  }, [filteredDiaryRowsForHeatmap]);
 
   // Match movieIndex entries to filtered diary entries using the alias lookup
   const matchedMovies = useMemo(() => {
@@ -2412,6 +2471,25 @@ function App() {
   const toggleDecadeFilter = (type: "decade" | "offset", label: string) => {
     setDecadeFilter((prev) => (prev && prev.type === type && prev.label === label ? null : { type, label }));
   };
+
+  const heatmapFilterLabels = useMemo(() => {
+    const labels: string[] = [];
+    if (diaryFilters.directedByWoman) labels.push("Directed by women");
+    if (diaryFilters.writtenByWoman) labels.push("Written by women");
+    if (diaryFilters.notAmerican) labels.push("Non-American");
+    if (diaryFilters.notEnglish) labels.push("Not in English");
+    if (diaryFilters.inCriterion) labels.push("In the Criterion Collection");
+    if (ratingFilter) labels.push(`${ratingFilter}★`);
+    if (decadeFilter) labels.push(decadeFilter.label);
+    if (geoFilter) {
+      labels.push(
+        geoFilter.type === "continent"
+          ? getContinentLabel(geoFilter.value)
+          : getCountryName(geoFilter.value)
+      );
+    }
+    return labels;
+  }, [diaryFilters, ratingFilter, decadeFilter, geoFilter]);
 
   return (
     <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
@@ -2856,6 +2934,11 @@ function App() {
               <h2>Watching Activity</h2>
               <p>Daily watches from your diary</p>
             </div>
+            {heatmapFilterLabels.length > 0 && (
+              <div className="lb-heatmap-filter-note">
+                Heatmap filtered by: {heatmapFilterLabels.join(" · ")}
+              </div>
+            )}
             {dateFilter === "all" ? (
               <>
                 <div ref={heatmapScrollRef} className="lb-heatmap-scroll">
@@ -2865,6 +2948,7 @@ function App() {
                       year={year}
                       counts={diaryDateCounts.get(year)}
                       compact
+                      maxCountOverride={heatmapGlobalMax}
                       onHoverCell={(text, dateKey, x, y) => {
                         const edge = 140;
                         const align =
@@ -2889,6 +2973,7 @@ function App() {
                 <HeatmapYear
                   year={dateFilter}
                   counts={diaryDateCounts.get(dateFilter)}
+                  maxCountOverride={heatmapGlobalMax}
                   onHoverCell={(text, dateKey, x, y) => {
                     const edge = 140;
                     const align =
@@ -3499,8 +3584,6 @@ function App() {
         {/* World map by country/continent */}
         {moviesWithDataBase.length > 0 && (() => {
           const worldMap = world as any;
-          const getCountryName = (code: string, fallback?: string) =>
-            (countries as Record<string, any>)[code]?.name || fallback || code;
 
           const getFillForLocation = (codeLower: string) => {
             const code = codeLower.toUpperCase();
