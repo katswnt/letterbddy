@@ -352,6 +352,7 @@
   object-fit: cover;
   object-position: 50% 35%;
   display: block;
+  transform: translateY(-6px);
 }
 
 .lb-taste-avatar.lb-taste-country {

@@ -409,7 +409,7 @@ const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, cl
 const HEAT_COLORS = ["#1c232a", "#21462c", "#2f6f3a", "#3fbf5a", "#00e054"];
 const TMDB_PROFILE_BASE = "https://image.tmdb.org/t/p/w185";
 const TASTE_DIVERSIFY_NOTES = [
-  "Your watchlist has a type. It’s time to broaden the dating pool.",
+  "Your watched list has a type. It's time to broaden the dating pool.",
   "The data says: go watch something outside your comfort zone.",
   "We ran out of people. The algorithm craves variety.",
   "Your stats are whispering: try new voices.",
