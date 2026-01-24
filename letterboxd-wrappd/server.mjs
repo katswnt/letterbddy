@@ -47,6 +47,8 @@ const upload = multer({ dest: os.tmpdir() });
 
 // Path to Criterion Collection list (hardcoded)
 const CRITERION_LIST_PATH = "/Users/kathrynswint/Downloads/criterion-collection.csv";
+// Path to Black directors list (repo file)
+const BLACK_DIRECTOR_LIST_PATH = path.join(process.cwd(), "api", "black-directors.csv");
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 const rssParser = new XMLParser({ ignoreAttributes: false });
@@ -142,6 +144,7 @@ app.post("/api/movies", upload.single("file"), async (req, res) => {
   const csvPath = req.file.path;
   // Use hardcoded Criterion Collection path if it exists
   let criterionListPath = null;
+  let blackDirectorListPath = null;
   try {
     await fs.access(CRITERION_LIST_PATH);
     criterionListPath = CRITERION_LIST_PATH;
@@ -149,6 +152,13 @@ app.post("/api/movies", upload.single("file"), async (req, res) => {
   } catch {
     // File doesn't exist, that's okay - just won't mark Criterion films
     console.log(`[Job ${jobId}] Criterion Collection list not found at ${CRITERION_LIST_PATH}, skipping`);
+  }
+  try {
+    await fs.access(BLACK_DIRECTOR_LIST_PATH);
+    blackDirectorListPath = BLACK_DIRECTOR_LIST_PATH;
+    console.log(`[Job ${jobId}] Using Black directors list: ${BLACK_DIRECTOR_LIST_PATH}`);
+  } catch {
+    console.log(`[Job ${jobId}] Black directors list not found at ${BLACK_DIRECTOR_LIST_PATH}, skipping`);
   }
   const outPath = path.join(os.tmpdir(), `movies-${jobId}.json`);
   const cwd = process.cwd();
@@ -184,6 +194,10 @@ app.post("/api/movies", upload.single("file"), async (req, res) => {
   if (criterionListPath) {
     args.push("--criterion-list");
     args.push(criterionListPath);
+  }
+  if (blackDirectorListPath) {
+    args.push("--black-director-list");
+    args.push(blackDirectorListPath);
   }
 
   const p = spawn("python3", args, { cwd });

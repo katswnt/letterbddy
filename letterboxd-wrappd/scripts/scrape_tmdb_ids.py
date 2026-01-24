@@ -331,6 +331,7 @@ def build_index(urls: Iterable[str]) -> Dict[str, dict]:
             "notes": "",
             "attrs": {},
             "is_in_criterion_collection": False,  # Will be set if list provided
+            "is_by_black_director": False,  # Will be set if list provided
         }
         for url in urls
     }
@@ -408,14 +409,14 @@ def load_letterboxd_list(list_csv_path: str, uri_column: Optional[str], *, timeo
     return resolved_urls
 
 
-def mark_list_membership(index: Dict[str, dict], list_urls: Set[str]) -> None:
+def mark_list_membership(index: Dict[str, dict], list_urls: Set[str], flag_key: str) -> None:
     """Mark movies in the index that are in the provided list.
     
     For Criterion Collection, this would mark is_in_criterion_collection=True.
     """
     for url, data in index.items():
         if url in list_urls:
-            data["is_in_criterion_collection"] = True
+            data[flag_key] = True
 
 
 def fetch_tmdb_movie_details(tmdb_id: int, *, api_key: str, timeout: int = 30) -> dict:
@@ -626,6 +627,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--enrich-tmdb", action="store_true", help="Scrape each film page to extract TMDb movie ID")
     p.add_argument("--tmdb-api-key", help="TMDb API key to fetch movie details (optional, requires --enrich-tmdb)")
     p.add_argument("--criterion-list", help="Path to CSV file containing Letterboxd list (e.g., Criterion Collection list export) to compare against")
+    p.add_argument("--black-director-list", help="Path to CSV file containing Letterboxd list of films by Black directors")
     p.add_argument("--timeout", type=int, default=30, help="HTTP timeout per request (seconds)")
     p.add_argument("--sleep", type=float, default=0.25, help="Delay between TMDb API requests (seconds). TMDb allows 40 req/10s.")
     p.add_argument(
@@ -656,8 +658,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("PHASE loading_criterion_list", file=sys.stderr, flush=True)
         list_urls = load_letterboxd_list(args.criterion_list, args.uri_column, timeout=args.timeout, cache=cache)
         print(f"Loaded {len(list_urls)} films from list", file=sys.stderr, flush=True)
-        mark_list_membership(index, list_urls)
+        mark_list_membership(index, list_urls, "is_in_criterion_collection")
         print(f"Marked {sum(1 for d in index.values() if d.get('is_in_criterion_collection'))} films as in the list", file=sys.stderr, flush=True)
+
+    if args.black_director_list:
+        print("PHASE loading_black_director_list", file=sys.stderr, flush=True)
+        list_urls = load_letterboxd_list(args.black_director_list, args.uri_column, timeout=args.timeout, cache=cache)
+        print(f"Loaded {len(list_urls)} films from list", file=sys.stderr, flush=True)
+        mark_list_membership(index, list_urls, "is_by_black_director")
+        print(f"Marked {sum(1 for d in index.values() if d.get('is_by_black_director'))} films as in the list", file=sys.stderr, flush=True)
 
     if args.enrich_tmdb:
         enrich_with_tmdb(index, timeout=args.timeout, sleep_s=args.sleep, api_key=args.tmdb_api_key, cache=cache)

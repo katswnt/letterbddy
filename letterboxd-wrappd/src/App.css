@@ -146,13 +146,13 @@
 }
 
 .lb-diary-grid {
-  grid-template-columns: minmax(200px, 1fr) 150px 60px 48px 48px 48px 48px 48px;
-  min-width: 650px;
+  grid-template-columns: minmax(200px, 1fr) 150px 60px 48px 48px 60px 48px 48px 48px;
+  min-width: 700px;
 }
 
 .lb-watchlist-grid {
-  grid-template-columns: minmax(200px, 1fr) 150px 60px 70px 120px 48px 48px 48px 48px 48px;
-  min-width: 840px;
+  grid-template-columns: minmax(200px, 1fr) 150px 60px 70px 120px 48px 48px 60px 48px 48px 48px;
+  min-width: 890px;
 }
 
 .lb-cell {
@@ -182,6 +182,12 @@
 .lb-cell-flag {
   text-align: center;
   padding: 8px 4px;
+}
+
+.lb-header-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .lb-link {
@@ -671,6 +677,67 @@
 .lb-list::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+.lb-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+}
+
+.lb-info-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid #3e4b57;
+  background: rgba(27, 32, 38, 0.8);
+  color: #9ab;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.lb-info-panel {
+  position: absolute;
+  top: 24px;
+  z-index: 20;
+  min-width: 260px;
+  max-width: 320px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(20, 24, 30, 0.98);
+  border: 1px solid #2f3b46;
+  color: #cfe5f5;
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.lb-info-panel a {
+  color: #89f2b2;
+  text-decoration: none;
+}
+
+.lb-info-panel a:hover {
+  text-decoration: underline;
+}
+
+.lb-info-left .lb-info-panel {
+  left: 0;
+}
+
+.lb-info-center .lb-info-panel {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.lb-info-right .lb-info-panel {
+  right: 0;
 }
 
 .lb-heatmap-section {

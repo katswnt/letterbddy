@@ -82,6 +82,7 @@ type WatchlistMovie = {
   continents: string[];
   directedByWoman: boolean;
   writtenByWoman: boolean;
+  byBlackDirector: boolean;
   notAmerican: boolean;
   notEnglish: boolean;
   inCriterion: boolean;
@@ -135,6 +136,66 @@ const mixHex = (a: string, b: string, t: number) => {
   const br = toRgb(b);
   const mix = (x: number, y: number) => Math.round(x + (y - x) * t);
   return `#${mix(ar.r, br.r).toString(16).padStart(2, "0")}${mix(ar.g, br.g).toString(16).padStart(2, "0")}${mix(ar.b, br.b).toString(16).padStart(2, "0")}`;
+};
+
+const BlackDirectorsInfo = ({ align = "center" }: { align?: "left" | "center" | "right" }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className={`lb-info lb-info-${align}`}>
+      <button
+        type="button"
+        className="lb-info-btn"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((prev) => !prev);
+        }}
+        aria-label="About the Black directors list"
+      >
+        i
+      </button>
+      {open && (
+        <span
+          className="lb-info-panel"
+          onClick={(e) => e.stopPropagation()}
+        >
+          This is a manually compiled list, and is a deduped combination of{" "}
+          <a
+            href="https://letterboxd.com/squirrel22/list/films-by-black-directors/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Squirrel22&apos;s Films by Black Directors list
+          </a>{" "}
+          and{" "}
+          <a
+            href="https://letterboxd.com/melissa90s/list/black-directors/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Melissa&apos;s BLACK DIRECTORS list
+          </a>
+          . If I&apos;m missing a film, please comment on the{" "}
+          <a
+            href="https://letterboxd.com/katswnt/list/movies-by-black-directors/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Letterboxd list
+          </a>{" "}
+          or dm me on{" "}
+          <a
+            href="https://x.com/katswint"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Twitter
+          </a>
+          , and I&apos;ll be happy to add it. This list isn&apos;t exhaustive—there are many films by Black
+          directors beyond it.
+        </span>
+      )}
+    </span>
+  );
 };
 
 // Memoized WorldMap component to prevent re-renders on hover
@@ -875,6 +936,7 @@ type DiaryMovie = {
   runtime: number | null;
   directedByWoman: boolean;
   writtenByWoman: boolean;
+  byBlackDirector: boolean;
   notAmerican: boolean;
   notEnglish: boolean;
   inCriterion: boolean;
@@ -886,6 +948,7 @@ type DiaryTableProps = {
   diaryFilters: {
     directedByWoman: boolean;
     writtenByWoman: boolean;
+    byBlackDirector: boolean;
     notAmerican: boolean;
     notEnglish: boolean;
     inCriterion: boolean;
@@ -895,6 +958,7 @@ type DiaryTableProps = {
   setDiaryFilters: Dispatch<SetStateAction<{
     directedByWoman: boolean;
     writtenByWoman: boolean;
+    byBlackDirector: boolean;
     notAmerican: boolean;
     notEnglish: boolean;
     inCriterion: boolean;
@@ -934,12 +998,14 @@ const DiaryTable = memo(({
         runtime: typeof tmdbData.runtime === "number" ? tmdbData.runtime : null,
         directedByWoman: tmdbData.directed_by_woman === true,
         writtenByWoman: tmdbData.written_by_woman === true,
+        byBlackDirector: movie.is_by_black_director === true,
         notAmerican: tmdbData.is_american === false,
         notEnglish: tmdbData.is_english === false,
         inCriterion: movie.is_in_criterion_collection === true,
         criteriaCount: [
           tmdbData.directed_by_woman === true,
           tmdbData.written_by_woman === true,
+          movie.is_by_black_director === true,
           tmdbData.is_american === false,
           tmdbData.is_english === false,
           movie.is_in_criterion_collection === true,
@@ -966,6 +1032,7 @@ const DiaryTable = memo(({
       const checks: boolean[] = [];
       if (diaryFilters.directedByWoman) checks.push(movie.directedByWoman);
       if (diaryFilters.writtenByWoman) checks.push(movie.writtenByWoman);
+      if (diaryFilters.byBlackDirector) checks.push(movie.byBlackDirector);
       if (diaryFilters.notAmerican) checks.push(movie.notAmerican);
       if (diaryFilters.notEnglish) checks.push(movie.notEnglish);
       if (diaryFilters.inCriterion) checks.push(movie.inCriterion);
@@ -1128,6 +1195,9 @@ const DiaryTable = memo(({
         <div className="lb-cell lb-cell-flag" style={{ color: movie.writtenByWoman ? "#00e054" : "#456" }}>
           {movie.writtenByWoman ? "✓" : "✗"}
         </div>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.byBlackDirector ? "#00e054" : "#456" }}>
+          {movie.byBlackDirector ? "✓" : "✗"}
+        </div>
         <div className="lb-cell lb-cell-flag" style={{ color: movie.notAmerican ? "#00e054" : "#456" }}>
           {movie.notAmerican ? "✓" : "✗"}
         </div>
@@ -1169,6 +1239,7 @@ const DiaryTable = memo(({
             onClick={() => setDiaryFilters({
               directedByWoman: false,
               writtenByWoman: false,
+              byBlackDirector: false,
               notAmerican: false,
               notEnglish: false,
               inCriterion: false,
@@ -1181,7 +1252,7 @@ const DiaryTable = memo(({
       )}
       <div
         className="lb-table-container"
-        style={{ ["--lb-table-min-width" as any]: "650px" }}
+        style={{ ["--lb-table-min-width" as any]: "700px" }}
         ref={tableScrollRef}
       >
         <div className="lb-table-inner">
@@ -1200,6 +1271,12 @@ const DiaryTable = memo(({
             </button>
             <button className={`lb-header-cell lb-header-flag ${diaryFilters.writtenByWoman ? "lb-header-active" : ""}`} onClick={() => toggleFilterPreserveScroll("writtenByWoman")}>
               Writ♀
+            </button>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.byBlackDirector ? "lb-header-active" : ""}`} onClick={() => toggleFilterPreserveScroll("byBlackDirector")}>
+              <span className="lb-header-content">
+                Blk Dir
+                <BlackDirectorsInfo align="right" />
+              </span>
             </button>
             <button className={`lb-header-cell lb-header-flag ${diaryFilters.notAmerican ? "lb-header-active" : ""}`} onClick={() => toggleFilterPreserveScroll("notAmerican")}>
               !US
@@ -1223,6 +1300,7 @@ const DiaryTable = memo(({
                 <div className="lb-cell lb-cell-center">{movie.year}</div>
                 <div className="lb-cell lb-cell-flag">{movie.directedByWoman ? "✓" : "✗"}</div>
                 <div className="lb-cell lb-cell-flag">{movie.writtenByWoman ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.byBlackDirector ? "✓" : "✗"}</div>
                 <div className="lb-cell lb-cell-flag">{movie.notAmerican ? "✓" : "✗"}</div>
                 <div className="lb-cell lb-cell-flag">{movie.notEnglish ? "✓" : "✗"}</div>
                 <div className="lb-cell lb-cell-flag">{movie.inCriterion ? "✓" : "✗"}</div>
@@ -1236,10 +1314,10 @@ const DiaryTable = memo(({
           items={filteredDiaryMovies}
           renderRow={renderRow}
           className="lb-list"
-          minWidth={650}
+          minWidth={700}
         />
         <div className="lb-table-key">
-          Dir♀ = Directed by women · Writ♀ = Written by women · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
+          Dir♀ = Directed by women · Writ♀ = Written by women · Blk Dir = Films by Black directors <BlackDirectorsInfo align="center" /> · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
         </div>
         </div>
       </div>
@@ -1249,10 +1327,11 @@ const DiaryTable = memo(({
 
 type WatchlistTableProps = {
   watchlistMovies: WatchlistMovie[];
-  watchlistPaceText?: string | null;
+  watchlistPaceText?: ReactNode | null;
   watchlistFilters: {
     directedByWoman: boolean;
     writtenByWoman: boolean;
+    byBlackDirector: boolean;
     notAmerican: boolean;
     notEnglish: boolean;
     inCriterion: boolean;
@@ -1262,6 +1341,7 @@ type WatchlistTableProps = {
   setWatchlistFilters: Dispatch<SetStateAction<{
     directedByWoman: boolean;
     writtenByWoman: boolean;
+    byBlackDirector: boolean;
     notAmerican: boolean;
     notEnglish: boolean;
     inCriterion: boolean;
@@ -1499,6 +1579,9 @@ const WatchlistTable = memo(({
         <div className="lb-cell lb-cell-flag" style={{ color: movie.writtenByWoman ? "#00e054" : "#456" }}>
           {movie.writtenByWoman ? "✓" : "✗"}
         </div>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.byBlackDirector ? "#00e054" : "#456" }}>
+          {movie.byBlackDirector ? "✓" : "✗"}
+        </div>
         <div className="lb-cell lb-cell-flag" style={{ color: movie.notAmerican ? "#00e054" : "#456" }}>
           {movie.notAmerican ? "✓" : "✗"}
         </div>
@@ -1560,6 +1643,7 @@ const WatchlistTable = memo(({
               setWatchlistFilters({
                 directedByWoman: false,
                 writtenByWoman: false,
+                byBlackDirector: false,
                 notAmerican: false,
                 notEnglish: false,
                 inCriterion: false,
@@ -1576,7 +1660,7 @@ const WatchlistTable = memo(({
 
       <div
         className="lb-table-container"
-        style={{ ["--lb-table-min-width" as any]: "840px" }}
+        style={{ ["--lb-table-min-width" as any]: "890px" }}
         ref={tableScrollRef}
       >
         <div className="lb-table-inner">
@@ -1605,6 +1689,12 @@ const WatchlistTable = memo(({
             <button className={`lb-header-cell lb-header-flag ${watchlistFilters.writtenByWoman ? "lb-header-active" : ""}`} onClick={() => toggleWatchlistFilterPreserveScroll("writtenByWoman")}>
               Writ♀
             </button>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.byBlackDirector ? "lb-header-active" : ""}`} onClick={() => toggleWatchlistFilterPreserveScroll("byBlackDirector")}>
+              <span className="lb-header-content">
+                Blk Dir
+                <BlackDirectorsInfo align="right" />
+              </span>
+            </button>
             <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notAmerican ? "lb-header-active" : ""}`} onClick={() => toggleWatchlistFilterPreserveScroll("notAmerican")}>
               !US
             </button>
@@ -1631,6 +1721,7 @@ const WatchlistTable = memo(({
                 </div>
                 <div className="lb-cell lb-cell-flag">{movie.directedByWoman ? "✓" : "✗"}</div>
                 <div className="lb-cell lb-cell-flag">{movie.writtenByWoman ? "✓" : "✗"}</div>
+                <div className="lb-cell lb-cell-flag">{movie.byBlackDirector ? "✓" : "✗"}</div>
                 <div className="lb-cell lb-cell-flag">{movie.notAmerican ? "✓" : "✗"}</div>
                 <div className="lb-cell lb-cell-flag">{movie.notEnglish ? "✓" : "✗"}</div>
                 <div className="lb-cell lb-cell-flag">{movie.inCriterion ? "✓" : "✗"}</div>
@@ -1644,10 +1735,10 @@ const WatchlistTable = memo(({
           items={filteredMovies}
           renderRow={renderRow}
           className="lb-list"
-          minWidth={840}
+          minWidth={890}
         />
         <div className="lb-table-key">
-          Dir♀ = Directed by women · Writ♀ = Written by women · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
+          Dir♀ = Directed by women · Writ♀ = Written by women · Blk Dir = Films by Black directors <BlackDirectorsInfo align="center" /> · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
         </div>
         {watchlistPaceText && (
           <div className="lb-watchlist-pace">{watchlistPaceText}</div>
@@ -1683,12 +1774,14 @@ function App() {
   const [watchlistFilters, setWatchlistFilters] = useState<{
     directedByWoman: boolean;
     writtenByWoman: boolean;
+    byBlackDirector: boolean;
     notAmerican: boolean;
     notEnglish: boolean;
     inCriterion: boolean;
   }>({
     directedByWoman: false,
     writtenByWoman: false,
+    byBlackDirector: false,
     notAmerican: false,
     notEnglish: false,
     inCriterion: false,
@@ -1734,12 +1827,14 @@ function App() {
   const [diaryFilters, setDiaryFilters] = useState<{
     directedByWoman: boolean;
     writtenByWoman: boolean;
+    byBlackDirector: boolean;
     notAmerican: boolean;
     notEnglish: boolean;
     inCriterion: boolean;
   }>({
     directedByWoman: false,
     writtenByWoman: false,
+    byBlackDirector: false,
     notAmerican: false,
     notEnglish: false,
     inCriterion: false,
@@ -2240,6 +2335,7 @@ function App() {
 
         const directedByWoman = tmdbData?.directed_by_woman === true;
         const writtenByWoman = tmdbData?.written_by_woman === true;
+        const byBlackDirector = movie?.is_by_black_director === true;
         const notAmerican = tmdbData?.is_american === false;
         const notEnglish = tmdbData?.is_english === false;
         const inCriterion = movie?.is_in_criterion_collection === true;
@@ -2255,7 +2351,7 @@ function App() {
         const directors = tmdbData?.directors || [];
         const directorNames = directors.map((d: any) => d.name).filter(Boolean).join(", ");
 
-        const criteriaCount = [directedByWoman, writtenByWoman, notAmerican, notEnglish, inCriterion]
+        const criteriaCount = [directedByWoman, writtenByWoman, byBlackDirector, notAmerican, notEnglish, inCriterion]
           .filter(Boolean).length;
 
         if (!tmdbData) {
@@ -2290,6 +2386,7 @@ function App() {
             continents: continentsForMovie,
             directedByWoman,
             writtenByWoman,
+            byBlackDirector,
             notAmerican,
             notEnglish,
             inCriterion,
@@ -2952,6 +3049,7 @@ function App() {
     const labels: string[] = [];
     if (diaryFilters.directedByWoman) labels.push("Directed by women");
     if (diaryFilters.writtenByWoman) labels.push("Written by women");
+    if (diaryFilters.byBlackDirector) labels.push("Films by Black directors");
     if (diaryFilters.notAmerican) labels.push("Non-American");
     if (diaryFilters.notEnglish) labels.push("Not in English");
     if (diaryFilters.inCriterion) labels.push("In the Criterion Collection");
@@ -2985,6 +3083,7 @@ function App() {
     if (watchlistRuntimeFilter === "over2.5h") labels.push("over 2½ hours");
     if (watchlistFilters.directedByWoman) labels.push("directed by women");
     if (watchlistFilters.writtenByWoman) labels.push("written by women");
+    if (watchlistFilters.byBlackDirector) labels.push("films by Black directors");
     if (watchlistFilters.notAmerican) labels.push("non-American");
     if (watchlistFilters.notEnglish) labels.push("not in English");
     if (watchlistFilters.inCriterion) labels.push("in the Criterion Collection");
@@ -3011,6 +3110,7 @@ function App() {
         const checks: boolean[] = [];
         if (watchlistFilters.directedByWoman) checks.push(movie.directedByWoman);
         if (watchlistFilters.writtenByWoman) checks.push(movie.writtenByWoman);
+        if (watchlistFilters.byBlackDirector) checks.push(movie.byBlackDirector);
         if (watchlistFilters.notAmerican) checks.push(movie.notAmerican);
         if (watchlistFilters.notEnglish) checks.push(movie.notEnglish);
         if (watchlistFilters.inCriterion) checks.push(movie.inCriterion);
@@ -3029,7 +3129,7 @@ function App() {
     }).length;
   }, [watchlistMovies, watchlistFilters, watchlistFilterMode, watchlistContinentFilter, watchlistRuntimeFilter]);
 
-  const watchlistPaceText = useMemo(() => {
+  const watchlistPaceText = useMemo<ReactNode | null>(() => {
     if (!isDiaryFormat) return null;
     if (rows.length === 0 || watchlistMovies.length === 0) return null;
     if (watchlistFilteredCount === 0) return null;
@@ -3056,13 +3156,33 @@ function App() {
     const years = Math.floor(totalMonths / 12);
     const months = totalMonths % 12;
 
-    const filterPhrase = watchlistFilterLabels.length
-      ? `your watchlist of ${joinLabels(watchlistFilterLabels)} movies`
-      : "your watchlist";
+    const hasBlackDirectorFilter = watchlistFilters.byBlackDirector;
+    const nonBlackLabels = watchlistFilterLabels.filter((label) => label !== "films by Black directors");
+    const hasNonBlackLabels = nonBlackLabels.length > 0;
+    const filterPhrase = watchlistFilterLabels.length ? (
+      <>
+        your watchlist of{" "}
+        {hasNonBlackLabels ? joinLabels(nonBlackLabels) : null}
+        {hasNonBlackLabels && hasBlackDirectorFilter ? " and " : null}
+        {hasBlackDirectorFilter ? (
+          <>
+            films by Black directors <BlackDirectorsInfo align="center" />
+          </>
+        ) : null}
+        {!hasNonBlackLabels && !hasBlackDirectorFilter ? "movies" : null}
+      </>
+    ) : (
+      "your watchlist"
+    );
     const yearLabel = `${years} year${years === 1 ? "" : "s"}`;
     const monthLabel = `${months} month${months === 1 ? "" : "s"}`;
 
-    return `If you watch movies at the same pace as you have been for the past 6 months, you'll finish ${filterPhrase} in ${yearLabel}, ${monthLabel}!`;
+    return (
+      <>
+        If you watch movies at the same pace as you have been for the past 6 months, you'll finish{" "}
+        {filterPhrase} in {yearLabel}, {monthLabel}!
+      </>
+    );
   }, [
     isDiaryFormat,
     rows,
@@ -3070,6 +3190,7 @@ function App() {
     watchlistFilteredCount,
     watchlistFilterLabels,
     joinLabels,
+    watchlistFilters.byBlackDirector,
   ]);
 
   const tasteFilmEntries = useMemo(() => {
@@ -3880,6 +4001,12 @@ function App() {
             {heatmapFilterLabels.length > 0 && (
               <div className="lb-heatmap-filter-note">
                 Heatmap filtered by: {heatmapFilterLabels.join(" · ")}
+                {diaryFilters.byBlackDirector && (
+                  <>
+                    {" "}
+                    <BlackDirectorsInfo align="center" />
+                  </>
+                )}
               </div>
             )}
             {dateFilter === "all" ? (

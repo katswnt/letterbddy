@@ -12,6 +12,9 @@ const __dirname = dirname(__filename);
 const CRITERION_CACHE_KEY = 'criterion:slugs';
 const CRITERION_CACHE_DURATION = 60 * 60 * 24 * 7; // 7 days
 const CRITERION_SLUGS_PATH = join(__dirname, 'criterion-slugs.json');
+const BLACK_DIRECTORS_CACHE_KEY = 'black_directors:slugs';
+const BLACK_DIRECTORS_CACHE_DURATION = 60 * 60 * 24 * 7; // 7 days
+const BLACK_DIRECTORS_LIST_PATH = join(__dirname, 'black-directors.csv');
 
 // Load Criterion Collection film slugs from a bundled JSON file
 async function getCriterionSlugs(): Promise<Set<string>> {
@@ -36,6 +39,36 @@ async function getCriterionSlugs(): Promise<Set<string>> {
     return new Set(slugs);
   } catch (error) {
     console.error('Error loading Criterion Collection slugs:', error);
+    return new Set();
+  }
+}
+
+// Load Black directors list slugs from a bundled CSV file
+async function getBlackDirectorSlugs(): Promise<Set<string>> {
+  const cached = await getCached<string[]>(BLACK_DIRECTORS_CACHE_KEY);
+  if (cached) {
+    console.log('Black directors list loaded from cache:', cached.length, 'films');
+    return new Set(cached);
+  }
+
+  try {
+    const csvText = readFileSync(BLACK_DIRECTORS_LIST_PATH, 'utf-8');
+    const rows = parseCSV(csvText);
+    const slugs = rows
+      .map((row) => row['Letterboxd URI'] || row['letterboxd_uri'] || row['URL'] || row['Url'] || row['Link'] || '')
+      .map((url) => (url ? getSlugFromUrl(url) : null))
+      .filter((slug): slug is string => Boolean(slug));
+
+    const unique = Array.from(new Set(slugs));
+    console.log('Black directors slugs loaded from file:', unique.length, 'films');
+
+    if (unique.length > 0) {
+      await setCached(BLACK_DIRECTORS_CACHE_KEY, unique, BLACK_DIRECTORS_CACHE_DURATION);
+    }
+
+    return new Set(unique);
+  } catch (error) {
+    console.error('Error loading Black directors list:', error);
     return new Set();
   }
 }
@@ -458,6 +491,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (enrich && !parseOnly) {
       // Fetch Criterion Collection list for checking
       const criterionSlugs = await getCriterionSlugs();
+      const blackDirectorSlugs = await getBlackDirectorSlugs();
 
       // When urlsToEnrich is provided, process all of them (frontend controls batch size)
       // When CSV is provided, limit to batchLimit
@@ -545,6 +579,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Check if in Criterion Collection
           const slug = getSlugFromUrl(resolved);
           movieIndex[resolved].is_in_criterion_collection = slug ? criterionSlugs.has(slug) : false;
+          movieIndex[resolved].is_by_black_director = slug ? blackDirectorSlugs.has(slug) : false;
 
           // Check cache for TMDb data
           if (redisAvailable) {
