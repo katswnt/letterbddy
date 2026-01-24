@@ -15,12 +15,13 @@ const CRITERION_SLUGS_PATH = join(__dirname, 'criterion-slugs.json');
 const BLACK_DIRECTORS_CACHE_KEY = 'black_directors:slugs:v2';
 const BLACK_DIRECTORS_CACHE_DURATION = 60 * 60 * 24 * 7; // 7 days
 const BLACK_DIRECTORS_LIST_PATH = join(__dirname, 'black-directors.csv');
+const BLACK_DIRECTORS_SLUGS_PATH = join(__dirname, 'black-directors-slugs.json');
 
 // Load Criterion Collection film slugs from a bundled JSON file
 async function getCriterionSlugs(): Promise<Set<string>> {
   // Check cache first
   const cached = await getCached<string[]>(CRITERION_CACHE_KEY);
-  if (cached) {
+  if (cached && cached.length > 0) {
     console.log('Criterion list loaded from cache:', cached.length, 'films');
     return new Set(cached);
   }
@@ -46,18 +47,53 @@ async function getCriterionSlugs(): Promise<Set<string>> {
 // Load Black directors list slugs from a bundled CSV file
 async function getBlackDirectorSlugs(): Promise<Set<string>> {
   const cached = await getCached<string[]>(BLACK_DIRECTORS_CACHE_KEY);
-  if (cached) {
+  if (cached && cached.length > 0) {
     console.log('Black directors list loaded from cache:', cached.length, 'films');
     return new Set(cached);
   }
 
   try {
+    // Fast path: precomputed slugs JSON
+    try {
+      const slugText = readFileSync(BLACK_DIRECTORS_SLUGS_PATH, 'utf-8');
+      const parsed = JSON.parse(slugText);
+      const slugs = Array.isArray(parsed) ? parsed.filter((s) => typeof s === 'string') : [];
+      if (slugs.length > 0) {
+        console.log('Black directors slugs loaded from JSON:', slugs.length, 'films');
+        await setCached(BLACK_DIRECTORS_CACHE_KEY, slugs, BLACK_DIRECTORS_CACHE_DURATION);
+        return new Set(slugs);
+      }
+    } catch {
+      // Ignore if file doesn't exist yet
+    }
+
     const csvText = readFileSync(BLACK_DIRECTORS_LIST_PATH, 'utf-8');
     const rows = parseCSV(csvText);
-    const slugs = rows
+    const rawUrls = rows
       .map((row) => row['Letterboxd URI'] || row['letterboxd_uri'] || row['URL'] || row['Url'] || row['Link'] || '')
-      .map((url) => (url ? getSlugFromUrl(url) : null))
-      .filter((slug): slug is string => Boolean(slug));
+      .map((url) => (url || '').trim())
+      .filter((url) => url && url.startsWith('http'));
+
+    const slugs: string[] = [];
+    const concurrency = 6;
+    for (let i = 0; i < rawUrls.length; i += concurrency) {
+      const batch = rawUrls.slice(i, i + concurrency);
+      const resolved = await Promise.all(
+        batch.map(async (url) => {
+          if (url.includes('/list/')) return null;
+          if (url.includes('boxd.it')) {
+            const expanded = await resolveShortlink(url);
+            return expanded.includes('/film/') ? expanded : null;
+          }
+          return url.includes('/film/') ? url : null;
+        })
+      );
+      for (const resolvedUrl of resolved) {
+        if (!resolvedUrl || resolvedUrl.includes('/list/')) continue;
+        const slug = getSlugFromUrl(resolvedUrl);
+        if (slug) slugs.push(slug);
+      }
+    }
 
     const unique = Array.from(new Set(slugs));
     console.log('Black directors slugs loaded from file:', unique.length, 'films');
@@ -573,14 +609,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
+        // Check list memberships (regardless of TMDb status)
+        const slug = getSlugFromUrl(resolved);
+        movieIndex[resolved].is_in_criterion_collection = slug ? criterionSlugs.has(slug) : false;
+        movieIndex[resolved].is_by_black_director = slug ? blackDirectorSlugs.has(slug) : false;
+
         // Phase 3: Get TMDb details
         const tmdbId = movieIndex[resolved].tmdb_movie_id;
         if (tmdbId && !movieIndex[resolved].tmdb_data) {
-          // Check if in Criterion Collection
-          const slug = getSlugFromUrl(resolved);
-          movieIndex[resolved].is_in_criterion_collection = slug ? criterionSlugs.has(slug) : false;
-          movieIndex[resolved].is_by_black_director = slug ? blackDirectorSlugs.has(slug) : false;
-
           // Check cache for TMDb data
           if (redisAvailable) {
             const cachedData = await getCachedTmdbData(tmdbId);

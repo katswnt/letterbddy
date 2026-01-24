@@ -31,13 +31,37 @@ def resolve_url(url: str) -> Optional[str]:
 
 
 def load_urls(csv_path: Path) -> list[str]:
+    """Load film URLs from a Letterboxd list export CSV.
+
+    Letterboxd list exports have this format:
+      Line 1: "Letterboxd list export v7"
+      Line 2: Metadata header (Date,Name,Tags,URL,Description)
+      Line 3: Metadata values
+      Line 4: Empty
+      Line 5: Data header (Position,Name,Year,URL,Description)
+      Line 6+: Data rows
+
+    We need to skip to line 5 to find the actual data header.
+    """
     urls: list[str] = []
     with csv_path.open(newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            url = (row.get("URL") or row.get("Url") or row.get("Link") or "").strip()
-            if url.startswith("http"):
-                urls.append(url)
+        lines = f.readlines()
+
+    # Find the data header line (contains "Position,Name,Year,URL")
+    data_start = 0
+    for i, line in enumerate(lines):
+        if line.startswith("Position,"):
+            data_start = i
+            break
+
+    # Parse from the data header onwards
+    from io import StringIO
+    csv_text = "".join(lines[data_start:])
+    reader = csv.DictReader(StringIO(csv_text))
+    for row in reader:
+        url = (row.get("URL") or row.get("Url") or row.get("Link") or "").strip()
+        if url.startswith("http"):
+            urls.append(url)
     return urls
 
 
