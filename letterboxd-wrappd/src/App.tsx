@@ -3102,6 +3102,10 @@ function App() {
       tasteEntriesForStats.filter((entry) => entry.movie.tmdb_data?.is_english === false),
       (movie) => movie.tmdb_data?.directors || []
     );
+    const nonEnglishWriters = buildPeopleStats(
+      tasteEntriesForStats.filter((entry) => entry.movie.tmdb_data?.is_english === false),
+      (movie) => movie.tmdb_data?.writers || []
+    );
 
     const countryStatsMap = new Map<string, { code: string; name: string; count: number; ratingSum: number }>();
     for (const entry of tasteEntriesForStats) {
@@ -3152,7 +3156,8 @@ function App() {
       { key: "womenDirectors", label: "Women Directors", type: "person", items: rankPeople(femaleDirectors, 2) },
       { key: "womenWriters", label: "Women Writers", type: "person", items: rankPeople(femaleWriters, 2) },
       { key: "womenDirectorsWriters", label: "Women Who Direct + Write", type: "person", items: rankPeople(womenDirectorsWriters, 2) },
-      { key: "nonEnglishDirectors", label: "Non-English Directors", type: "person", items: rankPeople(nonEnglishDirectors, 2) },
+      { key: "nonEnglishDirectors", label: "Directors of Non-English Language Films", type: "person", items: rankPeople(nonEnglishDirectors, 2) },
+      { key: "nonEnglishWriters", label: "Writers of Non-English Language Films", type: "person", items: rankPeople(nonEnglishWriters, 2) },
       { key: "topCountries", label: "Top Countries", type: "country", items: rankCountries(countries) },
       { key: "newDiscoveries", label: "New Discoveries", type: "person", items: rankPeople(newDiscoveries, 2) },
       { key: "badHabit", label: "Bad Habit Detector", type: "person", items: badHabit },
@@ -3217,7 +3222,7 @@ function App() {
   const tasteExpandedPersonMovies = useMemo(() => {
     if (!activeTasteCategory || activeTasteCategory.type !== "person") return new Map<string, Array<{ title: string; year: string; rating: string }>>();
     const map = new Map<string, Array<{ title: string; year: string; rating: string }>>();
-    const wantsWriter = ["womenWriters"].includes(activeTasteCategory.key);
+    const wantsWriter = ["womenWriters", "nonEnglishWriters"].includes(activeTasteCategory.key);
     const wantsDirector = ["womenDirectors", "nonEnglishDirectors", "newDiscoveries", "badHabit", "womenDirectorsWriters"].includes(activeTasteCategory.key);
     for (const entry of tasteFilmEntries) {
       const tmdb = entry.movie.tmdb_data || {};
