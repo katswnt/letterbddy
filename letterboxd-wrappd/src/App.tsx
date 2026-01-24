@@ -1252,7 +1252,7 @@ const DiaryTable = memo(({
       )}
       <div
         className="lb-table-container"
-        style={{ ["--lb-table-min-width" as any]: "700px" }}
+        style={{ ["--lb-table-min-width" as any]: "712px" }}
         ref={tableScrollRef}
       >
         <div className="lb-table-inner">
@@ -1314,7 +1314,7 @@ const DiaryTable = memo(({
           items={filteredDiaryMovies}
           renderRow={renderRow}
           className="lb-list"
-          minWidth={700}
+          minWidth={712}
         />
         <div className="lb-table-key">
           Dir♀ = Directed by women · Writ♀ = Written by women · Blk Dir = Films by Black directors <BlackDirectorsInfo align="center" /> · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
@@ -1660,7 +1660,7 @@ const WatchlistTable = memo(({
 
       <div
         className="lb-table-container"
-        style={{ ["--lb-table-min-width" as any]: "890px" }}
+        style={{ ["--lb-table-min-width" as any]: "902px" }}
         ref={tableScrollRef}
       >
         <div className="lb-table-inner">
@@ -1735,7 +1735,7 @@ const WatchlistTable = memo(({
           items={filteredMovies}
           renderRow={renderRow}
           className="lb-list"
-          minWidth={890}
+          minWidth={902}
         />
         <div className="lb-table-key">
           Dir♀ = Directed by women · Writ♀ = Written by women · Blk Dir = Films by Black directors <BlackDirectorsInfo align="center" /> · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
@@ -2939,10 +2939,11 @@ function App() {
     [tmdbErrorCounts]
   );
   
-  const { directedByWoman, writtenByWoman, notAmerican, notEnglish, inCriterion } = useMemo(
+  const { directedByWoman, writtenByWoman, byBlackDirector, notAmerican, notEnglish, inCriterion } = useMemo(
     () => ({
       directedByWoman: moviesWithData.filter((m: any) => m.tmdb_data?.directed_by_woman === true).length,
       writtenByWoman: moviesWithData.filter((m: any) => m.tmdb_data?.written_by_woman === true).length,
+      byBlackDirector: moviesWithData.filter((m: any) => m.is_by_black_director === true).length,
       notAmerican: moviesWithData.filter((m: any) => m.tmdb_data?.is_american === false).length,
       notEnglish: moviesWithData.filter((m: any) => m.tmdb_data?.is_english === false).length,
       inCriterion: moviesWithData.filter((m: any) => m.is_in_criterion_collection === true).length,
@@ -2957,7 +2958,7 @@ function App() {
       movieLookupSize: movieLookup ? Object.keys(movieLookup).length : 0,
       filteredUrisCount: filteredUris.size,
       moviesWithDataCount: totalMoviesWithData,
-      stats: { directedByWoman, writtenByWoman, notAmerican, notEnglish, inCriterion },
+      stats: { directedByWoman, writtenByWoman, byBlackDirector, notAmerican, notEnglish, inCriterion },
     });
   }
 
@@ -4146,6 +4147,12 @@ function App() {
                     primaryLabel="Written by women"
                     secondaryValue={totalMoviesWithData - writtenByWoman}
                     secondaryLabel="Not women"
+                  />
+                  <StatPieChart
+                    primaryValue={byBlackDirector}
+                    primaryLabel="By Black directors"
+                    secondaryValue={totalMoviesWithData - byBlackDirector}
+                    secondaryLabel="Not in list"
                   />
                   <StatPieChart
                     primaryValue={notAmerican}

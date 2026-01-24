@@ -12,7 +12,7 @@ const __dirname = dirname(__filename);
 const CRITERION_CACHE_KEY = 'criterion:slugs';
 const CRITERION_CACHE_DURATION = 60 * 60 * 24 * 7; // 7 days
 const CRITERION_SLUGS_PATH = join(__dirname, 'criterion-slugs.json');
-const BLACK_DIRECTORS_CACHE_KEY = 'black_directors:slugs';
+const BLACK_DIRECTORS_CACHE_KEY = 'black_directors:slugs:v2';
 const BLACK_DIRECTORS_CACHE_DURATION = 60 * 60 * 24 * 7; // 7 days
 const BLACK_DIRECTORS_LIST_PATH = join(__dirname, 'black-directors.csv');
 

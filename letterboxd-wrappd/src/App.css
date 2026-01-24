@@ -146,13 +146,13 @@
 }
 
 .lb-diary-grid {
-  grid-template-columns: minmax(200px, 1fr) 150px 60px 48px 48px 60px 48px 48px 48px;
-  min-width: 700px;
+  grid-template-columns: minmax(200px, 1fr) 150px 60px 48px 48px 72px 48px 48px 48px;
+  min-width: 712px;
 }
 
 .lb-watchlist-grid {
-  grid-template-columns: minmax(200px, 1fr) 150px 60px 70px 120px 48px 48px 60px 48px 48px 48px;
-  min-width: 890px;
+  grid-template-columns: minmax(200px, 1fr) 150px 60px 70px 120px 48px 48px 72px 48px 48px 48px;
+  min-width: 902px;
 }
 
 .lb-cell {
@@ -188,6 +188,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
 }
 
 .lb-link {
