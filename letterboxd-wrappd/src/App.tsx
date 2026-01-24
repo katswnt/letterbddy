@@ -426,6 +426,7 @@ type TastePerson = {
   name: string;
   count: number;
   avgRating: number;
+  ratingCount: number;
   profilePath?: string | null;
 };
 
@@ -2721,24 +2722,34 @@ function App() {
       const canon = canonicalizeUri(uriRaw);
       const movie = movieLookup[uriRaw] || movieLookup[canon];
       if (!movie?.tmdb_data) continue;
-      let rating = parseFloat(row.Rating);
-      if (Number.isNaN(rating)) {
+
+      let rating: number | null = null;
+      const rawRating = parseFloat(row.Rating);
+      if (!Number.isNaN(rawRating)) {
+        rating = rawRating;
+      } else if (!isDiaryFormat) {
         const tmdbRating = movie.tmdb_data?.vote_average;
         if (typeof tmdbRating === "number" && !Number.isNaN(tmdbRating)) {
           rating = Math.round((tmdbRating / 2) * 10) / 10;
-        } else {
-          continue;
         }
       }
+
       const dateKey = (getWatchedDate(row) || "").slice(0, 10);
       const mapKey = movie.tmdb_movie_id ? `tmdb:${movie.tmdb_movie_id}` : (movie.letterboxd_url || canon || uriRaw);
       const existing = map.get(mapKey);
       if (!existing || (dateKey && dateKey > existing.dateKey)) {
-        map.set(mapKey, { movie, rating, dateKey });
+        map.set(mapKey, { movie, rating: rating ?? NaN, dateKey });
       }
     }
     return Array.from(map.values());
-  }, [filteredRows, movieLookup, canonicalizeUri]);
+  }, [filteredRows, movieLookup, canonicalizeUri, isDiaryFormat]);
+
+  const tasteFilmEntriesRated = useMemo(
+    () => tasteFilmEntries.filter((entry) => !Number.isNaN(entry.rating)),
+    [tasteFilmEntries]
+  );
+
+  const tasteEntriesForStats = tasteSortMode === "watched" ? tasteFilmEntries : tasteFilmEntriesRated;
 
   const personFirstDate = useMemo(() => {
     if (!movieLookup) return new Map<string, number>();
@@ -2775,7 +2786,7 @@ function App() {
   }, []);
 
   const buildPeopleStats = useCallback((entries: Array<{ movie: any; rating: number }>, getPeople: (movie: any) => Array<any>) => {
-    const stats = new Map<string, { name: string; count: number; ratingSum: number; profilePath?: string | null }>();
+    const stats = new Map<string, { name: string; count: number; ratingSum: number; ratingCount: number; profilePath?: string | null }>();
     for (const entry of entries) {
       const people = getPeople(entry.movie) || [];
       const seen = new Set<string>();
@@ -2783,9 +2794,12 @@ function App() {
         const name = person?.name;
         if (!name || seen.has(name)) continue;
         seen.add(name);
-        const current = stats.get(name) || { name, count: 0, ratingSum: 0, profilePath: null };
+        const current = stats.get(name) || { name, count: 0, ratingSum: 0, ratingCount: 0, profilePath: null };
         current.count += 1;
-        current.ratingSum += entry.rating;
+        if (!Number.isNaN(entry.rating)) {
+          current.ratingSum += entry.rating;
+          current.ratingCount += 1;
+        }
         if (!current.profilePath && person?.profile_path) current.profilePath = person.profile_path;
         stats.set(name, current);
       }
@@ -2793,7 +2807,8 @@ function App() {
     return Array.from(stats.values()).map((p) => ({
       name: p.name,
       count: p.count,
-      avgRating: p.count ? p.ratingSum / p.count : 0,
+      avgRating: p.ratingCount ? p.ratingSum / p.ratingCount : 0,
+      ratingCount: p.ratingCount,
       profilePath: p.profilePath,
     }));
   }, []);
@@ -2843,21 +2858,21 @@ function App() {
   }, [tasteSortMode]);
 
   const tasteData = useMemo(() => {
-    const femaleDirectors = buildPeopleStats(tasteFilmEntries, getFemaleDirectors);
-    const femaleWriters = buildPeopleStats(tasteFilmEntries, getFemaleWriters);
-    const womenDirectorsWriters = buildPeopleStats(tasteFilmEntries, (movie) => {
+    const femaleDirectors = buildPeopleStats(tasteEntriesForStats, getFemaleDirectors);
+    const femaleWriters = buildPeopleStats(tasteEntriesForStats, getFemaleWriters);
+    const womenDirectorsWriters = buildPeopleStats(tasteEntriesForStats, (movie) => {
       const directors = getFemaleDirectors(movie);
       const writers = getFemaleWriters(movie);
       const writerNames = new Set(writers.map((w: any) => w.name));
       return directors.filter((d: any) => writerNames.has(d.name));
     });
     const nonEnglishDirectors = buildPeopleStats(
-      tasteFilmEntries.filter((entry) => entry.movie.tmdb_data?.is_english === false),
+      tasteEntriesForStats.filter((entry) => entry.movie.tmdb_data?.is_english === false),
       (movie) => movie.tmdb_data?.directors || []
     );
 
     const countryStatsMap = new Map<string, { code: string; name: string; count: number; ratingSum: number }>();
-    for (const entry of tasteFilmEntries) {
+    for (const entry of tasteEntriesForStats) {
       const codes = entry.movie.tmdb_data?.production_countries?.codes || [];
       const names = entry.movie.tmdb_data?.production_countries?.names || [];
       const seen = new Set<string>();
@@ -2880,7 +2895,7 @@ function App() {
 
     const now = new Date();
     const cutoffTime = now.getTime() - 365 * 24 * 60 * 60 * 1000;
-    const newDiscoveryEntries = tasteFilmEntries.filter((entry) => {
+    const newDiscoveryEntries = tasteEntriesForStats.filter((entry) => {
       if (!entry.dateKey) return false;
       const watchedTime = new Date(entry.dateKey).getTime();
       if (Number.isNaN(watchedTime) || watchedTime < cutoffTime) return false;
@@ -2892,7 +2907,7 @@ function App() {
     });
     const newDiscoveries = buildPeopleStats(newDiscoveryEntries, (movie) => movie.tmdb_data?.directors || []);
 
-    const allDirectors = buildPeopleStats(tasteFilmEntries, (movie) => movie.tmdb_data?.directors || []);
+    const allDirectors = buildPeopleStats(tasteEntriesForStats, (movie) => movie.tmdb_data?.directors || []);
     const badHabit = allDirectors
       .filter((p) => p.count >= 3)
       .sort((a, b) => {
@@ -2911,7 +2926,7 @@ function App() {
       { key: "badHabit", label: "Bad Habit Detector", type: "person", items: badHabit },
     ];
   }, [
-    tasteFilmEntries,
+    tasteEntriesForStats,
     buildPeopleStats,
     rankPeople,
     rankCountries,
@@ -4161,7 +4176,9 @@ function App() {
                         )}
                       </div>
                       <div className="lb-taste-name">{person.name}</div>
-                      <div className="lb-taste-meta">★{person.avgRating.toFixed(1)} · {person.count} films</div>
+                      <div className="lb-taste-meta">
+                        {person.ratingCount > 0 ? `★${person.avgRating.toFixed(1)}` : "★—"} · {person.count} films
+                      </div>
                     </button>
                   ))}
                 </div>
