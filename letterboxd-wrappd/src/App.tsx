@@ -2405,9 +2405,12 @@ function App() {
         throw new Error("No usable diary entries found in the RSS feed.");
       }
 
-      const csvText = Papa.unparse(rowsFromRss, {
-        columns: ["Date", "Name", "Year", "Letterboxd URI", "Rating", "Rewatch", "Tags", "Watched Date"],
-      });
+      const csvText = (Papa as typeof Papa & { unparse: (data: any, config?: any) => string }).unparse(
+        rowsFromRss,
+        {
+          columns: ["Date", "Name", "Year", "Letterboxd URI", "Rating", "Rewatch", "Tags", "Watched Date"],
+        }
+      );
       const file = new File([csvText], `${username}-rss.csv`, { type: "text/csv" });
       setDiaryFileName(`${username} (RSS last 50)`);
       processDiaryFile(file, { fromRss: true });
