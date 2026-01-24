@@ -102,6 +102,265 @@ const getContinentLabel = (code: string) =>
 const getCountryName = (code: string, fallback?: string) =>
   (countries as Record<string, any>)[code]?.name || fallback || code;
 
+const CONTINENT_COLORS: Record<string, string> = {
+  AF: "#f97316",
+  AS: "#f59e0b",
+  EU: "#3b82f6",
+  NA: "#22c55e",
+  SA: "#14b8a6",
+  OC: "#a855f7",
+  AN: "#94a3b8",
+};
+
+const mixHex = (a: string, b: string, t: number) => {
+  const toRgb = (hex: string) => {
+    const h = hex.replace("#", "");
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16),
+    };
+  };
+  const ar = toRgb(a);
+  const br = toRgb(b);
+  const mix = (x: number, y: number) => Math.round(x + (y - x) * t);
+  return `#${mix(ar.r, br.r).toString(16).padStart(2, "0")}${mix(ar.g, br.g).toString(16).padStart(2, "0")}${mix(ar.b, br.b).toString(16).padStart(2, "0")}`;
+};
+
+// Memoized WorldMap component to prevent re-renders on hover
+const WorldMap = memo(function WorldMap({
+  countryCounts,
+  continentCounts,
+  maxCountryCount,
+  maxContinentCount,
+  geoView,
+  setGeoView,
+  geoFilter,
+  setGeoFilter,
+}: {
+  countryCounts: Record<string, number>;
+  continentCounts: Record<string, number>;
+  maxCountryCount: number;
+  maxContinentCount: number;
+  geoView: GeoView;
+  setGeoView: (v: GeoView) => void;
+  geoFilter: GeoFilter;
+  setGeoFilter: React.Dispatch<React.SetStateAction<GeoFilter>>;
+}) {
+  const mapWrapperRef = useRef<HTMLDivElement | null>(null);
+  const [geoHover, setGeoHover] = useState<{ label: string; count: number; x: number; y: number } | null>(null);
+  const worldMap = world as any;
+
+  const getFillForLocation = useCallback((codeLower: string) => {
+    const code = codeLower.toUpperCase();
+    const cont = getContinentCode(code);
+    if (geoView === "continent") {
+      if (!cont) return "#1b2026";
+      const base = CONTINENT_COLORS[cont] || "#334";
+      const intensity = (continentCounts[cont] || 0) / maxContinentCount;
+      return mixHex("#1b2026", base, Math.min(1, 0.2 + intensity * 0.8));
+    }
+    const count = countryCounts[code] || 0;
+    if (count === 0) return "#1b2026";
+    const intensity = count / maxCountryCount;
+    return mixHex("#1b2026", "#00e054", Math.min(1, 0.2 + intensity * 0.8));
+  }, [geoView, continentCounts, maxContinentCount, countryCounts, maxCountryCount]);
+
+  const isSelectedLocation = useCallback((codeLower: string) => {
+    if (!geoFilter) return false;
+    const code = codeLower.toUpperCase();
+    if (geoFilter.type === "country") {
+      return geoFilter.value.toUpperCase() === code;
+    }
+    const cont = getContinentCode(code);
+    return cont === geoFilter.value;
+  }, [geoFilter]);
+
+  return (
+    <section style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+        <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#9ab" }}>World Map</h3>
+        <div style={{ display: "flex", gap: "8px" }}>
+          {(["continent", "country"] as const).map((view) => (
+            <button
+              key={view}
+              type="button"
+              onClick={() => setGeoView(view)}
+              style={{
+                padding: "4px 8px",
+                borderRadius: "6px",
+                border: "1px solid #456",
+                backgroundColor: geoView === view ? "#00e054" : "transparent",
+                color: geoView === view ? "#14181c" : "#9ab",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {view === "continent" ? "Continent" : "Country"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {geoFilter && (
+        <div style={{ fontSize: "12px", color: "#9ab", textAlign: "center" }}>
+          Filtering diary list and pie charts for {geoFilter.type === "continent"
+            ? getContinentLabel(geoFilter.value)
+            : getCountryName(geoFilter.value)} — check Film Breakdown above.
+          <button
+            onClick={() => {
+              const section = document.getElementById("diary-list");
+              if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+            style={{
+              marginLeft: "8px",
+              padding: "2px 6px",
+              fontSize: "11px",
+              backgroundColor: "transparent",
+              border: "1px solid #456",
+              borderRadius: "4px",
+              color: "#9ab",
+              cursor: "pointer",
+            }}
+          >
+            Jump to list
+          </button>
+          <button
+            onClick={() => setGeoFilter(null)}
+            style={{
+              marginLeft: "8px",
+              padding: "2px 6px",
+              fontSize: "11px",
+              backgroundColor: "transparent",
+              border: "1px solid #456",
+              borderRadius: "4px",
+              color: "#9ab",
+              cursor: "pointer",
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      <div
+        ref={mapWrapperRef}
+        style={{ position: "relative", width: "100%", backgroundColor: "#101419", borderRadius: "8px", padding: "8px" }}
+      >
+        {geoHover && (
+          <div
+            style={{
+              position: "absolute",
+              left: geoHover.x,
+              top: geoHover.y,
+              transform: "translate(-50%, -120%)",
+              backgroundColor: "rgba(20, 24, 28, 0.95)",
+              border: "1px solid #345",
+              borderRadius: "6px",
+              padding: "4px 8px",
+              fontSize: "12px",
+              color: "#e2e8f0",
+              pointerEvents: "none",
+              whiteSpace: "nowrap",
+              boxShadow: "0 6px 16px rgba(0,0,0,0.35)",
+            }}
+          >
+            {geoHover.label}: {geoHover.count} films
+          </div>
+        )}
+        <svg
+          viewBox={worldMap.viewBox}
+          style={{ width: "100%", height: "auto" }}
+          role="img"
+          aria-label="World map"
+        >
+          {worldMap.locations.map((loc: any) => {
+            const codeLower = loc.id;
+            const code = codeLower.toUpperCase();
+            const cont = getContinentCode(code);
+            const countryCount = countryCounts[code] || 0;
+            const continentCount = cont ? (continentCounts[cont] || 0) : 0;
+            const label = geoView === "continent"
+              ? (cont ? getContinentLabel(cont) : "Unknown")
+              : getCountryName(code, loc.name);
+            const hoverCount = geoView === "continent" ? continentCount : countryCount;
+            const clickable = geoView === "continent" ? Boolean(cont && continentCount > 0) : countryCount > 0;
+
+            return (
+              <path
+                key={loc.id}
+                d={loc.path}
+                fill={getFillForLocation(codeLower)}
+                stroke={isSelectedLocation(codeLower) ? "#00e054" : "#222831"}
+                strokeWidth={isSelectedLocation(codeLower) ? 0.8 : 0.4}
+                style={{ cursor: clickable ? "pointer" : "default", transition: "fill 0.2s ease" }}
+                onMouseEnter={(e) => {
+                  const rect = mapWrapperRef.current?.getBoundingClientRect();
+                  if (!rect) return;
+                  setGeoHover({
+                    label,
+                    count: hoverCount,
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top,
+                  });
+                }}
+                onMouseMove={(e) => {
+                  const rect = mapWrapperRef.current?.getBoundingClientRect();
+                  if (!rect) return;
+                  setGeoHover((prev) =>
+                    prev
+                      ? { ...prev, x: e.clientX - rect.left, y: e.clientY - rect.top }
+                      : { label, count: hoverCount, x: e.clientX - rect.left, y: e.clientY - rect.top }
+                  );
+                }}
+                onMouseLeave={() => setGeoHover(null)}
+                onClick={() => {
+                  if (!clickable) return;
+                  if (geoView === "continent" && cont) {
+                    setGeoFilter((prev) => (prev && prev.type === "continent" && prev.value === cont ? null : { type: "continent", value: cont }));
+                  }
+                  if (geoView === "country") {
+                    setGeoFilter((prev) => (prev && prev.type === "country" && prev.value === code ? null : { type: "country", value: code }));
+                  }
+                }}
+              />
+            );
+          })}
+        </svg>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "center" }}>
+        {CONTINENT_ORDER.map((cont) => {
+          const count = continentCounts[cont] || 0;
+          const label = getContinentLabel(cont);
+          const isActive = geoFilter?.type === "continent" && geoFilter.value === cont;
+          return (
+            <button
+              key={cont}
+              type="button"
+              onClick={() => setGeoFilter((prev) => (prev && prev.type === "continent" && prev.value === cont ? null : { type: "continent", value: cont }))}
+              style={{
+                padding: "4px 8px",
+                borderRadius: "999px",
+                border: "1px solid #456",
+                backgroundColor: isActive ? "#00e054" : "transparent",
+                color: isActive ? "#14181c" : "#9ab",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: count > 0 ? "pointer" : "default",
+                opacity: count > 0 ? 1 : 0.5,
+              }}
+            >
+              {label} ({count})
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+});
+
 const sortMoviesByColumn = <T extends Record<string, any>>(
   items: T[],
   column: WatchlistSortColumn,
@@ -1456,8 +1715,6 @@ function App() {
   const [decadeFilter, setDecadeFilter] = useState<DecadeFilter>(null);
   const [geoFilter, setGeoFilter] = useState<GeoFilter>(null);
   const [geoView, setGeoView] = useState<GeoView>("continent");
-  const [geoHover, setGeoHover] = useState<{ label: string; count: number; x: number; y: number } | null>(null);
-  const mapWrapperRef = useRef<HTMLDivElement | null>(null);
   const heatmapScrollRef = useRef<HTMLDivElement | null>(null);
   const [heatmapTooltip, setHeatmapTooltip] = useState<{ text: string; x: number; y: number; align: "left" | "center" | "right"; movies: Array<{ name: string; year: string }> } | null>(null);
   const diaryInputRef = useRef<HTMLInputElement | null>(null);
@@ -2441,31 +2698,6 @@ function App() {
     () => Math.max(1, ...Object.values(continentCounts)),
     [continentCounts]
   );
-
-  const continentColors: Record<string, string> = {
-    AF: "#f97316",
-    AS: "#f59e0b",
-    EU: "#3b82f6",
-    NA: "#22c55e",
-    SA: "#14b8a6",
-    OC: "#a855f7",
-    AN: "#94a3b8",
-  };
-
-  const mixHex = (a: string, b: string, t: number) => {
-    const toRgb = (hex: string) => {
-      const h = hex.replace("#", "");
-      return {
-        r: parseInt(h.slice(0, 2), 16),
-        g: parseInt(h.slice(2, 4), 16),
-        b: parseInt(h.slice(4, 6), 16),
-      };
-    };
-    const ar = toRgb(a);
-    const br = toRgb(b);
-    const mix = (x: number, y: number) => Math.round(x + (y - x) * t);
-    return `#${mix(ar.r, br.r).toString(16).padStart(2, "0")}${mix(ar.g, br.g).toString(16).padStart(2, "0")}${mix(ar.b, br.b).toString(16).padStart(2, "0")}`;
-  };
 
   const tmdbErrorCounts = useMemo(
     () =>
@@ -4225,227 +4457,18 @@ function App() {
         )}
 
         {/* World map by country/continent */}
-        {moviesWithDataBase.length > 0 && (() => {
-          const worldMap = world as any;
-
-          const getFillForLocation = (codeLower: string) => {
-            const code = codeLower.toUpperCase();
-            const cont = getContinentCode(code);
-            if (geoView === "continent") {
-              if (!cont) return "#1b2026";
-              const base = continentColors[cont] || "#334";
-              const intensity = (continentCounts[cont] || 0) / maxContinentCount;
-              return mixHex("#1b2026", base, Math.min(1, 0.2 + intensity * 0.8));
-            }
-            const count = countryCounts[code] || 0;
-            if (count === 0) return "#1b2026";
-            const intensity = count / maxCountryCount;
-            return mixHex("#1b2026", "#00e054", Math.min(1, 0.2 + intensity * 0.8));
-          };
-
-          const isSelectedLocation = (codeLower: string) => {
-            if (!geoFilter) return false;
-            const code = codeLower.toUpperCase();
-            if (geoFilter.type === "country") {
-              return geoFilter.value.toUpperCase() === code;
-            }
-            const cont = getContinentCode(code);
-            return cont === geoFilter.value;
-          };
-
-          return (
-            <section style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#9ab" }}>World Map</h3>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  {(["continent", "country"] as const).map((view) => (
-                    <button
-                      key={view}
-                      type="button"
-                      onClick={() => setGeoView(view)}
-                      style={{
-                        padding: "4px 8px",
-                        borderRadius: "6px",
-                        border: "1px solid #456",
-                        backgroundColor: geoView === view ? "#00e054" : "transparent",
-                        color: geoView === view ? "#14181c" : "#9ab",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {view === "continent" ? "Continent" : "Country"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {geoFilter && (
-                <div style={{ fontSize: "12px", color: "#9ab", textAlign: "center" }}>
-                  Filtering diary list and pie charts for {geoFilter.type === "continent"
-                    ? getContinentLabel(geoFilter.value)
-                    : getCountryName(geoFilter.value)} — check Film Breakdown above.
-                  <button
-                    onClick={() => {
-                      const section = document.getElementById("diary-list");
-                      if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
-                    }}
-                    style={{
-                      marginLeft: "8px",
-                      padding: "2px 6px",
-                      fontSize: "11px",
-                      backgroundColor: "transparent",
-                      border: "1px solid #456",
-                      borderRadius: "4px",
-                      color: "#9ab",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Jump to list
-                  </button>
-                  <button
-                    onClick={() => setGeoFilter(null)}
-                    style={{
-                      marginLeft: "8px",
-                      padding: "2px 6px",
-                      fontSize: "11px",
-                      backgroundColor: "transparent",
-                      border: "1px solid #456",
-                      borderRadius: "4px",
-                      color: "#9ab",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Clear
-                  </button>
-                </div>
-              )}
-
-              <div
-                ref={mapWrapperRef}
-                style={{ position: "relative", width: "100%", backgroundColor: "#101419", borderRadius: "8px", padding: "8px" }}
-              >
-                {geoHover && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: geoHover.x,
-                      top: geoHover.y,
-                      transform: "translate(-50%, -120%)",
-                      backgroundColor: "rgba(20, 24, 28, 0.95)",
-                      border: "1px solid #345",
-                      borderRadius: "6px",
-                      padding: "4px 8px",
-                      fontSize: "12px",
-                      color: "#e2e8f0",
-                      pointerEvents: "none",
-                      whiteSpace: "nowrap",
-                      boxShadow: "0 6px 16px rgba(0,0,0,0.35)",
-                    }}
-                  >
-                    {geoHover.label}: {geoHover.count} films
-                  </div>
-                )}
-                <svg
-                  viewBox={worldMap.viewBox}
-                  style={{ width: "100%", height: "auto" }}
-                  role="img"
-                  aria-label="World map"
-                >
-                  {worldMap.locations.map((loc: any) => {
-                    const codeLower = loc.id;
-                    const code = codeLower.toUpperCase();
-                    const cont = getContinentCode(code);
-                    const countryCount = countryCounts[code] || 0;
-                    const continentCount = cont ? (continentCounts[cont] || 0) : 0;
-                    const label = geoView === "continent"
-                      ? (cont ? getContinentLabel(cont) : "Unknown")
-                      : getCountryName(code, loc.name);
-                    const hoverCount = geoView === "continent" ? continentCount : countryCount;
-                    const clickable = geoView === "continent" ? Boolean(cont && continentCount > 0) : countryCount > 0;
-
-                    return (
-                      <path
-                        key={loc.id}
-                        d={loc.path}
-                        fill={getFillForLocation(codeLower)}
-                        stroke={isSelectedLocation(codeLower) ? "#00e054" : "#222831"}
-                        strokeWidth={isSelectedLocation(codeLower) ? 0.8 : 0.4}
-                        style={{ cursor: clickable ? "pointer" : "default", transition: "fill 0.2s ease" }}
-                        onMouseEnter={(e) => {
-                          const rect = mapWrapperRef.current?.getBoundingClientRect();
-                          if (!rect) return;
-                          setGeoHover({
-                            label,
-                            count: hoverCount,
-                            x: e.clientX - rect.left,
-                            y: e.clientY - rect.top,
-                          });
-                        }}
-                        onMouseMove={(e) => {
-                          const rect = mapWrapperRef.current?.getBoundingClientRect();
-                          if (!rect) return;
-                          setGeoHover((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  x: e.clientX - rect.left,
-                                  y: e.clientY - rect.top,
-                                }
-                              : {
-                                  label,
-                                  count: hoverCount,
-                                  x: e.clientX - rect.left,
-                                  y: e.clientY - rect.top,
-                                }
-                          );
-                        }}
-                        onMouseLeave={() => setGeoHover(null)}
-                        onClick={() => {
-                          if (!clickable) return;
-                          if (geoView === "continent" && cont) {
-                            setGeoFilter((prev) => (prev && prev.type === "continent" && prev.value === cont ? null : { type: "continent", value: cont }));
-                          }
-                          if (geoView === "country") {
-                            setGeoFilter((prev) => (prev && prev.type === "country" && prev.value === code ? null : { type: "country", value: code }));
-                          }
-                        }}
-                      />
-                    );
-                  })}
-                </svg>
-              </div>
-
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "center" }}>
-                {CONTINENT_ORDER.map((cont) => {
-                  const count = continentCounts[cont] || 0;
-                  const label = getContinentLabel(cont);
-                  const isActive = geoFilter?.type === "continent" && geoFilter.value === cont;
-                  return (
-                    <button
-                      key={cont}
-                      type="button"
-                      onClick={() => setGeoFilter((prev) => (prev && prev.type === "continent" && prev.value === cont ? null : { type: "continent", value: cont }))}
-                      style={{
-                        padding: "4px 8px",
-                        borderRadius: "999px",
-                        border: "1px solid #456",
-                        backgroundColor: isActive ? "#00e054" : "transparent",
-                        color: isActive ? "#14181c" : "#9ab",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        cursor: count > 0 ? "pointer" : "default",
-                        opacity: count > 0 ? 1 : 0.5,
-                      }}
-                    >
-                      {label} ({count})
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          );
-        })()}
+        {moviesWithDataBase.length > 0 && (
+          <WorldMap
+            countryCounts={countryCounts}
+            continentCounts={continentCounts}
+            maxCountryCount={maxCountryCount}
+            maxContinentCount={maxContinentCount}
+            geoView={geoView}
+            setGeoView={setGeoView}
+            geoFilter={geoFilter}
+            setGeoFilter={setGeoFilter}
+          />
+        )}
 
         {/* Review stats - only show if reviews have been uploaded */}
         {reviews.length > 0 && (() => {
