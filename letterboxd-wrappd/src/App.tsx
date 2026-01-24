@@ -987,9 +987,7 @@ const DiaryTable = memo(({
 
   const hasActiveFilter = Object.values(diaryFilters).some(Boolean);
 
-  const toggleFilter = (key: keyof typeof diaryFilters) => {
-    setDiaryFilters((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+  // (removed unused toggleFilter; use toggleFilterPreserveScroll)
 
   const toggleSort = (column: WatchlistSortColumn) => {
     if (diarySortColumn !== column) {
@@ -1343,9 +1341,7 @@ const WatchlistTable = memo(({
   const hasActiveContinentFilter = watchlistContinentFilter !== null;
   const hasAnyFilter = hasActiveFilter || hasActiveRuntimeFilter || hasActiveContinentFilter;
 
-  const toggleFilter = (key: keyof typeof watchlistFilters) => {
-    setWatchlistFilters((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+  // (removed unused toggleFilter; use toggleWatchlistFilterPreserveScroll)
 
   const toggleSort = (column: WatchlistSortColumn) => {
     if (watchlistSortColumn !== column) {
