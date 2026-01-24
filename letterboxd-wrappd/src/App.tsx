@@ -1421,6 +1421,7 @@ const WatchlistTable = memo(({
       const checks: boolean[] = [];
       if (watchlistFilters.directedByWoman) checks.push(movie.directedByWoman);
       if (watchlistFilters.writtenByWoman) checks.push(movie.writtenByWoman);
+      if (watchlistFilters.byBlackDirector) checks.push(movie.byBlackDirector);
       if (watchlistFilters.notAmerican) checks.push(movie.notAmerican);
       if (watchlistFilters.notEnglish) checks.push(movie.notEnglish);
       if (watchlistFilters.inCriterion) checks.push(movie.inCriterion);
