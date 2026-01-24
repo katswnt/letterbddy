@@ -94,7 +94,7 @@ type RuntimeFilter = "all" | "under90" | "under2h" | "under2.5h" | "over2.5h";
 
 // Sort state for watchlist columns
 type WatchlistSortState = "default" | "asc" | "desc";
-type WatchlistSortColumn = "name" | "director" | "year" | "runtime" | null;
+type WatchlistSortColumn = "name" | "director" | "year" | "runtime" | "rating" | null;
 type DecadeFilter = { type: "decade" | "offset"; label: string } | null;
 type GeoFilter = { type: "continent" | "country"; value: string } | null;
 type GeoView = "continent" | "country";
@@ -570,6 +570,7 @@ const PieTooltip = ({ active, payload }: any) => {
 type StatPieChartProps = {
   primaryValue: number;
   primaryLabel: string;
+  primaryInfo?: ReactNode;
   secondaryValue: number;
   secondaryLabel: string;
   size?: number;
@@ -580,6 +581,7 @@ type StatPieChartProps = {
 const StatPieChart = ({
   primaryValue,
   primaryLabel,
+  primaryInfo,
   secondaryValue,
   secondaryLabel,
   size = 140,
@@ -643,7 +645,10 @@ const StatPieChart = ({
 
       {/* Primary label at bottom */}
       <div style={{ textAlign: "center", marginTop: "4px" }}>
-        <span style={{ fontSize: "13px", fontWeight: 500, color: "#def" }}>{primaryLabel}</span>
+        <span style={{ fontSize: "13px", fontWeight: 500, color: "#def" }}>
+          {primaryLabel}
+        </span>
+        {primaryInfo && <span style={{ marginLeft: "6px" }}>{primaryInfo}</span>}
         <span style={{ fontSize: "13px", fontWeight: 600, color: "#00e054", marginLeft: "6px" }}>{primaryPercent}%</span>
       </div>
     </div>
@@ -933,6 +938,7 @@ type DiaryMovie = {
   year: string;
   uri: string;
   director: string;
+  rating: number | null;
   runtime: number | null;
   directedByWoman: boolean;
   writtenByWoman: boolean;
@@ -945,6 +951,8 @@ type DiaryMovie = {
 
 type DiaryTableProps = {
   moviesWithData: any[];
+  blackDirectorIds: Set<number>;
+  diaryRatingMap: Map<string, { rating: number; date: string }>;
   diaryFilters: {
     directedByWoman: boolean;
     writtenByWoman: boolean;
@@ -971,6 +979,8 @@ type DiaryTableProps = {
 
 const DiaryTable = memo(({
   moviesWithData,
+  blackDirectorIds,
+  diaryRatingMap,
   diaryFilters,
   diaryFilterMode,
   setDiaryFilterMode,
@@ -990,15 +1000,22 @@ const DiaryTable = memo(({
       const year = tmdbData.release_date?.slice(0, 4) || "";
       const key = `${name.toLowerCase()}|${year}`;
       if (map.has(key)) continue;
+      const ratingEntry =
+        (movie.letterboxd_url && diaryRatingMap.get(movie.letterboxd_url)) ||
+        diaryRatingMap.get(key);
+      const rating = ratingEntry ? ratingEntry.rating : null;
       map.set(key, {
         name,
         year,
         uri: movie.letterboxd_url || "",
         director: directorNames || "Unknown",
+        rating,
         runtime: typeof tmdbData.runtime === "number" ? tmdbData.runtime : null,
         directedByWoman: tmdbData.directed_by_woman === true,
         writtenByWoman: tmdbData.written_by_woman === true,
-        byBlackDirector: movie.is_by_black_director === true,
+        byBlackDirector:
+          movie.is_by_black_director === true ||
+          (tmdbData?.directors || []).some((d: any) => typeof d?.id === "number" && blackDirectorIds.has(d.id)),
         notAmerican: tmdbData.is_american === false,
         notEnglish: tmdbData.is_english === false,
         inCriterion: movie.is_in_criterion_collection === true,
@@ -1013,7 +1030,7 @@ const DiaryTable = memo(({
       });
     }
     return Array.from(map.values());
-  }, [moviesWithData]);
+  }, [moviesWithData, blackDirectorIds, diaryRatingMap]);
   const measureRef = useRef<HTMLDivElement | null>(null);
   const hasMeasuredRef = useRef(false);
   const measureSignatureRef = useRef<string>("");
@@ -1188,6 +1205,9 @@ const DiaryTable = memo(({
           </a>
         </div>
         <div className="lb-cell lb-cell-director">{movie.director}</div>
+        <div className="lb-cell lb-cell-center">
+          {movie.rating != null ? `★${movie.rating.toFixed(1)}` : "—"}
+        </div>
         <div className="lb-cell lb-cell-center">{movie.year}</div>
         <div className="lb-cell lb-cell-flag" style={{ color: movie.directedByWoman ? "#00e054" : "#456" }}>
           {movie.directedByWoman ? "✓" : "✗"}
@@ -1252,7 +1272,7 @@ const DiaryTable = memo(({
       )}
       <div
         className="lb-table-container"
-        style={{ ["--lb-table-min-width" as any]: "712px" }}
+        style={{ ["--lb-table-min-width" as any]: "800px" }}
         ref={tableScrollRef}
       >
         <div className="lb-table-inner">
@@ -1263,6 +1283,9 @@ const DiaryTable = memo(({
             <button className="lb-header-cell" title="Click to sort by director" onClick={() => toggleSort("director")}>
               Director{getSortIndicator("director")}
             </button>
+            <button className="lb-header-cell" title="Click to sort by rating" onClick={() => toggleSort("rating")}>
+              Rating{getSortIndicator("rating")}
+            </button>
             <button className="lb-header-cell" title="Click to sort by year" onClick={() => toggleSort("year")}>
               Year{getSortIndicator("year")}
             </button>
@@ -1272,11 +1295,8 @@ const DiaryTable = memo(({
             <button className={`lb-header-cell lb-header-flag ${diaryFilters.writtenByWoman ? "lb-header-active" : ""}`} onClick={() => toggleFilterPreserveScroll("writtenByWoman")}>
               Writ♀
             </button>
-            <button className={`lb-header-cell lb-header-flag ${diaryFilters.byBlackDirector ? "lb-header-active" : ""}`} onClick={() => toggleFilterPreserveScroll("byBlackDirector")}>
-              <span className="lb-header-content">
-                Blk Dir
-                <BlackDirectorsInfo align="right" />
-              </span>
+            <button className={`lb-header-cell lb-header-flag lb-header-flag-center ${diaryFilters.byBlackDirector ? "lb-header-active" : ""}`} onClick={() => toggleFilterPreserveScroll("byBlackDirector")}>
+              Blk Dir
             </button>
             <button className={`lb-header-cell lb-header-flag ${diaryFilters.notAmerican ? "lb-header-active" : ""}`} onClick={() => toggleFilterPreserveScroll("notAmerican")}>
               !US
@@ -1297,6 +1317,9 @@ const DiaryTable = memo(({
               >
                 <div className="lb-cell lb-cell-title">{movie.name}</div>
                 <div className="lb-cell lb-cell-director">{movie.director}</div>
+                <div className="lb-cell lb-cell-center">
+                  {movie.rating != null ? `★${movie.rating.toFixed(1)}` : "—"}
+                </div>
                 <div className="lb-cell lb-cell-center">{movie.year}</div>
                 <div className="lb-cell lb-cell-flag">{movie.directedByWoman ? "✓" : "✗"}</div>
                 <div className="lb-cell lb-cell-flag">{movie.writtenByWoman ? "✓" : "✗"}</div>
@@ -1314,7 +1337,7 @@ const DiaryTable = memo(({
           items={filteredDiaryMovies}
           renderRow={renderRow}
           className="lb-list"
-          minWidth={712}
+          minWidth={800}
         />
         <div className="lb-table-key">
           Dir♀ = Directed by women · Writ♀ = Written by women · Blk Dir = Films by Black directors <BlackDirectorsInfo align="center" /> · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
@@ -1660,7 +1683,7 @@ const WatchlistTable = memo(({
 
       <div
         className="lb-table-container"
-        style={{ ["--lb-table-min-width" as any]: "902px" }}
+        style={{ ["--lb-table-min-width" as any]: "880px" }}
         ref={tableScrollRef}
       >
         <div className="lb-table-inner">
@@ -1689,11 +1712,8 @@ const WatchlistTable = memo(({
             <button className={`lb-header-cell lb-header-flag ${watchlistFilters.writtenByWoman ? "lb-header-active" : ""}`} onClick={() => toggleWatchlistFilterPreserveScroll("writtenByWoman")}>
               Writ♀
             </button>
-            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.byBlackDirector ? "lb-header-active" : ""}`} onClick={() => toggleWatchlistFilterPreserveScroll("byBlackDirector")}>
-              <span className="lb-header-content">
-                Blk Dir
-                <BlackDirectorsInfo align="right" />
-              </span>
+            <button className={`lb-header-cell lb-header-flag lb-header-flag-center ${watchlistFilters.byBlackDirector ? "lb-header-active" : ""}`} onClick={() => toggleWatchlistFilterPreserveScroll("byBlackDirector")}>
+              Blk Dir
             </button>
             <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notAmerican ? "lb-header-active" : ""}`} onClick={() => toggleWatchlistFilterPreserveScroll("notAmerican")}>
               !US
@@ -1735,16 +1755,16 @@ const WatchlistTable = memo(({
           items={filteredMovies}
           renderRow={renderRow}
           className="lb-list"
-          minWidth={902}
+          minWidth={880}
         />
         <div className="lb-table-key">
           Dir♀ = Directed by women · Writ♀ = Written by women · Blk Dir = Films by Black directors <BlackDirectorsInfo align="center" /> · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
         </div>
-        {watchlistPaceText && (
-          <div className="lb-watchlist-pace">{watchlistPaceText}</div>
-        )}
         </div>
       </div>
+      {watchlistPaceText && (
+        <div className="lb-watchlist-pace">{watchlistPaceText}</div>
+      )}
     </div>
   );
 });
@@ -1851,6 +1871,10 @@ function App() {
   const heatmapScrollRef = useRef<HTMLDivElement | null>(null);
   const [heatmapTooltip, setHeatmapTooltip] = useState<{ text: string; x: number; y: number; align: "left" | "center" | "right"; movies: Array<{ name: string; year: string }> } | null>(null);
   const diaryInputRef = useRef<HTMLInputElement | null>(null);
+
+  const toggleDiaryFilter = useCallback((key: keyof typeof diaryFilters) => {
+    setDiaryFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
   const reviewsInputRef = useRef<HTMLInputElement | null>(null);
   const watchlistInputRef = useRef<HTMLInputElement | null>(null);
   const diarySectionRef = useRef<HTMLDivElement | null>(null);
@@ -2232,6 +2256,15 @@ function App() {
       const uriMap = json?.uriMap || {};
       setWatchlistUriMapSize(Object.keys(uriMap || {}).length);
 
+      const blackDirectorIdsForWatchlist = new Set<number>();
+      for (const movie of Object.values(index as Record<string, any>)) {
+        if (!movie?.is_by_black_director) continue;
+        const directors = movie?.tmdb_data?.directors || [];
+        for (const director of directors) {
+          if (typeof director?.id === "number") blackDirectorIdsForWatchlist.add(director.id);
+        }
+      }
+
       const resolveFromUriMap = (uri: string) => {
         const trimmed = (uri || "").trim();
         if (!trimmed) return null;
@@ -2351,7 +2384,11 @@ function App() {
         const directors = tmdbData?.directors || [];
         const directorNames = directors.map((d: any) => d.name).filter(Boolean).join(", ");
 
-        const criteriaCount = [directedByWoman, writtenByWoman, byBlackDirector, notAmerican, notEnglish, inCriterion]
+        const directorIds = (tmdbData?.directors || []).map((d: any) => d?.id).filter((id: any) => typeof id === "number");
+        const byBlackDirectorResolved =
+          byBlackDirector || directorIds.some((id: number) => blackDirectorIdsForWatchlist.has(id));
+
+        const criteriaCount = [directedByWoman, writtenByWoman, byBlackDirectorResolved, notAmerican, notEnglish, inCriterion]
           .filter(Boolean).length;
 
         if (!tmdbData) {
@@ -2386,7 +2423,7 @@ function App() {
             continents: continentsForMovie,
             directedByWoman,
             writtenByWoman,
-            byBlackDirector,
+            byBlackDirector: byBlackDirectorResolved,
             notAmerican,
             notEnglish,
             inCriterion,
@@ -2523,47 +2560,23 @@ function App() {
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
-  const movieLookup = useMemo(() => {
-    if (!movieIndex) return null;
-
-    const lookup: Record<string, any> = {};
-    for (const [key, movie] of Object.entries(movieIndex)) {
-      // Canonical key
-      lookup[key] = movie;
-
-      // Common alias fields (be liberal; harmless if missing)
-      const aliases: string[] = [];
-      if (typeof movie?.letterboxd_url === "string") aliases.push(movie.letterboxd_url);
-      if (Array.isArray(movie?.letterboxd_urls)) aliases.push(...movie.letterboxd_urls);
-      if (Array.isArray(movie?.source_uris)) aliases.push(...movie.source_uris);
-      if (Array.isArray(movie?.aliases)) aliases.push(...movie.aliases);
-      if (typeof movie?.original_uri === "string") aliases.push(movie.original_uri);
-      if (typeof movie?.shortlink === "string") aliases.push(movie.shortlink);
-      if (typeof movie?.boxd_shortlink === "string") aliases.push(movie.boxd_shortlink);
-
-      for (const a of aliases) {
-        if (typeof a !== "string") continue;
-        const trimmed = a.trim();
-        if (!trimmed) continue;
-        lookup[trimmed] = movie;
-      }
-
-      // Also support user-scoped film URLs by canonicalizing them to /film/<slug>/
-      if (typeof key === "string") {
-        const m = key.match(/https?:\/\/letterboxd\.com\/(?:[^/]+\/)?film\/([^/]+)\/?/i);
-        if (m) {
-          const canonical = `https://letterboxd.com/film/${m[1]}/`;
-          lookup[canonical] = movie;
-        }
+  const blackDirectorIds = useMemo(() => {
+    const ids = new Set<number>();
+    if (!movieIndex) return ids;
+    for (const movie of Object.values(movieIndex)) {
+      if (!movie?.is_by_black_director) continue;
+      const directors = movie?.tmdb_data?.directors || [];
+      for (const director of directors) {
+        if (typeof director?.id === "number") ids.add(director.id);
       }
     }
-
-    return lookup;
+    return ids;
   }, [movieIndex]);
 
   // Extract unique years from diary entries, sorted descending (newest first)
-  const getWatchedDate = (row: DiaryRow) =>
-    (row["Watched Date"] || (row as any).Date || "").trim();
+  function getWatchedDate(row: DiaryRow) {
+    return (row["Watched Date"] || (row as any).Date || "").trim();
+  }
 
   const availableYears = useMemo(
     () => {
@@ -2738,6 +2751,71 @@ function App() {
 
     return uri;
   }, [uriMap]);
+
+  const movieLookup = useMemo(() => {
+    if (!movieIndex) return null;
+
+    const lookup: Record<string, any> = {};
+    for (const [key, movie] of Object.entries(movieIndex)) {
+      // Canonical key
+      lookup[key] = movie;
+
+      // Common alias fields (be liberal; harmless if missing)
+      const aliases: string[] = [];
+      if (typeof movie?.letterboxd_url === "string") aliases.push(movie.letterboxd_url);
+      if (Array.isArray(movie?.letterboxd_urls)) aliases.push(...movie.letterboxd_urls);
+      if (Array.isArray(movie?.source_uris)) aliases.push(...movie.source_uris);
+      if (Array.isArray(movie?.aliases)) aliases.push(...movie.aliases);
+      if (typeof movie?.original_uri === "string") aliases.push(movie.original_uri);
+      if (typeof movie?.shortlink === "string") aliases.push(movie.shortlink);
+      if (typeof movie?.boxd_shortlink === "string") aliases.push(movie.boxd_shortlink);
+
+      for (const a of aliases) {
+        if (typeof a !== "string") continue;
+        const trimmed = a.trim();
+        if (!trimmed) continue;
+        lookup[trimmed] = movie;
+      }
+
+      // Also support user-scoped film URLs by canonicalizing them to /film/<slug>/
+      if (typeof key === "string") {
+        const m = key.match(/https?:\/\/letterboxd\.com\/(?:[^/]+\/)?film\/([^/]+)\/?/i);
+        if (m) {
+          const canonical = `https://letterboxd.com/film/${m[1]}/`;
+          lookup[canonical] = movie;
+        }
+      }
+    }
+
+    return lookup;
+  }, [movieIndex]);
+
+  const diaryRatingMap = useMemo(() => {
+    const map = new Map<string, { rating: number; date: string }>();
+    for (const row of filteredRows) {
+      const rawRating = parseFloat(row.Rating);
+      if (Number.isNaN(rawRating)) continue;
+      const date = getWatchedDate(row) || "";
+      const name = (row.Name || "").trim();
+      const year = (row.Year || "").trim();
+      const keyByName = name ? `${name.toLowerCase()}|${year}` : "";
+      const uriRaw = (row["Letterboxd URI"] || "").trim();
+      const canon = uriRaw ? canonicalizeUri(uriRaw) : "";
+
+      const update = (key: string) => {
+        if (!key) return;
+        const prev = map.get(key);
+        if (!prev || (date && date >= prev.date)) {
+          map.set(key, { rating: rawRating, date });
+        }
+      };
+
+      update(canon || uriRaw);
+      update(uriRaw);
+      update(keyByName);
+    }
+    return map;
+  }, [filteredRows, canonicalizeUri]);
   
   // Create sets of both original and canonicalized URIs for matching
   const canonicalizedFilteredUris = useMemo(
@@ -2793,10 +2871,14 @@ function App() {
       const movie = movieLookup[uri] || movieLookup[canonicalizeUri(uri)];
       if (!movie) return false;
       const tmdb = movie.tmdb_data || {};
+      const byBlackDirector =
+        movie.is_by_black_director === true ||
+        (tmdb?.directors || []).some((d: any) => typeof d?.id === "number" && blackDirectorIds.has(d.id));
       if (activeCriteria) {
         const checks: boolean[] = [];
         if (diaryFilters.directedByWoman) checks.push(tmdb.directed_by_woman === true);
         if (diaryFilters.writtenByWoman) checks.push(tmdb.written_by_woman === true);
+        if (diaryFilters.byBlackDirector) checks.push(byBlackDirector);
         if (diaryFilters.notAmerican) checks.push(tmdb.is_american === false);
         if (diaryFilters.notEnglish) checks.push(tmdb.is_english === false);
         if (diaryFilters.inCriterion) checks.push(movie.is_in_criterion_collection === true);
@@ -2816,6 +2898,7 @@ function App() {
     diaryFilterMode,
     ratingFilter,
     movieLookup,
+    blackDirectorIds,
     matchesDecadeFilter,
     matchesGeoFilter,
     canonicalizeUri,
@@ -4141,41 +4224,56 @@ function App() {
                     primaryLabel="Directed by women"
                     secondaryValue={totalMoviesWithData - directedByWoman}
                     secondaryLabel="Not women"
+                    onClick={() => toggleDiaryFilter("directedByWoman")}
+                    isSelected={diaryFilters.directedByWoman}
                   />
                   <StatPieChart
                     primaryValue={writtenByWoman}
                     primaryLabel="Written by women"
                     secondaryValue={totalMoviesWithData - writtenByWoman}
                     secondaryLabel="Not women"
+                    onClick={() => toggleDiaryFilter("writtenByWoman")}
+                    isSelected={diaryFilters.writtenByWoman}
                   />
                   <StatPieChart
                     primaryValue={byBlackDirector}
                     primaryLabel="By Black directors"
+                    primaryInfo={<BlackDirectorsInfo align="center" />}
                     secondaryValue={totalMoviesWithData - byBlackDirector}
                     secondaryLabel="Not in list"
+                    onClick={() => toggleDiaryFilter("byBlackDirector")}
+                    isSelected={diaryFilters.byBlackDirector}
                   />
                   <StatPieChart
                     primaryValue={notAmerican}
                     primaryLabel="Non-American"
                     secondaryValue={totalMoviesWithData - notAmerican}
                     secondaryLabel="American"
+                    onClick={() => toggleDiaryFilter("notAmerican")}
+                    isSelected={diaryFilters.notAmerican}
                   />
                   <StatPieChart
                     primaryValue={notEnglish}
                     primaryLabel="Not in English"
                     secondaryValue={totalMoviesWithData - notEnglish}
                     secondaryLabel="English"
+                    onClick={() => toggleDiaryFilter("notEnglish")}
+                    isSelected={diaryFilters.notEnglish}
                   />
                   <StatPieChart
                     primaryValue={inCriterion}
                     primaryLabel="In the Criterion Collection"
                     secondaryValue={totalMoviesWithData - inCriterion}
                     secondaryLabel="Not in Criterion"
+                    onClick={() => toggleDiaryFilter("inCriterion")}
+                    isSelected={diaryFilters.inCriterion}
                   />
                 </div>
 
                 <DiaryTable
                   moviesWithData={moviesWithData}
+                  blackDirectorIds={blackDirectorIds}
+                  diaryRatingMap={diaryRatingMap}
                   diaryFilters={diaryFilters}
                   diaryFilterMode={diaryFilterMode}
                   setDiaryFilterMode={setDiaryFilterMode}

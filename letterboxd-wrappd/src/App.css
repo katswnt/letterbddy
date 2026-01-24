@@ -146,13 +146,13 @@
 }
 
 .lb-diary-grid {
-  grid-template-columns: minmax(200px, 1fr) 150px 60px 48px 48px 72px 48px 48px 48px;
-  min-width: 712px;
+  grid-template-columns: minmax(200px, 1fr) 150px 70px 60px 48px 60px 60px 48px 48px 48px;
+  min-width: 796px;
 }
 
 .lb-watchlist-grid {
-  grid-template-columns: minmax(200px, 1fr) 150px 60px 70px 120px 48px 48px 72px 48px 48px 48px;
-  min-width: 902px;
+  grid-template-columns: minmax(200px, 1fr) 150px 60px 70px 120px 48px 60px 60px 48px 48px 48px;
+  min-width: 876px;
 }
 
 .lb-cell {
@@ -220,6 +220,15 @@
   -webkit-appearance: none;
 }
 
+.lb-header-flag {
+  white-space: nowrap;
+}
+
+.lb-header-flag-center {
+  justify-content: center;
+  text-align: center;
+}
+
 
 .lb-table-key {
   margin-top: 28px;
@@ -233,6 +242,10 @@
   font-size: 13px;
   color: #cfe2d2;
   text-align: center;
+  max-width: 720px;
+  width: 100%;
+  padding: 0 12px;
+  line-height: 1.5;
 }
 
 .lb-taste-dna {
@@ -417,7 +430,7 @@
 }
 
 .lb-taste-criteria-outside {
-  margin-top: -10px;
+  margin-top: -20px;
 }
 
 .lb-taste-detail {
@@ -494,9 +507,7 @@
   text-align: center;
 }
 
-.lb-header-flag {
-  width: 48px;
-}
+/* Removed explicit width - let grid template handle column sizing */
 
 .lb-header-continent {
   width: 120px;
