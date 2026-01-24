@@ -1080,6 +1080,20 @@ const DiaryTable = memo(({
     }
   }, [filteredDiaryMovies.length]);
 
+  const preserveScrollLeft = () => {
+    const left = tableScrollRef.current?.scrollLeft || 0;
+    requestAnimationFrame(() => {
+      if (tableScrollRef.current) {
+        tableScrollRef.current.scrollLeft = left;
+      }
+    });
+  };
+
+  const toggleFilterPreserveScroll = (key: keyof typeof diaryFilters) => {
+    preserveScrollLeft();
+    setDiaryFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const renderRow = useCallback((movie: DiaryMovie, index: number, style: React.CSSProperties) => {
     const isAlt = index % 2 === 1;
     return (
@@ -1173,19 +1187,19 @@ const DiaryTable = memo(({
             <button className="lb-header-cell" title="Click to sort by year" onClick={() => toggleSort("year")}>
               Year{getSortIndicator("year")}
             </button>
-            <button className={`lb-header-cell lb-header-flag ${diaryFilters.directedByWoman ? "lb-header-active" : ""}`} onClick={() => toggleFilter("directedByWoman")}>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.directedByWoman ? "lb-header-active" : ""}`} onClick={() => toggleFilterPreserveScroll("directedByWoman")}>
               Dir♀
             </button>
-            <button className={`lb-header-cell lb-header-flag ${diaryFilters.writtenByWoman ? "lb-header-active" : ""}`} onClick={() => toggleFilter("writtenByWoman")}>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.writtenByWoman ? "lb-header-active" : ""}`} onClick={() => toggleFilterPreserveScroll("writtenByWoman")}>
               Writ♀
             </button>
-            <button className={`lb-header-cell lb-header-flag ${diaryFilters.notAmerican ? "lb-header-active" : ""}`} onClick={() => toggleFilter("notAmerican")}>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.notAmerican ? "lb-header-active" : ""}`} onClick={() => toggleFilterPreserveScroll("notAmerican")}>
               !US
             </button>
-            <button className={`lb-header-cell lb-header-flag ${diaryFilters.notEnglish ? "lb-header-active" : ""}`} onClick={() => toggleFilter("notEnglish")}>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.notEnglish ? "lb-header-active" : ""}`} onClick={() => toggleFilterPreserveScroll("notEnglish")}>
               !EN
             </button>
-            <button className={`lb-header-cell lb-header-flag ${diaryFilters.inCriterion ? "lb-header-active" : ""}`} onClick={() => toggleFilter("inCriterion")}>
+            <button className={`lb-header-cell lb-header-flag ${diaryFilters.inCriterion ? "lb-header-active" : ""}`} onClick={() => toggleFilterPreserveScroll("inCriterion")}>
               CC
             </button>
           </div>
@@ -1422,6 +1436,20 @@ const WatchlistTable = memo(({
     }
   }, [filteredMovies.length]);
 
+  const preserveWatchlistScrollLeft = () => {
+    const left = tableScrollRef.current?.scrollLeft || 0;
+    requestAnimationFrame(() => {
+      if (tableScrollRef.current) {
+        tableScrollRef.current.scrollLeft = left;
+      }
+    });
+  };
+
+  const toggleWatchlistFilterPreserveScroll = (key: keyof typeof watchlistFilters) => {
+    preserveWatchlistScrollLeft();
+    setWatchlistFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const cycleContinentFilter = () => {
     if (!watchlistContinentFilter) {
       setWatchlistContinentFilter(CONTINENT_ORDER[0]);
@@ -1565,19 +1593,19 @@ const WatchlistTable = memo(({
                 <span className="lb-header-sub">{watchlistContinentFilter ? getContinentLabel(watchlistContinentFilter) : "All"}</span>
               </div>
             </button>
-            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.directedByWoman ? "lb-header-active" : ""}`} onClick={() => toggleFilter("directedByWoman")}>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.directedByWoman ? "lb-header-active" : ""}`} onClick={() => toggleWatchlistFilterPreserveScroll("directedByWoman")}>
               Dir♀
             </button>
-            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.writtenByWoman ? "lb-header-active" : ""}`} onClick={() => toggleFilter("writtenByWoman")}>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.writtenByWoman ? "lb-header-active" : ""}`} onClick={() => toggleWatchlistFilterPreserveScroll("writtenByWoman")}>
               Writ♀
             </button>
-            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notAmerican ? "lb-header-active" : ""}`} onClick={() => toggleFilter("notAmerican")}>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notAmerican ? "lb-header-active" : ""}`} onClick={() => toggleWatchlistFilterPreserveScroll("notAmerican")}>
               !US
             </button>
-            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notEnglish ? "lb-header-active" : ""}`} onClick={() => toggleFilter("notEnglish")}>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.notEnglish ? "lb-header-active" : ""}`} onClick={() => toggleWatchlistFilterPreserveScroll("notEnglish")}>
               !EN
             </button>
-            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.inCriterion ? "lb-header-active" : ""}`} onClick={() => toggleFilter("inCriterion")}>
+            <button className={`lb-header-cell lb-header-flag ${watchlistFilters.inCriterion ? "lb-header-active" : ""}`} onClick={() => toggleWatchlistFilterPreserveScroll("inCriterion")}>
               CC
             </button>
           </div>
@@ -3835,7 +3863,7 @@ function App() {
                 )}
 
                 {/* Pie charts grid */}
-                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "24px", padding: "8px 0" }}>
+                <div className="lb-pie-grid">
                   <StatPieChart
                     primaryValue={firstWatchEntryCount}
                     primaryLabel="New watches"

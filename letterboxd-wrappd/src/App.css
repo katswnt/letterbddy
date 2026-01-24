@@ -125,6 +125,14 @@
   min-width: var(--lb-table-min-width);
 }
 
+.lb-pie-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 24px;
+  padding: 8px 0;
+}
+
 .lb-row {
   display: grid;
   align-items: center;
@@ -800,6 +808,19 @@
   /* Reduce large stat numbers on mobile */
   .stats-row > div > div:first-child {
     font-size: 28px !important;
+  }
+
+  .lb-pie-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+    gap: 16px;
+    justify-items: center;
+    padding: 4px 0;
+  }
+
+  .lb-pie-grid > div {
+    transform: scale(0.9);
+    transform-origin: center top;
   }
 }
 
