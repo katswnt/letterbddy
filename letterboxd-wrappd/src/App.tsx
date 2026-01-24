@@ -31,6 +31,16 @@ type DiaryRow = {
   "Watched Date": string;
 };
 
+type RssEntry = {
+  title: string;
+  year: string;
+  rating: string;
+  watchedDate: string;
+  rewatch: string;
+  link: string;
+  pubDate: string;
+};
+
 // Shape of one row in reviews.csv
 type ReviewRow = {
   Date: string;
@@ -1713,6 +1723,10 @@ function App() {
   const [watchlistFileName, setWatchlistFileName] = useState<string>("No file selected");
   const [reviewsFileName, setReviewsFileName] = useState<string>("No file selected");
   const [isDiaryFormat, setIsDiaryFormat] = useState<boolean>(true);
+  const [isRssPreview, setIsRssPreview] = useState<boolean>(false);
+  const [rssUsername, setRssUsername] = useState<string>("");
+  const [rssLoading, setRssLoading] = useState<boolean>(false);
+  const [rssError, setRssError] = useState<string | null>(null);
   const [manualUploadOpen, setManualUploadOpen] = useState<boolean>(false);
   const [pendingUploadTarget, setPendingUploadTarget] = useState<"diary" | "reviews" | "watchlist" | null>(null);
 
@@ -1930,12 +1944,14 @@ function App() {
     logDebug("Sample entry keys:", firstEntry ? Object.keys(firstEntry[1] as any) : "none");
   }
 
-  const processDiaryFile = (file: File) => {
+  const processDiaryFile = (file: File, options?: { fromRss?: boolean }) => {
     setRatingFilter(null);
     setDecadeFilter(null);
     setGeoFilter(null);
     setDateFilter("all");
     setIsDiaryFormat(true);
+    setIsRssPreview(Boolean(options?.fromRss));
+    setRssError(null);
     if (!file.name.toLowerCase().endsWith(".csv")) {
       setError("Please upload a CSV file.");
       setRows([]);
@@ -1980,6 +1996,7 @@ function App() {
     const file = e.target.files?.[0];
     setDiaryFileName(file ? file.name : "No file selected");
     if (!file) return;
+    setIsRssPreview(false);
     processDiaryFile(file);
   };
 
@@ -2317,6 +2334,89 @@ function App() {
     if (!res.ok) throw new Error(`Failed to load sample: ${fileName}`);
     const blob = await res.blob();
     return new File([blob], fileName, { type: "text/csv" });
+  };
+
+  const coerceRssDate = (value: string) => {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toISOString().slice(0, 10);
+  };
+
+  const fetchRssPreview = async () => {
+    const rawUsername = rssUsername.trim().replace(/^@/, "");
+    const normalizedUsername = rawUsername.replace(/^https?:\/\/letterboxd\.com\/+/i, "").split("/")[0];
+    const username = normalizedUsername.trim();
+    if (!username) {
+      setRssError("Enter a Letterboxd username.");
+      return;
+    }
+
+    setError(null);
+    setRssError(null);
+    setRssLoading(true);
+
+    try {
+      const isLocalHost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+      const useRemoteApi = isLocalHost && diaryUseVercelApi;
+      const baseUrl = useRemoteApi ? "https://letterbddy.vercel.app" : isLocalHost ? "http://localhost:5050" : "";
+
+      const res = await fetch(`${baseUrl}/api/rss?username=${encodeURIComponent(username)}`);
+      const rawText = await res.text();
+      const contentType = res.headers.get("content-type") || "";
+      let data: any = null;
+      if (!contentType.includes("application/json")) {
+        const hint = useRemoteApi
+          ? "The Vercel API may not be deployed yet. Try unchecking “Use Vercel API for diary.”"
+          : "Check that the local server is running (`npm run server`).";
+        throw new Error(`RSS endpoint returned ${res.status} ${res.statusText}. Expected JSON. ${hint}`);
+      }
+      try {
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        throw new Error("RSS response was not valid JSON.");
+      }
+      if (!res.ok) {
+        const apiError = typeof data?.error === "string" ? data.error : rawText;
+        throw new Error(apiError || `RSS error (${res.status})`);
+      }
+      const entries: RssEntry[] = Array.isArray(data?.entries) ? data.entries : [];
+      if (!entries.length) {
+        throw new Error("No recent diary entries found for that username.");
+      }
+
+      const rowsFromRss: DiaryRow[] = entries
+        .map((entry) => {
+          const watchedDate = coerceRssDate(entry.watchedDate || entry.pubDate);
+          return {
+            Date: watchedDate,
+            Name: entry.title || "",
+            Year: entry.year || "",
+            "Letterboxd URI": entry.link || "",
+            Rating: entry.rating || "",
+            Rewatch: entry.rewatch || "",
+            Tags: "",
+            "Watched Date": watchedDate,
+          };
+        })
+        .filter((row) => row.Name);
+
+      if (!rowsFromRss.length) {
+        throw new Error("No usable diary entries found in the RSS feed.");
+      }
+
+      const csvText = Papa.unparse(rowsFromRss, {
+        columns: ["Date", "Name", "Year", "Letterboxd URI", "Rating", "Rewatch", "Tags", "Watched Date"],
+      });
+      const file = new File([csvText], `${username}-rss.csv`, { type: "text/csv" });
+      setDiaryFileName(`${username} (RSS last 50)`);
+      processDiaryFile(file, { fromRss: true });
+    } catch (err: any) {
+      const message = err?.message || "Failed to load RSS feed.";
+      setRssError(message.includes("expected pattern") ? "RSS fetch failed. Double-check the username and try again." : message);
+    } finally {
+      setRssLoading(false);
+    }
   };
 
   const isLocalDev =
@@ -3360,6 +3460,7 @@ function App() {
                   onClick={() => {
                     setRows([]);
                     setDiaryFileName("No file selected");
+                    setIsRssPreview(false);
                     setPendingUploadTarget("diary");
                     requestAnimationFrame(() => {
                       diarySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -3467,6 +3568,7 @@ function App() {
                   try {
                     const file = await loadSampleCsv("/kat_diary.csv", "kat_diary.csv");
                     setDiaryFileName(file.name);
+                    setIsRssPreview(false);
                     processDiaryFile(file);
                   } catch (e: any) {
                     setError(e.message || "Failed to load sample diary");
@@ -3486,6 +3588,38 @@ function App() {
                 Try with Kat's
               </button>
             </div>
+            <div className="lb-rss-row">
+              <span className="lb-rss-label">Or pull your last 50 diary entries:</span>
+              <div className="lb-rss-input-wrap">
+                <span className="lb-rss-at">@</span>
+                <input
+                  type="text"
+                  value={rssUsername}
+                  onChange={(e) => setRssUsername(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      fetchRssPreview();
+                    }
+                  }}
+                  placeholder="letterboxd username"
+                  className="lb-rss-input"
+                  disabled={rssLoading || isLoading}
+                />
+              </div>
+              <button
+                type="button"
+                className="lb-rss-btn"
+                disabled={rssLoading || isLoading}
+                onClick={fetchRssPreview}
+              >
+                {rssLoading ? "Fetching…" : "Fetch last 50"}
+              </button>
+            </div>
+            <p className="lb-rss-note">
+              RSS only includes your most recent 50 diary entries. For full stats, upload your diary.csv.
+            </p>
+            {rssError && <p className="lb-rss-error">{rssError}</p>}
           </div>
 
           {/* Loading state with spinner - only show when actively loading */}
@@ -3566,6 +3700,11 @@ function App() {
                   {Object.keys(movieIndex).length} unique films indexed
                 </p>
               )}
+            </div>
+          )}
+          {!isLoading && rows.length > 0 && isRssPreview && (
+            <div className="lb-rss-preview-note">
+              RSS is a quick preview (last 50 entries). For complete stats, upload your full diary.csv.
             </div>
           )}
 

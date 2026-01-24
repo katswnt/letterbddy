@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { XMLParser } from "fast-xml-parser";
 
 const CACHE_PATH = path.join(process.cwd(), ".cache", "letterboxd_tmdb_cache.json");
 
@@ -48,6 +49,56 @@ const upload = multer({ dest: os.tmpdir() });
 const CRITERION_LIST_PATH = "/Users/kathrynswint/Downloads/criterion-collection.csv";
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
+const rssParser = new XMLParser({ ignoreAttributes: false });
+const getRssText = (value) => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (typeof value === "object" && "#text" in value) return String(value["#text"] ?? "");
+  return "";
+};
+
+console.log("Registering GET /api/rss");
+app.get("/api/rss", async (req, res) => {
+  const rawUsername = typeof req.query.username === "string" ? req.query.username : "";
+  const username = rawUsername.trim().replace(/^@/, "");
+  if (!username) return res.status(400).json({ error: "Missing username" });
+
+  const url = `https://letterboxd.com/${encodeURIComponent(username)}/rss/`;
+
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": "letterbddy/1.0" },
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `Letterboxd returned ${response.status}` });
+    }
+
+    const xml = (await response.text()).trim();
+    const parsed = rssParser.parse(xml);
+    const rawItems = parsed?.rss?.channel?.item;
+    const items = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
+    const entries = items
+      .map((item) => {
+        const filmTitle = getRssText(item["letterboxd:filmTitle"]);
+        if (!filmTitle) return null;
+        return {
+          title: filmTitle,
+          year: getRssText(item["letterboxd:filmYear"]),
+          rating: getRssText(item["letterboxd:memberRating"]),
+          watchedDate: getRssText(item["letterboxd:watchedDate"]),
+          rewatch: getRssText(item["letterboxd:rewatch"]),
+          link: getRssText(item.link),
+          pubDate: getRssText(item.pubDate),
+        };
+      })
+      .filter(Boolean);
+
+    return res.json({ username, count: entries.length, entries });
+  } catch (error) {
+    return res.status(500).json({ error: error?.message || "Failed to fetch RSS" });
+  }
+});
 
 // Register GET routes before POST handler (Express 5 compatibility)
 console.log("Registering GET /api/test");
