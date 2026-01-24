@@ -286,6 +286,7 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .lb-taste-tab {
@@ -316,9 +317,10 @@
 }
 
 .lb-taste-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center;
 }
 
 .lb-taste-card {
@@ -331,6 +333,18 @@
   background: transparent;
   border: none;
   cursor: pointer;
+  width: 100px;
+  padding: 8px;
+  border-radius: 8px;
+  transition: background-color 0.15s ease;
+}
+
+.lb-taste-card:hover {
+  background-color: rgba(68, 85, 102, 0.2);
+}
+
+.lb-taste-card.is-expanded {
+  background-color: rgba(0, 224, 84, 0.1);
 }
 
 .lb-taste-avatar {
@@ -392,53 +406,73 @@
 }
 
 .lb-taste-detail {
-  border: 1px solid rgba(68, 85, 102, 0.35);
-  border-radius: 10px;
-  padding: 12px;
-  background: rgba(15, 19, 24, 0.75);
+  border-top: 1px solid #345;
+  margin-top: 8px;
+  padding-top: 16px;
 }
 
 .lb-taste-detail-title {
-  font-size: 12px;
-  color: #d6e7dd;
-  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.lb-taste-detail-table {
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
 }
 
 .lb-taste-detail-head,
 .lb-taste-detail-row {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) 70px 80px;
-  gap: 8px;
+  grid-template-columns: 1fr 60px 60px;
   align-items: center;
 }
 
 .lb-taste-detail-head {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: #7f92a3;
-  padding: 6px 10px;
-  border-bottom: 1px solid rgba(68, 85, 102, 0.4);
+  background-color: #1b2026;
+  border-bottom: 2px solid #456;
+  padding: 10px 8px;
+}
+
+.lb-taste-detail-head > div {
+  font-size: 12px;
+  font-weight: 600;
+  color: #def;
+  text-align: center;
+}
+
+.lb-taste-detail-head > div:first-child {
+  text-align: left;
 }
 
 .lb-taste-detail-body {
-  font-size: 12px;
-  color: #cdd7e1;
+  max-height: 280px;
+  overflow-y: auto;
 }
 
 .lb-taste-detail-row {
-  padding: 8px 10px;
-  border-bottom: 1px solid rgba(68, 85, 102, 0.2);
+  padding: 8px;
+  border-bottom: 1px solid #345;
 }
 
 .lb-taste-detail-row.is-alt {
-  background-color: rgba(68, 85, 102, 0.12);
+  background-color: rgba(68, 85, 102, 0.1);
 }
 
 .lb-taste-detail-cell {
+  font-size: 14px;
+  color: #9ab;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.lb-taste-detail-cell:first-child {
+  color: #fff;
 }
 
 .lb-taste-center {

@@ -3067,25 +3067,33 @@ function App() {
   const rankPeople = useCallback((items: TastePerson[], minCount: number) => {
     const effectiveMin = tasteSortMode === "watched" ? 1 : minCount;
     const filtered = items.filter((p) => p.count >= effectiveMin);
-    return filtered.sort((a, b) => {
+    // Shuffle first to randomize ties
+    const shuffled = [...filtered].sort(() => Math.random() - 0.5);
+    return shuffled.sort((a, b) => {
       if (tasteSortMode === "watched") {
         if (b.count !== a.count) return b.count - a.count;
-        return b.avgRating - a.avgRating;
+        if (b.avgRating !== a.avgRating) return b.avgRating - a.avgRating;
+        return 0; // Preserve random order for ties
       }
       if (b.avgRating !== a.avgRating) return b.avgRating - a.avgRating;
-      return b.count - a.count;
+      if (b.count !== a.count) return b.count - a.count;
+      return 0; // Preserve random order for ties
     }).slice(0, 5);
   }, [tasteSortMode]);
 
   const rankCountries = useCallback((items: TasteCountry[]) => {
     const filtered = tasteSortMode === "rated" ? items.filter((c) => c.count >= 2) : items;
-    return filtered.sort((a, b) => {
+    // Shuffle first to randomize ties
+    const shuffled = [...filtered].sort(() => Math.random() - 0.5);
+    return shuffled.sort((a, b) => {
       if (tasteSortMode === "watched") {
         if (b.count !== a.count) return b.count - a.count;
-        return b.avgRating - a.avgRating;
+        if (b.avgRating !== a.avgRating) return b.avgRating - a.avgRating;
+        return 0; // Preserve random order for ties
       }
       if (b.avgRating !== a.avgRating) return b.avgRating - a.avgRating;
-      return b.count - a.count;
+      if (b.count !== a.count) return b.count - a.count;
+      return 0; // Preserve random order for ties
     }).slice(0, 5);
   }, [tasteSortMode]);
 
@@ -3144,11 +3152,13 @@ function App() {
     const newDiscoveries = buildPeopleStats(newDiscoveryEntries, (movie) => movie.tmdb_data?.directors || []);
 
     const allDirectors = buildPeopleStats(tasteEntriesForStats, (movie) => movie.tmdb_data?.directors || []);
-    const badHabit = allDirectors
-      .filter((p) => p.count >= 3)
+    // Shuffle first to randomize ties
+    const shuffledDirectors = [...allDirectors.filter((p) => p.count >= 3)].sort(() => Math.random() - 0.5);
+    const badHabit = shuffledDirectors
       .sort((a, b) => {
         if (a.avgRating !== b.avgRating) return a.avgRating - b.avgRating;
-        return b.count - a.count;
+        if (b.count !== a.count) return b.count - a.count;
+        return 0; // Preserve random order for ties
       })
       .slice(0, 5);
 
@@ -4396,7 +4406,7 @@ function App() {
                     <button
                       key={person.name}
                       type="button"
-                      className="lb-taste-card"
+                      className={`lb-taste-card${tasteExpandedPerson === person.name ? " is-expanded" : ""}`}
                       onClick={() => {
                         setTasteExpandedPerson((prev) => (prev === person.name ? null : person.name));
                       }}
