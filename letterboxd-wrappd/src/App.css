@@ -133,6 +133,76 @@
   padding: 8px 0;
 }
 
+.lb-trends {
+  width: 100%;
+  max-width: 960px;
+  margin: 6px auto 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: #cbd5e1;
+}
+
+.lb-trends-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.lb-trends-sub {
+  margin: 0;
+  font-size: 11px;
+  color: #9ab;
+}
+
+.lb-trends-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px 14px;
+}
+
+.lb-trend-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(68, 85, 102, 0.45);
+  background: rgba(27, 32, 38, 0.6);
+  font-size: 12px;
+}
+
+.lb-trend-label {
+  color: #d7e0ea;
+}
+
+.lb-trend-value {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lb-trend-rising {
+  color: #6ee787;
+}
+
+.lb-trend-falling {
+  color: #f87171;
+}
+
+.lb-trend-steady {
+  color: #9ab;
+}
+
+.lb-trend-insufficient {
+  color: #94a3b8;
+}
+
 .lb-row {
   display: grid;
   align-items: center;

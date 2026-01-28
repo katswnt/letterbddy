@@ -198,6 +198,34 @@ const BlackDirectorsInfo = ({ align = "center" }: { align?: "left" | "center" | 
   );
 };
 
+const TrendInfo = ({ align = "center" }: { align?: "left" | "center" | "right" }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className={`lb-info lb-info-${align}`}>
+      <button
+        type="button"
+        className="lb-info-btn"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((prev) => !prev);
+        }}
+        aria-label="About trend calculations"
+      >
+        i
+      </button>
+      {open && (
+        <span
+          className="lb-info-panel"
+          onClick={(e) => e.stopPropagation()}
+        >
+          Trend compares the 3-month moving average over the last 12 months to show
+          whether each metric is rising, steady, or falling.
+        </span>
+      )}
+    </span>
+  );
+};
+
 // Memoized WorldMap component to prevent re-renders on hover
 const WorldMap = memo(function WorldMap({
   countryCounts,
@@ -3034,6 +3062,110 @@ function App() {
     }),
     [moviesWithData]
   );
+
+  const trendSummary = useMemo(() => {
+    if (!movieLookup || rows.length === 0) return [];
+
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const monthKeys: string[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+      monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+
+    const metricDefs = [
+      { key: "directedByWoman", label: "Directed by women", match: (tmdb: any) => tmdb.directed_by_woman === true },
+      { key: "writtenByWoman", label: "Written by women", match: (tmdb: any) => tmdb.written_by_woman === true },
+      { key: "byBlackDirector", label: "By Black directors", match: (_tmdb: any, byBlack: boolean) => byBlack },
+      { key: "notAmerican", label: "Non-American", match: (tmdb: any) => tmdb.is_american === false },
+      { key: "notEnglish", label: "Not in English", match: (tmdb: any) => tmdb.is_english === false },
+      { key: "inCriterion", label: "In the Criterion Collection", match: (_tmdb: any, _byBlack: boolean, movie: any) => movie.is_in_criterion_collection === true },
+    ];
+
+    const monthStats: Record<string, { total: number; counts: Record<string, number> }> = {};
+    for (const key of monthKeys) {
+      const counts: Record<string, number> = {};
+      for (const metric of metricDefs) {
+        counts[metric.key] = 0;
+      }
+      monthStats[key] = { total: 0, counts };
+    }
+
+    for (const row of rows) {
+      const watched = getWatchedDate(row);
+      if (!watched) continue;
+      const date = new Date(watched);
+      if (Number.isNaN(date.getTime())) continue;
+      if (date < start || date > now) continue;
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      if (!monthStats[monthKey]) continue;
+
+      const uri = (row["Letterboxd URI"] || "").trim();
+      if (!uri) continue;
+      const movie = movieLookup[uri] || movieLookup[canonicalizeUri(uri)];
+      if (!movie?.tmdb_data) continue;
+
+      const tmdb = movie.tmdb_data || {};
+      const byBlack =
+        movie.is_by_black_director === true ||
+        (tmdb.directors || []).some((d: any) => typeof d?.id === "number" && blackDirectorIds.has(d.id));
+
+      const stats = monthStats[monthKey];
+      stats.total += 1;
+      for (const metric of metricDefs) {
+        if (metric.match(tmdb, byBlack, movie)) {
+          stats.counts[metric.key] += 1;
+        }
+      }
+    }
+
+    const computeMovingAvg = (series: Array<number | null>) =>
+      series.map((_, idx) => {
+        const startIdx = Math.max(0, idx - 2);
+        const window = series.slice(startIdx, idx + 1).filter((v): v is number => v !== null);
+        if (window.length < 2) return null;
+        return window.reduce((sum, v) => sum + v, 0) / window.length;
+      });
+
+    return metricDefs.map((metric) => {
+      const series = monthKeys.map((key) => {
+        const total = monthStats[key]?.total || 0;
+        if (!total) return null;
+        const count = monthStats[key].counts[metric.key] || 0;
+        return count / total;
+      });
+
+      const monthlyTotals = monthKeys
+        .map((key) => monthStats[key]?.total || 0)
+        .filter((value) => value > 0);
+
+      const movingAvg = computeMovingAvg(series);
+      const valid = movingAvg.filter((v): v is number => v !== null);
+      if (valid.length < 2 || monthlyTotals.length < 3) {
+        return { key: metric.key, label: metric.label, state: "insufficient", arrow: "—", text: "Not enough data yet" };
+      }
+
+      const avgMonthlyTotal =
+        monthlyTotals.reduce((sum, value) => sum + value, 0) / monthlyTotals.length;
+      const averageProportion =
+        series.filter((v): v is number => v !== null).reduce((sum, v) => sum + v, 0) /
+        series.filter((v): v is number => v !== null).length;
+
+      const se = Math.sqrt((averageProportion * (1 - averageProportion)) / Math.max(1, avgMonthlyTotal));
+      const threshold = Math.max(0.01, 2 * se);
+
+      const slope = valid[valid.length - 1] - valid[0];
+      const avgThreeMonthDeltaMovies = Math.abs(slope) * avgMonthlyTotal * 3;
+      if (slope >= threshold && avgThreeMonthDeltaMovies >= 3) {
+        return { key: metric.key, label: metric.label, state: "rising", arrow: "↑", text: "Rising" };
+      }
+      if (slope <= -threshold && avgThreeMonthDeltaMovies >= 3) {
+        return { key: metric.key, label: metric.label, state: "falling", arrow: "↓", text: "Falling" };
+      }
+      return { key: metric.key, label: metric.label, state: "steady", arrow: "→", text: "Steady" };
+    });
+  }, [rows, movieLookup, canonicalizeUri, blackDirectorIds]);
   
   // Debug logging - only create the object if debugging is actually enabled
   if (shouldLogDebug()) {
@@ -4270,6 +4402,26 @@ function App() {
                     isSelected={diaryFilters.inCriterion}
                   />
                 </div>
+
+                {trendSummary.length > 0 && (
+                  <div className="lb-trends">
+                    <div className="lb-trends-header">
+                      <span className="lb-trends-title">Trends (last 12 months)</span>
+                      <TrendInfo align="center" />
+                    </div>
+                    <p className="lb-trends-sub">Smoothed with a 3-month moving average</p>
+                    <div className="lb-trends-grid">
+                      {trendSummary.map((trend) => (
+                        <div key={trend.key} className="lb-trend-row">
+                          <span className="lb-trend-label">{trend.label}</span>
+                          <span className={`lb-trend-value lb-trend-${trend.state}`}>
+                            {trend.arrow} {trend.text}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <DiaryTable
                   moviesWithData={moviesWithData}
