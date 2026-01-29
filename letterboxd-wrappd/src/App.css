@@ -135,7 +135,6 @@
 
 .lb-trends {
   width: 100%;
-  max-width: 960px;
   margin: 6px auto 12px;
   display: flex;
   flex-direction: column;
@@ -503,81 +502,65 @@
   margin-top: -20px;
 }
 
-.lb-taste-detail {
-  border-top: 1px solid #345;
-  margin-top: 8px;
-  padding-top: 16px;
-}
-
-.lb-taste-detail-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #fff;
-  margin-bottom: 12px;
-  text-align: center;
-}
-
-.lb-taste-detail-table {
+/* Inline detail panel — expands below selected creator card */
+.lb-taste-inline-detail {
   width: 100%;
-  max-width: 500px;
-  margin: 0 auto;
-}
-
-.lb-taste-detail-head,
-.lb-taste-detail-row {
-  display: grid;
-  grid-template-columns: 1fr 60px 60px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  padding: 4px 0 8px;
 }
 
-.lb-taste-detail-head {
-  background-color: #2c3440;
-  border-bottom: 2px solid #456;
-  padding: 10px 8px;
+.lb-taste-inline-caret {
+  width: 12px;
+  height: 12px;
+  background: #2c3440;
+  border: 1px solid #456;
+  border-bottom: none;
+  border-right: none;
+  transform: rotate(45deg);
+  margin-bottom: -7px;
+  z-index: 1;
 }
 
-.lb-taste-detail-head > div {
-  font-size: 12px;
-  font-weight: 600;
-  color: #ccd;
-  text-align: center;
-}
-
-.lb-taste-detail-head > div:first-child {
-  text-align: left;
-}
-
-.lb-taste-detail-body {
-  max-height: 280px;
+.lb-taste-inline-panel {
+  background: #2c3440;
+  border: 1px solid #456;
+  border-radius: 8px;
+  padding: 8px 0;
+  width: 100%;
+  max-width: 360px;
+  max-height: 260px;
   overflow-y: auto;
 }
 
-.lb-taste-detail-row {
-  padding: 8px;
+.lb-taste-inline-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 16px;
+}
+
+.lb-taste-inline-row:not(:last-child) {
   border-bottom: 1px solid #345;
 }
 
-.lb-taste-detail-row.is-alt {
-  background-color: rgba(68, 85, 102, 0.1);
-}
-
-.lb-taste-detail-cell {
-  font-size: 14px;
-  color: #9ab;
+.lb-taste-inline-title {
+  font-size: 13px;
+  color: #fff;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
-.lb-taste-detail-cell:first-child {
-  color: #fff;
+.lb-taste-inline-meta {
+  font-size: 12px;
+  color: #9ab;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-
-.lb-taste-center {
-  text-align: center;
-}
-
-/* Removed explicit width - let grid template handle column sizing */
 
 .lb-header-continent {
   width: 120px;
@@ -979,25 +962,27 @@
 }
 
 /* ---- Watchlist Builder ---- */
-.lb-builder-toggle-icon {
-  position: absolute;
-  right: 0;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: 1px solid #456;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  color: #9ab;
-  line-height: 1;
-  transition: border-color 0.15s ease, color 0.15s ease;
+.lb-builder-cta {
+  display: block;
+  margin: 14px auto 0;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #14181c;
+  background-color: #00e054;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.1s ease;
 }
 
-.lb-builder-toggle-icon:hover {
-  border-color: #3EBDF4;
-  color: #3EBDF4;
+.lb-builder-cta:hover {
+  background-color: #00c94b;
+}
+
+.lb-builder-cta:active {
+  transform: scale(0.97);
 }
 
 /* Builder collapse/expand transition */

@@ -1,4 +1,5 @@
 import {
+  Fragment,
   memo,
   useCallback,
   useEffect,
@@ -5018,7 +5019,7 @@ function App() {
 
         {/* Stats for the currently selected time range, deduped by film */}
         {films.length > 0 && (
-          <section style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "24px" }}>
+          <section style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
             {/* Key metrics row */}
             <div className="stats-row" style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center", flexWrap: "wrap" }}>
               <div>
@@ -5146,7 +5147,7 @@ function App() {
 
         {/* TMDb enrichment stats - Always show if movieIndex exists or if we should debug */}
         {(movieIndex || scrapeStatus?.includes("ready")) && (
-          <section id="film-breakdown" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "24px" }}>
+          <section id="film-breakdown" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
             <div style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%", textAlign: "center" }}>
               <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#fff", marginBottom: "4px" }}>Film Breakdown</h2>
               {isLocalDev && !movieIndex && (
@@ -5299,7 +5300,7 @@ function App() {
 
         {/* Rating breakdown for this range */}
         {rows.length > 0 && (
-          <section style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "24px" }}>
+          <section style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
             <div style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%", textAlign: "center" }}>
               <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>Ratings</h2>
               {ratingCount === 0 && (
@@ -5783,30 +5784,46 @@ function App() {
               {activeTasteCategory.type === "person" ? (
                 <div className="lb-taste-grid">
                   {(activeTasteCategory.items as TastePerson[]).map((person) => (
-                    <button
-                      key={person.name}
-                      type="button"
-                      className={`lb-taste-card${tasteExpandedPerson === person.name ? " is-expanded" : ""}`}
-                      onClick={() => {
-                        setTasteExpandedPerson((prev) => (prev === person.name ? null : person.name));
-                      }}
-                    >
-                      <div className="lb-taste-avatar">
-                        {person.profilePath ? (
-                          <img
-                            src={`${TMDB_PROFILE_BASE}${person.profilePath}`}
-                            alt={person.name}
-                            loading="lazy"
-                          />
-                        ) : (
-                          <span>{person.name.split(" ").slice(0, 2).map((p) => p[0]).join("").toUpperCase()}</span>
-                        )}
-                      </div>
-                      <div className="lb-taste-name">{person.name}</div>
-                      <div className="lb-taste-meta">
-                        {person.ratingCount > 0 ? `★${person.avgRating.toFixed(1)}` : "★—"} · {person.count} films
-                      </div>
-                    </button>
+                    <Fragment key={person.name}>
+                      <button
+                        type="button"
+                        className={`lb-taste-card${tasteExpandedPerson === person.name ? " is-expanded" : ""}`}
+                        onClick={() => {
+                          setTasteExpandedPerson((prev) => (prev === person.name ? null : person.name));
+                        }}
+                      >
+                        <div className="lb-taste-avatar">
+                          {person.profilePath ? (
+                            <img
+                              src={`${TMDB_PROFILE_BASE}${person.profilePath}`}
+                              alt={person.name}
+                              loading="lazy"
+                            />
+                          ) : (
+                            <span>{person.name.split(" ").slice(0, 2).map((p) => p[0]).join("").toUpperCase()}</span>
+                          )}
+                        </div>
+                        <div className="lb-taste-name">{person.name}</div>
+                        <div className="lb-taste-meta">
+                          {person.ratingCount > 0 ? `★${person.avgRating.toFixed(1)}` : "★—"} · {person.count} films
+                        </div>
+                      </button>
+                      {tasteExpandedPerson === person.name && tasteExpandedPersonMovies.get(person.name) && (
+                        <div className="lb-taste-inline-detail">
+                          <div className="lb-taste-inline-caret" />
+                          <div className="lb-taste-inline-panel">
+                            {(tasteExpandedPersonMovies.get(person.name) || []).map((movie, idx) => (
+                              <div key={`${movie.title}-${idx}`} className="lb-taste-inline-row">
+                                <span className="lb-taste-inline-title">{movie.title}</span>
+                                <span className="lb-taste-inline-meta">
+                                  {movie.year || "—"} · ★{movie.rating}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </Fragment>
                   ))}
                 </div>
               ) : (
@@ -5820,25 +5837,6 @@ function App() {
                       <div className="lb-taste-meta">★{country.avgRating.toFixed(1)} · {country.count} films</div>
                     </div>
                   ))}
-                </div>
-              )}
-              {tasteExpandedPerson && tasteExpandedPersonMovies.get(tasteExpandedPerson) && (
-                <div className="lb-taste-detail lb-taste-table">
-                  <div className="lb-taste-detail-title">{tasteExpandedPerson} — films you've watched</div>
-                  <div className="lb-taste-detail-head">
-                    <div>Title</div>
-                    <div>Year</div>
-                    <div>Rating</div>
-                  </div>
-                  <div className="lb-taste-detail-body">
-                    {(tasteExpandedPersonMovies.get(tasteExpandedPerson) || []).map((movie, idx) => (
-                      <div key={`${movie.title}-${idx}`} className={`lb-taste-detail-row ${idx % 2 === 1 ? "is-alt" : ""}`}>
-                        <div className="lb-taste-detail-cell">{movie.title}</div>
-                        <div className="lb-taste-detail-cell lb-taste-center">{movie.year || "—"}</div>
-                        <div className="lb-taste-detail-cell lb-taste-center">★{movie.rating}</div>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               )}
               {diversifyNote && (
@@ -6320,32 +6318,34 @@ function App() {
             padding: "24px",
           }}
         >
-          <button
-            type="button"
-            onClick={handleBuilderToggle}
+          <div
+            onClick={builderExpanded ? handleBuilderToggle : undefined}
             style={{
-              cursor: "pointer",
+              cursor: builderExpanded ? "pointer" : "default",
               userSelect: "none",
-              background: "none",
-              border: "none",
-              width: "100%",
-              textAlign: "left",
-              padding: 0,
+              textAlign: "center",
             }}
           >
-            <h2 style={{ color: "#fff", fontSize: "20px", fontWeight: 600, margin: 0, textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+            <h2 style={{ color: "#fff", fontSize: "20px", fontWeight: 600, margin: 0 }}>
               Watchlist Builder
-              <span className="lb-builder-toggle-icon" aria-hidden="true">
-                {builderExpanded ? "−" : "+"}
-              </span>
+              {builderExpanded && <span style={{ fontSize: "12px", color: "#9ab", fontWeight: 400, marginLeft: "8px" }}>▴</span>}
             </h2>
-            <p style={{ color: "#9ab", fontSize: "12px", margin: "6px 0 0", textAlign: "center" }}>
+            <p style={{ color: "#9ab", fontSize: "12px", margin: "6px 0 0" }}>
               Build a custom watchlist from{" "}
               {curatedPayload?.films?.length
                 ? `${curatedPayload.films.length.toLocaleString()} acclaimed films`
                 : "thousands of acclaimed films"}
             </p>
-          </button>
+          </div>
+          {!builderExpanded && (
+            <button
+              type="button"
+              className="lb-builder-cta"
+              onClick={handleBuilderToggle}
+            >
+              Get Started →
+            </button>
+          )}
 
           <div className={`lb-builder-collapse ${builderExpanded ? "lb-builder-collapse--open" : ""}`}>
             <div className="lb-builder-collapse-inner">
