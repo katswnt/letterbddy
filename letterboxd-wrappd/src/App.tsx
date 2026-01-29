@@ -98,6 +98,44 @@ type WatchlistSortColumn = "name" | "director" | "year" | "runtime" | "rating" |
 type DecadeFilter = { type: "decade" | "offset"; label: string } | null;
 type GeoFilter = { type: "continent" | "country"; value: string } | null;
 type GeoView = "continent" | "country";
+type CuratedListMeta = {
+  name: string;
+  count: number;
+  ranked?: boolean;
+};
+
+type CuratedFilm = {
+  name: string;
+  year: number | null;
+  url: string;
+  listCount: number;
+  lists: Record<string, number>;
+  tmdb_movie_id?: number;
+  tmdb_data?: any;
+  tmdb_error?: string;
+  is_by_black_director?: boolean;
+};
+
+type CuratedListsPayload = {
+  lists: Record<string, CuratedListMeta>;
+  films: CuratedFilm[];
+};
+
+type WatchlistBuilderState = {
+  count: number;
+  quality: "any" | "critically-acclaimed" | "highest-rated" | "imdb-popularity";
+  directorMode: "any" | "all";
+  directorWomen: boolean;
+  directorBlack: boolean;
+  writerWomen: boolean;
+  listMode: "any" | "all";
+  listSources: string[];
+  shuffleSeed: number;
+  origin: "anywhere" | "not-usa" | "non-english" | "africa" | "asia" | "europe" | "latin-america" | "middle-east" | "oceania";
+  seen: "havent-seen" | "have-seen" | "any";
+  watchlistBias: "any" | "prefer" | "exclude";
+};
+
 const CONTINENT_ORDER = ["AF", "AS", "EU", "NA", "SA", "OC", "AN"] as const;
 
 const getContinentCode = (countryCode: string | undefined | null) => {
@@ -114,9 +152,9 @@ const getCountryName = (code: string, fallback?: string) =>
   (countries as Record<string, any>)[code]?.name || fallback || code;
 
 const CONTINENT_COLORS: Record<string, string> = {
-  AF: "#f97316",
+  AF: "#FF8002",
   AS: "#f59e0b",
-  EU: "#3b82f6",
+  EU: "#3EBDF4",
   NA: "#22c55e",
   SA: "#14b8a6",
   OC: "#a855f7",
@@ -191,7 +229,7 @@ const BlackDirectorsInfo = ({ align = "center" }: { align?: "left" | "center" | 
             Twitter
           </a>
           , and I&apos;ll be happy to add it. This list isn&apos;t exhaustive—there are many films by Black
-          directors beyond it.
+          directors beyond it. We&apos;re working on a similar list for Black writers.
         </span>
       )}
     </span>
@@ -226,6 +264,7 @@ const TrendInfo = ({ align = "center" }: { align?: "left" | "center" | "right" }
   );
 };
 
+
 // Memoized WorldMap component to prevent re-renders on hover
 const WorldMap = memo(function WorldMap({
   countryCounts,
@@ -254,15 +293,15 @@ const WorldMap = memo(function WorldMap({
     const code = codeLower.toUpperCase();
     const cont = getContinentCode(code);
     if (geoView === "continent") {
-      if (!cont) return "#1b2026";
+      if (!cont) return "#14181c";
       const base = CONTINENT_COLORS[cont] || "#334";
       const intensity = (continentCounts[cont] || 0) / maxContinentCount;
-      return mixHex("#1b2026", base, Math.min(1, 0.2 + intensity * 0.8));
+      return mixHex("#14181c", base, Math.min(1, 0.2 + intensity * 0.8));
     }
     const count = countryCounts[code] || 0;
-    if (count === 0) return "#1b2026";
+    if (count === 0) return "#14181c";
     const intensity = count / maxCountryCount;
-    return mixHex("#1b2026", "#00e054", Math.min(1, 0.2 + intensity * 0.8));
+    return mixHex("#14181c", "#00e054", Math.min(1, 0.2 + intensity * 0.8));
   }, [geoView, continentCounts, maxContinentCount, countryCounts, maxCountryCount]);
 
   const isSelectedLocation = useCallback((codeLower: string) => {
@@ -345,7 +384,7 @@ const WorldMap = memo(function WorldMap({
 
       <div
         ref={mapWrapperRef}
-        style={{ position: "relative", width: "100%", backgroundColor: "#101419", borderRadius: "8px", padding: "8px" }}
+        style={{ position: "relative", width: "100%", backgroundColor: "#14181c", borderRadius: "8px", padding: "8px" }}
       >
         {geoHover && (
           <div
@@ -359,7 +398,7 @@ const WorldMap = memo(function WorldMap({
               borderRadius: "6px",
               padding: "4px 8px",
               fontSize: "12px",
-              color: "#e2e8f0",
+              color: "#ccd",
               pointerEvents: "none",
               whiteSpace: "nowrap",
               boxShadow: "0 6px 16px rgba(0,0,0,0.35)",
@@ -642,8 +681,8 @@ const StatPieChart = ({
     >
       {/* Secondary label at top */}
       <div style={{ textAlign: "center", marginBottom: "4px" }}>
-        <span style={{ fontSize: "13px", color: "#678" }}>{secondaryLabel}</span>
-        <span style={{ fontSize: "13px", color: "#678", marginLeft: "4px" }}>{secondaryPercent}%</span>
+        <span style={{ fontSize: "13px", color: "#9ab" }}>{secondaryLabel}</span>
+        <span style={{ fontSize: "13px", color: "#9ab", marginLeft: "4px" }}>{secondaryPercent}%</span>
       </div>
 
       {/* Donut chart */}
@@ -673,7 +712,7 @@ const StatPieChart = ({
 
       {/* Primary label at bottom */}
       <div style={{ textAlign: "center", marginTop: "4px" }}>
-        <span style={{ fontSize: "13px", fontWeight: 500, color: "#def" }}>
+        <span style={{ fontSize: "13px", fontWeight: 500, color: "#ccd" }}>
           {primaryLabel}
         </span>
         {primaryInfo && <span style={{ marginLeft: "6px" }}>{primaryInfo}</span>}
@@ -1376,6 +1415,342 @@ const DiaryTable = memo(({
   );
 });
 
+// ---------------------------------------------------------------------------
+// Watchlist Builder Component
+// ---------------------------------------------------------------------------
+type WatchlistBuilderProps = {
+  curatedPayload: CuratedListsPayload | null;
+  curatedLoading: boolean;
+  builderState: WatchlistBuilderState;
+  setBuilderState: Dispatch<SetStateAction<WatchlistBuilderState>>;
+  builderResults: CuratedFilm[];
+  builderRankedCount: number;
+  builderRandomCount: number;
+  builderRandomSources: string[];
+  seenExcludedCount: number;
+  hasDiary: boolean;
+  watchlistCount: number;
+  onShuffle: () => void;
+  onRemove: (url: string) => void;
+};
+
+const WatchlistBuilder = memo(({
+  curatedPayload,
+  curatedLoading,
+  builderState,
+  setBuilderState,
+  builderResults,
+  builderRankedCount,
+  builderRandomCount,
+  builderRandomSources,
+  seenExcludedCount,
+  hasDiary,
+  watchlistCount,
+  onShuffle,
+  onRemove,
+}: WatchlistBuilderProps) => {
+
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+
+  const handleChange = useCallback(
+    (key: keyof WatchlistBuilderState) => (e: ChangeEvent<HTMLSelectElement>) => {
+      const value = key === "count" ? Number(e.target.value) : e.target.value;
+      setBuilderState((prev) => ({ ...prev, [key]: value }));
+    },
+    [setBuilderState]
+  );
+
+  const handleListToggle = useCallback(
+    (key: string) => {
+      setBuilderState((prev) => {
+        const next = new Set(prev.listSources);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        return { ...prev, listSources: Array.from(next) };
+      });
+    },
+    [setBuilderState]
+  );
+
+  const handleExport = useCallback(() => {
+    const csvRows = builderResults.map((film) => ({
+      Date: "",
+      Name: film.name,
+      Year: film.year ?? "",
+      "Letterboxd URI": film.url,
+    }));
+    const csvText = Papa.unparse(csvRows, {
+      columns: ["Date", "Name", "Year", "Letterboxd URI"],
+    });
+    const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "watchlist-builder.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [builderResults]);
+
+  const totalMatches = useMemo(() => {
+    return builderResults.length;
+  }, [builderResults]);
+
+  if (curatedLoading) {
+    return (
+      <div style={{ textAlign: "center", padding: "32px 0", color: "#9ab" }}>
+        Loading curated list data…
+      </div>
+    );
+  }
+
+  if (!curatedPayload) {
+    return null;
+  }
+
+  const listEntries = Object.entries(curatedPayload.lists || {});
+  const selectedSourceCount = builderState.listSources.length || listEntries.length;
+  const hasCreatorFilter = builderState.directorWomen || builderState.writerWomen || builderState.directorBlack;
+
+  return (
+    <div className="lb-builder">
+      {/* Form rows */}
+      <div className="lb-builder-form">
+        <div className="lb-builder-row-form">
+          <span className="lb-builder-label">Show me</span>
+          <select className="lb-builder-select" value={builderState.count} onChange={handleChange("count")}>
+            <option value={10}>10 films</option>
+            <option value={25}>25 films</option>
+            <option value={50}>50 films</option>
+            <option value={100}>100 films</option>
+          </select>
+        </div>
+
+        <div className="lb-builder-row-form">
+          <span className="lb-builder-label">Ranked by</span>
+          <select className="lb-builder-select" value={builderState.quality} onChange={handleChange("quality")}>
+            <option value="any">Consensus across lists</option>
+            <option value="critically-acclaimed">Most lists appeared on</option>
+            <option value="highest-rated">Highest TMDb rating</option>
+            <option value="imdb-popularity">Mainstream popularity (IMDb Top 250)</option>
+          </select>
+        </div>
+
+        <div className="lb-builder-row-form">
+          <span className="lb-builder-label">Made by</span>
+          <div className="lb-builder-director-controls">
+            <label className={`lb-builder-chip ${builderState.directorWomen ? "active" : ""}`}>
+              <input
+                type="checkbox"
+                checked={builderState.directorWomen}
+                onChange={(e) => setBuilderState((prev) => ({ ...prev, directorWomen: e.target.checked }))}
+              />
+              Women directors
+            </label>
+            <label className={`lb-builder-chip ${builderState.writerWomen ? "active" : ""}`}>
+              <input
+                type="checkbox"
+                checked={builderState.writerWomen}
+                onChange={(e) => setBuilderState((prev) => ({ ...prev, writerWomen: e.target.checked }))}
+              />
+              Women writers
+            </label>
+            <label className={`lb-builder-chip ${builderState.directorBlack ? "active" : ""}`}>
+              <input
+                type="checkbox"
+                checked={builderState.directorBlack}
+                onChange={(e) => setBuilderState((prev) => ({ ...prev, directorBlack: e.target.checked }))}
+              />
+              Black directors
+            </label>
+            <BlackDirectorsInfo align="center" />
+            {hasCreatorFilter && (
+              <select
+                className="lb-builder-select lb-builder-select-mini"
+                value={builderState.directorMode}
+                onChange={handleChange("directorMode")}
+              >
+                <option value="any">match any</option>
+                <option value="all">match all</option>
+              </select>
+            )}
+            {!hasCreatorFilter && (
+              <span className="lb-builder-hint">Anyone — tap to filter</span>
+            )}
+          </div>
+        </div>
+
+        <div className="lb-builder-row-form">
+          <span className="lb-builder-label">From</span>
+          <select className="lb-builder-select" value={builderState.origin} onChange={handleChange("origin")}>
+            <option value="anywhere">Anywhere</option>
+            <option value="not-usa">Anywhere except USA</option>
+            <option value="non-english">Non-English speaking</option>
+            <option value="africa">Africa</option>
+            <option value="asia">Asia</option>
+            <option value="europe">Europe</option>
+            <option value="latin-america">Latin America</option>
+            <option value="middle-east">Middle East</option>
+            <option value="oceania">Oceania</option>
+          </select>
+        </div>
+
+        <div className="lb-builder-row-form">
+          <span className="lb-builder-label">That I</span>
+          <select className="lb-builder-select" value={builderState.seen} onChange={handleChange("seen")}>
+            <option value="havent-seen">Haven&apos;t seen yet</option>
+            <option value="have-seen">Have seen</option>
+            <option value="any">May or may not have seen</option>
+          </select>
+          {!hasDiary && builderState.seen !== "any" && (
+            <span className="lb-builder-diary-hint">Upload diary to filter</span>
+          )}
+        </div>
+
+        {watchlistCount > 0 && (
+          <div className="lb-builder-row-form">
+            <span className="lb-builder-label">Watchlist</span>
+            <select className="lb-builder-select" value={builderState.watchlistBias} onChange={handleChange("watchlistBias")}>
+              <option value="any">Surprise me</option>
+              <option value="prefer">Prioritize my watchlist</option>
+              <option value="exclude">Exclude my watchlist</option>
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* Source lists (Idea B) */}
+      <div className="lb-builder-row-form lb-builder-source-row">
+        <span className="lb-builder-label">From</span>
+        <div className="lb-builder-source-summary">
+          <span className="lb-builder-source-count">{selectedSourceCount} acclaimed lists</span>
+          <button
+            type="button"
+            className="lb-builder-source-edit"
+            onClick={() => setSourcesOpen((v) => !v)}
+          >
+            {sourcesOpen ? "Hide" : "Edit"}
+          </button>
+          <span className={`lb-builder-sources-arrow ${sourcesOpen ? "open" : ""}`}>{sourcesOpen ? "\u25BE" : "\u25B8"}</span>
+          <select
+            className="lb-builder-select lb-builder-select-mini"
+            value={builderState.listMode}
+            onChange={handleChange("listMode")}
+          >
+            <option value="any">match any</option>
+            <option value="all">match all</option>
+          </select>
+        </div>
+      </div>
+      {sourcesOpen && (
+        <div className="lb-builder-sources-grid">
+          {listEntries.map(([key, meta]) => (
+            <label
+              key={key}
+              className={`lb-builder-chip lb-builder-chip-source ${builderState.listSources.includes(key) || !builderState.listSources.length ? "active" : ""}`}
+            >
+              <input
+                type="checkbox"
+                checked={builderState.listSources.includes(key) || !builderState.listSources.length}
+                onChange={() => {
+                  if (!builderState.listSources.length) {
+                    setBuilderState((prev) => ({ ...prev, listSources: [key] }));
+                  } else {
+                    handleListToggle(key);
+                  }
+                }}
+              />
+              {meta.name}
+              {meta.ranked && <span className="lb-builder-ranked-icon">🏆</span>}
+            </label>
+          ))}
+          <div className="lb-builder-sources-key">
+            <span className="lb-builder-ranked-icon">🏆</span> position matters · others are unranked collections
+          </div>
+        </div>
+      )}
+
+      {/* Match count divider */}
+      <div className="lb-builder-divider">
+        <span className="lb-builder-divider-line" />
+        <span className="lb-builder-count">
+          {totalMatches} film{totalMatches !== 1 ? "s" : ""} match
+          {seenExcludedCount > 0 && (
+            <span className="lb-builder-excluded"> · {seenExcludedCount} excluded as watched</span>
+          )}
+        </span>
+        <span className="lb-builder-divider-line" />
+      </div>
+
+      {/* Sorting/shuffle info */}
+      {(builderRankedCount > 0 || builderRandomCount > 0) && (
+        <div className={`lb-builder-meta ${builderRandomCount > 1 ? "lb-builder-shuffle-center" : ""}`}>
+          <span>
+            {builderRankedCount > 0 && <>{builderRankedCount} ranked by consensus</>}
+            {builderRankedCount > 0 && builderRandomCount > 0 && " · "}
+            {builderRandomCount > 0 && <>{builderRandomCount} randomly selected</>}
+          </span>
+          {builderRandomCount > 0 && builderRandomSources.length > 0 && (
+            <span className="lb-builder-meta-sub">
+              from {builderRandomSources.join(", ")}
+            </span>
+          )}
+          {builderRandomCount > 1 && (
+            <button type="button" className="lb-builder-shuffle-btn" onClick={onShuffle}>
+              Shuffle
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Preview table */}
+      {builderResults.length > 0 && (
+        <div className="lb-builder-preview">
+          <div className="lb-builder-table-head">
+            <span>#</span>
+            <span>Title</span>
+            <span>Year</span>
+            <span>Director</span>
+            <span>TMDb rating</span>
+            <span></span>
+          </div>
+          {builderResults.map((film, idx) => (
+            <div className="lb-builder-table-row" key={`${film.url}-${idx}`}>
+              <span className="lb-builder-cell-num">{idx + 1}</span>
+              <span>
+                <a href={film.url} target="_blank" rel="noopener noreferrer" className="lb-builder-film-link">
+                  {film.name}
+                </a>
+              </span>
+              <span className="lb-builder-cell-muted">{film.year}</span>
+              <span className="lb-builder-cell-muted">
+                {(film.tmdb_data?.directors || []).map((d: any) => d.name).join(", ") || "—"}
+              </span>
+              <span className="lb-builder-cell-rating">
+                {film.tmdb_data?.vote_average ? film.tmdb_data.vote_average.toFixed(1) : "—"}
+              </span>
+              <button type="button" className="lb-builder-remove" onClick={() => onRemove(film.url)}>
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Export button */}
+      {builderResults.length > 0 && (
+        <div className="lb-builder-export-row">
+          <button className="lb-builder-export" onClick={handleExport}>
+            Export as Letterboxd CSV
+          </button>
+        </div>
+      )}
+    </div>
+  );
+});
+
 type WatchlistTableProps = {
   watchlistMovies: WatchlistMovie[];
   watchlistPaceText?: ReactNode | null;
@@ -1871,6 +2246,27 @@ function App() {
   const [rssError, setRssError] = useState<string | null>(null);
   const [manualUploadOpen, setManualUploadOpen] = useState<boolean>(false);
   const [pendingUploadTarget, setPendingUploadTarget] = useState<"diary" | "reviews" | "watchlist" | null>(null);
+  const builderToggleGuard = useRef<number>(0);
+
+  // Watchlist Builder state
+  const [curatedPayload, setCuratedPayload] = useState<CuratedListsPayload | null>(null);
+  const [curatedLoading, setCuratedLoading] = useState<boolean>(false);
+  const [builderExpanded, setBuilderExpanded] = useState<boolean>(false);
+  const [builderExcluded, setBuilderExcluded] = useState<string[]>([]);
+  const [builderState, setBuilderState] = useState<WatchlistBuilderState>({
+    count: 50,
+    quality: "any",
+    directorMode: "any",
+    directorWomen: false,
+    directorBlack: false,
+    writerWomen: false,
+    listMode: "any",
+    listSources: [],
+    shuffleSeed: Date.now(),
+    origin: "anywhere",
+    seen: "havent-seen",
+    watchlistBias: "any",
+  });
 
   // Diary table state (for Film Breakdown section)
   const [diaryFilters, setDiaryFilters] = useState<{
@@ -2851,7 +3247,352 @@ function App() {
     () => new Set(Array.from(filteredUris).map(canonicalizeUri)),
     [filteredUris, canonicalizeUri]
   );
-  
+
+  // Lazy-load curated list data when builder is expanded
+  useEffect(() => {
+    if (!builderExpanded || curatedPayload || curatedLoading) return;
+    setCuratedLoading(true);
+    fetch("/curated-lists-enriched.json")
+      .then((r) => {
+        if (!r.ok) throw new Error("missing enriched lists");
+        return r.json();
+      })
+      .then((data: CuratedListsPayload) => {
+        setCuratedPayload(data);
+        setCuratedLoading(false);
+      })
+      .catch(() => {
+        fetch("/curated-lists.json")
+          .then((r) => r.json())
+          .then((data: CuratedListsPayload) => {
+            setCuratedPayload(data);
+            setCuratedLoading(false);
+          })
+          .catch(() => setCuratedLoading(false));
+      });
+  }, [builderExpanded, curatedPayload, curatedLoading]);
+
+  // Set of diary slugs for "haven't seen" / "have seen" filtering (all-time)
+  const diarySlugs = useMemo(() => {
+    const slugs = new Set<string>();
+    for (const row of rows) {
+      const raw = (row["Letterboxd URI"] || "").trim();
+      if (!raw) continue;
+      const canon = canonicalizeUri(raw);
+      const candidates = [raw, canon].filter(Boolean);
+      for (const uri of candidates) {
+        const m = uri.match(/\/film\/([^/]+)/);
+        if (m) slugs.add(m[1]);
+      }
+    }
+    return slugs;
+  }, [rows, canonicalizeUri]);
+
+  const diaryTitleYears = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of rows) {
+      const name = (row.Name || "").trim().toLowerCase();
+      if (!name) continue;
+      const year = (row.Year || "").trim();
+      set.add(`${name}|${year}`);
+    }
+    return set;
+  }, [rows]);
+
+  const watchlistSlugs = useMemo(() => {
+    const slugs = new Set<string>();
+    for (const movie of watchlistMovies) {
+      const raw = (movie.uri || "").trim();
+      if (!raw) continue;
+      const canon = canonicalizeUri(raw);
+      const candidates = [raw, canon].filter(Boolean);
+      for (const uri of candidates) {
+        const m = uri.match(/\/film\/([^/]+)/);
+        if (m) slugs.add(m[1]);
+      }
+    }
+    return slugs;
+  }, [watchlistMovies, canonicalizeUri]);
+
+  const watchlistTitleYears = useMemo(() => {
+    const set = new Set<string>();
+    for (const movie of watchlistMovies) {
+      const name = (movie.name || "").trim().toLowerCase();
+      if (!name) continue;
+      const year = (movie.year || "").trim();
+      set.add(`${name}|${year}`);
+    }
+    return set;
+  }, [watchlistMovies]);
+
+  // Map origin codes to continent codes for geographic filtering
+  const ORIGIN_CONTINENT_MAP: Record<string, string[]> = useMemo(() => ({
+    "africa": ["AF"],
+    "asia": ["AS"],
+    "europe": ["EU"],
+    "latin-america": ["SA"],
+    "oceania": ["OC"],
+    "middle-east": ["AS"], // Middle East countries are in Asia continent
+  }), []);
+
+  // Middle East country codes for more precise filtering
+  const MIDDLE_EAST_COUNTRIES = useMemo(() => new Set([
+    "AE", "BH", "CY", "EG", "IL", "IQ", "IR", "JO", "KW", "LB",
+    "OM", "PS", "QA", "SA", "SY", "TR", "YE",
+  ]), []);
+
+  // Latin America country codes
+  const LATIN_AMERICA_COUNTRIES = useMemo(() => new Set([
+    "AR", "BO", "BR", "CL", "CO", "CR", "CU", "DO", "EC", "SV",
+    "GT", "HN", "MX", "NI", "PA", "PY", "PE", "PR", "UY", "VE",
+  ]), []);
+
+  // Builder filtering logic
+  const builderOutput = useMemo(() => {
+    if (!curatedPayload) {
+      return { results: [] as CuratedFilm[], rankedCount: 0, randomCount: 0, randomSources: [] as string[], seenExcludedCount: 0 };
+    }
+    const {
+      quality,
+      directorMode,
+      directorWomen,
+      directorBlack,
+      writerWomen,
+      origin,
+      seen,
+      count,
+      listMode,
+      listSources,
+      shuffleSeed,
+      watchlistBias,
+    } = builderState;
+    const hasDiary = filteredUris.size > 0;
+    const listMeta = curatedPayload.lists || {};
+
+    const selectedLists = listSources.length ? listSources : Object.keys(listMeta);
+    const selectedSet = new Set(selectedLists);
+    const rankedLists = selectedLists.filter((key) => listMeta[key]?.ranked);
+    const unrankedLists = selectedLists.filter((key) => !listMeta[key]?.ranked);
+
+    const getSlug = (url: string) => {
+      const match = url.match(/\/film\/([^/]+)/);
+      return match ? match[1] : "";
+    };
+
+    const excluded = new Set(builderExcluded);
+    const filtered = curatedPayload.films.filter((film) => {
+      if (excluded.has(film.url)) return false;
+      const tmdb = film.tmdb_data || {};
+      const filmLists = film.lists ? Object.keys(film.lists) : [];
+
+      if (listSources.length) {
+        if (listMode === "any") {
+          if (!filmLists.some((key) => selectedSet.has(key))) return false;
+        } else {
+          if (!selectedLists.every((key) => filmLists.includes(key))) return false;
+        }
+      }
+
+      const creatorChecks: boolean[] = [];
+      if (directorWomen) creatorChecks.push(tmdb.directed_by_woman === true);
+      if (writerWomen) creatorChecks.push(tmdb.written_by_woman === true);
+      if (directorBlack) creatorChecks.push(film.is_by_black_director === true);
+      if (creatorChecks.length > 0) {
+        if (directorMode === "any") {
+          if (!creatorChecks.some(Boolean)) return false;
+        } else {
+          if (!creatorChecks.every(Boolean)) return false;
+        }
+      }
+
+      const countries = tmdb.production_countries?.codes || [];
+      if (origin === "not-usa" && tmdb.is_american) return false;
+      if (origin === "non-english" && tmdb.is_english) return false;
+      if (origin === "africa" || origin === "asia" || origin === "europe" || origin === "oceania") {
+        const targetContinents = ORIGIN_CONTINENT_MAP[origin] || [];
+        const filmContinents = countries.map((c: string) => getContinentCode(c)).filter(Boolean);
+        if (!filmContinents.some((c: any) => targetContinents.includes(c))) return false;
+      }
+      if (origin === "latin-america") {
+        if (!countries.some((c: string) => LATIN_AMERICA_COUNTRIES.has(c))) return false;
+      }
+      if (origin === "middle-east") {
+        if (!countries.some((c: string) => MIDDLE_EAST_COUNTRIES.has(c))) return false;
+      }
+
+      const watchlistMatch =
+        (getSlug(film.url) && watchlistSlugs.has(getSlug(film.url))) ||
+        (`${String(film.name || "").trim().toLowerCase()}|${String(film.year || "").trim()}` && watchlistTitleYears.has(`${String(film.name || "").trim().toLowerCase()}|${String(film.year || "").trim()}`));
+      if (watchlistBias === "exclude" && watchlistMatch) return false;
+
+      return true;
+    });
+
+    // Count how many pass all filters except the seen filter, then apply seen filter
+    let seenExcludedCount = 0;
+    const afterSeen = filtered.filter((film) => {
+      const slug = getSlug(film.url);
+      const titleYearKey = `${String(film.name || "").trim().toLowerCase()}|${String(film.year || "").trim()}`;
+      const titleOnlyKey = `${String(film.name || "").trim().toLowerCase()}|`;
+      const seenMatch =
+        (slug && diarySlugs.has(slug)) ||
+        (titleYearKey && diaryTitleYears.has(titleYearKey)) ||
+        (titleOnlyKey && diaryTitleYears.has(titleOnlyKey));
+      if (hasDiary && seen === "havent-seen" && seenMatch) { seenExcludedCount++; return false; }
+      if (hasDiary && seen === "have-seen" && !seenMatch) { seenExcludedCount++; return false; }
+      return true;
+    });
+
+    if (quality === "highest-rated") {
+      const sorted = afterSeen
+        .filter((film) => (film.tmdb_data?.vote_average || 0) > 0)
+        .sort((a, b) => {
+          const aRating = a.tmdb_data?.vote_average || 0;
+          const bRating = b.tmdb_data?.vote_average || 0;
+          if (bRating !== aRating) return bRating - aRating;
+          if (b.listCount !== a.listCount) return b.listCount - a.listCount;
+          return a.name.localeCompare(b.name);
+        })
+        .slice(0, count);
+      let results = sorted;
+      if (watchlistBias === "prefer") {
+        results = [...results].sort((a, b) => {
+          const aSlug = getSlug(a.url);
+          const bSlug = getSlug(b.url);
+          const aMatch = (aSlug && watchlistSlugs.has(aSlug)) || watchlistTitleYears.has(`${a.name.toLowerCase()}|${a.year ?? ""}`);
+          const bMatch = (bSlug && watchlistSlugs.has(bSlug)) || watchlistTitleYears.has(`${b.name.toLowerCase()}|${b.year ?? ""}`);
+          return Number(bMatch) - Number(aMatch);
+        });
+      }
+      return { results, rankedCount: results.length, randomCount: 0, randomSources: [], seenExcludedCount };
+    }
+
+    const withRankInfo = afterSeen.map((film) => {
+      const listKeys = film.lists ? Object.keys(film.lists) : [];
+      const rankedPositions = listKeys
+        .filter((key) => rankedLists.includes(key))
+        .map((key) => film.lists[key])
+        .filter((value) => typeof value === "number");
+      const avgRank = rankedPositions.length
+        ? rankedPositions.reduce((sum, v) => sum + v, 0) / rankedPositions.length
+        : Number.POSITIVE_INFINITY;
+      const hasRanked = rankedPositions.length > 0;
+      return { film, avgRank, hasRanked };
+    });
+
+    const rankedBucket = withRankInfo.filter((entry) => entry.hasRanked);
+    const unrankedBucket = withRankInfo.filter((entry) => !entry.hasRanked);
+
+    rankedBucket.sort((a, b) => {
+      if (b.film.listCount !== a.film.listCount) return b.film.listCount - a.film.listCount;
+      if (a.avgRank !== b.avgRank) return a.avgRank - b.avgRank;
+      return a.film.name.localeCompare(b.film.name);
+    });
+
+    const shuffle = (items: typeof unrankedBucket) => {
+      const rng = (seed: number) => () => {
+        seed = (seed * 9301 + 49297) % 233280;
+        return seed / 233280;
+      };
+      const rand = rng(shuffleSeed);
+      const copy = [...items];
+      for (let i = copy.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(rand() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    };
+
+    let results: CuratedFilm[] = [];
+    let rankedCount = 0;
+    let randomCount = 0;
+    const randomSources = unrankedLists.map((key) => listMeta[key]?.name || key);
+
+    if (rankedLists.length === 0) {
+      const shuffled = shuffle(unrankedBucket).map((entry) => entry.film);
+      results = shuffled.slice(0, count);
+      randomCount = results.length;
+    } else {
+      const rankedFilms = rankedBucket.map((entry) => entry.film);
+      results = rankedFilms.slice(0, count);
+      rankedCount = results.length;
+      if (results.length < count && unrankedBucket.length > 0) {
+        const shuffled = shuffle(unrankedBucket).map((entry) => entry.film);
+        const needed = count - results.length;
+        const randomPick = shuffled.slice(0, needed);
+        results = results.concat(randomPick);
+        randomCount = randomPick.length;
+      }
+    }
+
+    if (quality === "critically-acclaimed") {
+      results = results.sort((a, b) => {
+        if (b.listCount !== a.listCount) return b.listCount - a.listCount;
+        return a.name.localeCompare(b.name);
+      }).slice(0, count);
+    }
+
+    const sortByWatchlistPrefer = (items: CuratedFilm[]) => {
+      if (watchlistBias !== "prefer") return items;
+      return [...items].sort((a, b) => {
+        const aSlug = getSlug(a.url);
+        const bSlug = getSlug(b.url);
+        const aMatch = (aSlug && watchlistSlugs.has(aSlug)) || watchlistTitleYears.has(`${a.name.toLowerCase()}|${a.year ?? ""}`);
+        const bMatch = (bSlug && watchlistSlugs.has(bSlug)) || watchlistTitleYears.has(`${b.name.toLowerCase()}|${b.year ?? ""}`);
+        return Number(bMatch) - Number(aMatch);
+      });
+    };
+
+    if (quality === "imdb-popularity") {
+      const isImdb = (film: CuratedFilm) =>
+        Boolean(film.lists && Object.prototype.hasOwnProperty.call(film.lists, "imdb-top-250"));
+      const imdbBucket: CuratedFilm[] = [];
+      const otherBucket: CuratedFilm[] = [];
+      for (const film of results) {
+        if (isImdb(film)) imdbBucket.push(film);
+        else otherBucket.push(film);
+      }
+      results = [...sortByWatchlistPrefer(imdbBucket), ...sortByWatchlistPrefer(otherBucket)].slice(0, count);
+    } else {
+      results = sortByWatchlistPrefer(results);
+    }
+
+    return { results, rankedCount, randomCount, randomSources, seenExcludedCount };
+  }, [
+    curatedPayload,
+    builderState,
+    builderExcluded,
+    filteredUris,
+    diarySlugs,
+    diaryTitleYears,
+    watchlistSlugs,
+    watchlistTitleYears,
+    ORIGIN_CONTINENT_MAP,
+    LATIN_AMERICA_COUNTRIES,
+    MIDDLE_EAST_COUNTRIES,
+  ]);
+
+  const builderResults = builderOutput.results;
+  const builderRankedCount = builderOutput.rankedCount;
+  const builderRandomCount = builderOutput.randomCount;
+  const builderRandomSources = builderOutput.randomSources;
+  const builderSeenExcluded = builderOutput.seenExcludedCount;
+
+  const handleBuilderShuffle = useCallback(() => {
+    setBuilderState((prev) => ({ ...prev, shuffleSeed: Date.now() }));
+  }, []);
+
+  const handleBuilderRemove = useCallback((url: string) => {
+    setBuilderExcluded((prev) => (prev.includes(url) ? prev : [...prev, url]));
+  }, []);
+
+  const handleBuilderToggle = useCallback(() => {
+    const now = Date.now();
+    if (now - builderToggleGuard.current < 300) return;
+    builderToggleGuard.current = now;
+    setBuilderExpanded((v) => !v);
+  }, []);
+
   const getProductionCountryCodes = useCallback((movie: any): string[] => {
     const codes = movie?.tmdb_data?.production_countries?.codes;
     return Array.isArray(codes) ? codes.filter(Boolean) : [];
@@ -3737,7 +4478,7 @@ function App() {
     <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
       <Analytics />
       <SpeedInsights />
-      <div style={{ width: "100%", maxWidth: "980px", display: "flex", flexDirection: "column", gap: "32px" }}>
+      <div style={{ width: "100%", maxWidth: "980px", display: "flex", flexDirection: "column", gap: "24px" }}>
         <header style={{ textAlign: "center" }}>
           <h1 style={{ fontSize: "28px", fontWeight: 700, color: "#fff", marginBottom: "6px", letterSpacing: "0.5px" }}>
             Letterbddy
@@ -3879,10 +4620,10 @@ function App() {
             style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px" }}
           >
           <div>
-            <label style={{ fontSize: "14px", color: "#def", display: "block", marginBottom: "8px" }}>
+            <label style={{ fontSize: "14px", color: "#ccd", display: "block", marginBottom: "8px" }}>
               Upload Diary CSV
             </label>
-            <p style={{ fontSize: "12px", color: "#678", marginBottom: "12px" }}>
+            <p style={{ fontSize: "12px", color: "#9ab", marginBottom: "12px" }}>
               Export from Letterboxd: Settings → Import & Export → Export Your Data
             </p>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
@@ -3892,9 +4633,9 @@ function App() {
                 style={{
                   padding: "8px 12px",
                   borderRadius: "6px",
-                  border: "1px solid #4b5a66",
-                  backgroundColor: "#1b2026",
-                  color: "#e2e8f0",
+                  border: "1px solid #456",
+                  backgroundColor: "#2c3440",
+                  color: "#ccd",
                   fontSize: "13px",
                   fontWeight: 600,
                   cursor: "pointer",
@@ -3998,11 +4739,11 @@ function App() {
                   )}
                 </div>
                 {scrapeProgress && scrapeProgress.total > 0 ? (
-                  <p style={{ fontSize: "12px", color: "#678", marginTop: "8px", textAlign: "center" }}>
+                  <p style={{ fontSize: "12px", color: "#9ab", marginTop: "8px", textAlign: "center" }}>
                     {scrapeProgress.current} / {scrapeProgress.total} ({Math.round((scrapeProgress.current / scrapeProgress.total) * 100)}%)
                   </p>
                 ) : (
-                  <p style={{ fontSize: "12px", color: "#678", marginTop: "8px", textAlign: "center" }}>
+                  <p style={{ fontSize: "12px", color: "#9ab", marginTop: "8px", textAlign: "center" }}>
                     Connecting to server...
                   </p>
                 )}
@@ -4055,10 +4796,10 @@ function App() {
               ref={reviewsSectionRef}
               style={{ marginTop: "20px", paddingTop: "16px", borderTop: "1px solid #345" }}
             >
-              <label style={{ fontSize: "14px", color: "#def", display: "block", marginBottom: "8px" }}>
+              <label style={{ fontSize: "14px", color: "#ccd", display: "block", marginBottom: "8px" }}>
                 Upload Reviews CSV (optional)
               </label>
-              <p style={{ fontSize: "12px", color: "#678", marginBottom: "12px" }}>
+              <p style={{ fontSize: "12px", color: "#9ab", marginBottom: "12px" }}>
                 For review word count analysis
               </p>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
@@ -4068,9 +4809,9 @@ function App() {
                   style={{
                     padding: "8px 12px",
                     borderRadius: "6px",
-                    border: "1px solid #4b5a66",
-                    backgroundColor: "#1b2026",
-                    color: "#e2e8f0",
+                    border: "1px solid #456",
+                    backgroundColor: "#2c3440",
+                    color: "#ccd",
                     fontSize: "13px",
                     fontWeight: 600,
                     cursor: "pointer",
@@ -4288,7 +5029,7 @@ function App() {
                   ? "translate(-100%, -100%)"
                   : "translate(-50%, -100%)",
               background: "rgba(20, 24, 28, 0.95)",
-              color: "#e2e8f0",
+              color: "#ccd",
               border: "1px solid #345",
               borderRadius: "6px",
               padding: "8px 10px",
@@ -4333,11 +5074,11 @@ function App() {
                 </p>
                 {isLocalDev && (
                   <>
-                    <p style={{ fontSize: "11px", color: "#678", textAlign: "center" }}>
+                    <p style={{ fontSize: "11px", color: "#9ab", textAlign: "center" }}>
                       Debug: {filteredUris.size} filtered URIs, {movieLookup ? Object.keys(movieLookup).length : 0} in lookup, {matchedMovies.filter((m: any) => m.tmdb_movie_id).length} tmdb_movie_id, {matchedMovies.filter((m: any) => m.tmdb_data).length} tmdb_data, {matchedMovies.filter((m: any) => m.tmdb_error || m.tmdb_api_error).length} TMDb errors
                     </p>
                     {topTmdbErrors.length > 0 && (
-                      <p style={{ fontSize: "11px", color: "#678", textAlign: "center" }}>
+                      <p style={{ fontSize: "11px", color: "#9ab", textAlign: "center" }}>
                         Top errors: {topTmdbErrors.map(([msg, count]) => `${msg} (${count})`).join(", ")}
                       </p>
                     )}
@@ -4675,7 +5416,7 @@ function App() {
               };
 
               const getDecadeColor = (decade: string) => {
-                return decadeColors[decade] || "#678";
+                return decadeColors[decade] || "#9ab";
               };
 
               return (
@@ -4817,7 +5558,7 @@ function App() {
               };
 
               const getOffsetDecadeColor = (decade: string) => {
-                return offsetDecadeColors[decade] || "#678";
+                return offsetDecadeColors[decade] || "#9ab";
               };
 
               return (
@@ -5086,14 +5827,14 @@ function App() {
         {/* Watchlist Analysis Section - always visible, inner parts conditionally shown */}
         <section
           ref={watchlistSectionRef}
-          style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px", marginTop: "32px" }}
+          style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px" }}
         >
           <h2 style={{ fontSize: "20px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
             Watchlist Analysis
           </h2>
           {/* Only show upload description when upload UI is visible */}
           {(manualUploadOpen || pendingUploadTarget === "watchlist" || !watchlistLoaded || isWatchlistLoading) && (
-            <p style={{ fontSize: "12px", color: "#678", marginBottom: "16px", textAlign: "center" }}>
+            <p style={{ fontSize: "12px", color: "#9ab", marginBottom: "16px", textAlign: "center" }}>
               Upload your watchlist.csv to find films matching your criteria
             </p>
           )}
@@ -5108,9 +5849,9 @@ function App() {
                   style={{
                     padding: "8px 12px",
                     borderRadius: "6px",
-                    border: "1px solid #4b5a66",
-                    backgroundColor: "#1b2026",
-                    color: "#e2e8f0",
+                    border: "1px solid #456",
+                    backgroundColor: "#2c3440",
+                    color: "#ccd",
                     fontSize: "13px",
                     fontWeight: 600,
                     cursor: isWatchlistLoading ? "not-allowed" : "pointer",
@@ -5185,11 +5926,11 @@ function App() {
                   )}
                 </div>
                 {watchlistProgress && watchlistProgress.total > 0 ? (
-                  <p style={{ fontSize: "12px", color: "#678", textAlign: "center", marginTop: "4px" }}>
+                  <p style={{ fontSize: "12px", color: "#9ab", textAlign: "center", marginTop: "4px" }}>
                     {watchlistProgress.current} / {watchlistProgress.total} ({Math.round((watchlistProgress.current / watchlistProgress.total) * 100)}%)
                   </p>
                 ) : (
-                  <p style={{ fontSize: "12px", color: "#678", textAlign: "center", marginTop: "4px" }}>
+                  <p style={{ fontSize: "12px", color: "#9ab", textAlign: "center", marginTop: "4px" }}>
                     Connecting to server...
                   </p>
                 )}
@@ -5225,14 +5966,14 @@ function App() {
               <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "6px" }}>
                 {watchlistMissingDebug.map((row, idx) => (
                   <li key={`${row.originalUri}-${idx}`} style={{ fontSize: "12px", color: "#ccd" }}>
-                    <span style={{ color: "#def" }}>{row.name || "Untitled"}</span>
+                    <span style={{ color: "#ccd" }}>{row.name || "Untitled"}</span>
                     {row.year ? ` (${row.year})` : ""}
-                    <span style={{ color: "#678", marginLeft: "6px" }}>{row.originalUri}</span>
-                    <span style={{ color: "#678", marginLeft: "6px" }}>
+                    <span style={{ color: "#9ab", marginLeft: "6px" }}>{row.originalUri}</span>
+                    <span style={{ color: "#9ab", marginLeft: "6px" }}>
                       map:{row.hadUriMap ? "yes" : "no"} lookup:{row.foundInLookup ? "yes" : "no"}
                     </span>
                     {row.tmdbId ? (
-                      <span style={{ color: "#678", marginLeft: "6px" }}>tmdbId:{row.tmdbId}</span>
+                      <span style={{ color: "#9ab", marginLeft: "6px" }}>tmdbId:{row.tmdbId}</span>
                     ) : null}
                     {row.tmdbError ? (
                       <span style={{ color: "#c77", marginLeft: "6px" }}>error:{String(row.tmdbError).slice(0, 80)}</span>
@@ -5263,7 +6004,65 @@ function App() {
             />
           )}
         </section>
+        {/* Watchlist Builder section — always visible */}
+        <section
+          style={{
+            backgroundColor: "rgba(68, 85, 102, 0.2)",
+            borderRadius: "8px",
+            padding: "24px",
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleBuilderToggle}
+            style={{
+              cursor: "pointer",
+              userSelect: "none",
+              background: "none",
+              border: "none",
+              width: "100%",
+              textAlign: "left",
+              padding: 0,
+            }}
+          >
+            <h2 style={{ color: "#fff", fontSize: "20px", fontWeight: 600, margin: 0, textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+              Watchlist Builder
+              <span className="lb-builder-toggle-icon">
+                {builderExpanded ? "−" : "+"}
+              </span>
+            </h2>
+            <p style={{ color: "#9ab", fontSize: "12px", margin: "6px 0 0", textAlign: "center" }}>
+              Build a custom watchlist from{" "}
+              {curatedPayload?.films?.length
+                ? `${curatedPayload.films.length.toLocaleString()} acclaimed films`
+                : "thousands of acclaimed films"}
+            </p>
+          </button>
+
+          <div className={`lb-builder-collapse ${builderExpanded ? "lb-builder-collapse--open" : ""}`}>
+            <div className="lb-builder-collapse-inner">
+              <div style={{ marginTop: "20px" }}>
+                <WatchlistBuilder
+                  curatedPayload={curatedPayload}
+                  curatedLoading={curatedLoading}
+                  builderState={builderState}
+                  setBuilderState={setBuilderState}
+                  builderResults={builderResults}
+                  builderRankedCount={builderRankedCount}
+                  builderRandomCount={builderRandomCount}
+                  builderRandomSources={builderRandomSources}
+                  seenExcludedCount={builderSeenExcluded}
+                  hasDiary={filteredUris.size > 0}
+                  watchlistCount={watchlistMovies.length}
+                  onShuffle={handleBuilderShuffle}
+                  onRemove={handleBuilderRemove}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
+
       <div style={{ fontSize: "12px", color: "#9ab", margin: "40px 0 24px", textAlign: "center" }}>
         <a
           href="https://letterboxd.com/katswnt"

@@ -30,8 +30,14 @@ declare module 'papaparse' {
     config?: ParseConfig<T>
   ): ParseResult<T>;
 
+  export function unparse(
+    data: any[],
+    config?: { columns?: string[]; header?: boolean }
+  ): string;
+
   const Papa: {
     parse: typeof parse;
+    unparse: typeof unparse;
   };
 
   export default Papa;
