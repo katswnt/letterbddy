@@ -1261,6 +1261,98 @@
   margin-bottom: 12px;
 }
 
+/* ---- Reviews ---- */
+.lb-review-grid {
+  margin-top: 20px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lb-review-grid-2 {
+  margin-top: 16px;
+}
+
+.lb-review-card {
+  background: rgba(20, 24, 28, 0.55);
+  border: 1px solid rgba(68, 85, 102, 0.35);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lb-review-card-wide {
+  grid-column: 1 / -1;
+}
+
+.lb-review-card-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9ab;
+  margin-bottom: 8px;
+}
+
+.lb-review-card-metric {
+  font-size: 18px;
+  color: #fff;
+  margin-bottom: 6px;
+}
+
+.lb-review-card-sub {
+  font-size: 12px;
+  color: #9ab;
+  line-height: 1.4;
+}
+
+.lb-review-excerpt {
+  font-size: 13px;
+  color: #ccd;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.lb-review-excerpt-collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.lb-review-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: #3EBDF4;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.lb-review-toggle:hover {
+  color: #7dd3fc;
+}
+
+.lb-review-card-chart {
+  align-items: stretch;
+  text-align: left;
+}
+
+.lb-review-chart {
+  height: 180px;
+  width: 100%;
+  align-self: stretch;
+}
+
+@media (max-width: 860px) {
+  .lb-review-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Preview table */
 .lb-builder-preview {
   max-height: 480px;

@@ -12,7 +12,22 @@ import {
   type SetStateAction,
 } from "react";
 import Papa from "papaparse";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  CartesianGrid,
+  ScatterChart,
+  Scatter,
+} from "recharts";
 import world from "@svg-maps/world";
 import { countries, continents } from "countries-list";
 import { Analytics } from "@vercel/analytics/react";
@@ -235,6 +250,35 @@ const BlackDirectorsInfo = ({ align = "center" }: { align?: "left" | "center" | 
       )}
     </span>
   );
+};
+
+const sanitizeReviewHtml = (input: string) => {
+  if (typeof window === "undefined" || typeof DOMParser === "undefined") {
+    return input;
+  }
+  const doc = new DOMParser().parseFromString(input, "text/html");
+  const allowed = new Set(["A", "B", "STRONG", "I", "EM", "BR"]);
+  const sanitizeNode = (node: Element) => {
+    const children = Array.from(node.children);
+    for (const child of children) {
+      if (!allowed.has(child.tagName)) {
+        child.replaceWith(doc.createTextNode(child.textContent || ""));
+        continue;
+      }
+      if (child.tagName === "A") {
+        const href = child.getAttribute("href") || "";
+        if (!/^https?:\/\//i.test(href)) {
+          child.replaceWith(doc.createTextNode(child.textContent || ""));
+          continue;
+        }
+        child.setAttribute("target", "_blank");
+        child.setAttribute("rel", "noopener noreferrer");
+      }
+      sanitizeNode(child);
+    }
+  };
+  sanitizeNode(doc.body);
+  return doc.body.innerHTML;
 };
 
 const TrendInfo = ({ align = "center" }: { align?: "left" | "center" | "right" }) => {
@@ -2227,6 +2271,8 @@ function App() {
   const [watchlistSortState, setWatchlistSortState] = useState<WatchlistSortState>("default");
   const [watchlistRuntimeFilter, setWatchlistRuntimeFilter] = useState<RuntimeFilter>("all");
   const [watchlistContinentFilter, setWatchlistContinentFilter] = useState<string | null>(null);
+  const [reviewLovedExpanded, setReviewLovedExpanded] = useState<boolean>(false);
+  const [reviewHatedExpanded, setReviewHatedExpanded] = useState<boolean>(false);
   const [tasteSortMode, setTasteSortMode] = useState<"rated" | "watched">("rated");
   const [tasteCategory, setTasteCategory] = useState<string>("womenDirectors");
   const [tasteExpandedPerson, setTasteExpandedPerson] = useState<string | null>(null);
@@ -5821,23 +5867,126 @@ function App() {
 
         {/* Review stats - only show if reviews have been uploaded */}
         {reviews.length > 0 && (() => {
-          // Calculate word counts for each review
-          const wordCounts = reviews.map((review) => {
-            const text = review.Review || "";
-            const words = text.trim().split(/\s+/).filter(w => w.length > 0);
-            return words.length;
-          });
+          const stopwords = new Set([
+            "the", "and", "for", "that", "with", "this", "was", "but", "are", "you", "your",
+            "from", "they", "their", "just", "have", "has", "had", "she", "him", "her", "his",
+            "not", "what", "when", "where", "who", "why", "how", "its", "it's", "into", "out",
+            "about", "over", "under", "after", "before", "then", "than", "too", "very", "really",
+            "also", "still", "more", "most", "least", "been", "were", "because", "could", "would",
+            "should", "did", "does", "doing", "done", "cant", "can't", "won", "won't", "dont", "don't",
+          ]);
+          const positiveWords = new Set([
+            "amazing", "beautiful", "brilliant", "charming", "clever", "emotional", "fun",
+            "funny", "great", "gorgeous", "heartbreaking", "hilarious", "joy", "lovely",
+            "masterpiece", "perfect", "stunning", "terrific", "wonderful", "wow", "love",
+            "loved", "favorite", "favourite", "incredible",
+          ]);
+          const negativeWords = new Set([
+            "awful", "bad", "boring", "confusing", "cringe", "dull", "flat", "forgettable",
+            "hate", "hated", "mess", "poor", "ridiculous", "slow", "terrible", "ugh",
+            "unwatchable", "weak", "worst", "waste", "annoying",
+          ]);
 
-          // Calculate median word count
+          const reviewEntries = reviews
+            .map((review) => {
+              const text = (review.Review || "").trim();
+              const words = text.split(/\s+/).filter((w) => w.length > 0);
+              const rating = review.Rating ? Number(review.Rating) : null;
+              const date = review["Watched Date"] || review.Date || "";
+              return { review, text, words, wordCount: words.length, rating, date };
+            })
+            .filter((entry) => entry.text.length > 0);
+
+          if (reviewEntries.length === 0) {
+            return (
+              <section style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%" }}>
+                <h3 style={{ fontSize: "16px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
+                  Reviews
+                </h3>
+                <div style={{ textAlign: "center", color: "#9ab", fontSize: "13px" }}>
+                  Add written reviews to unlock insights here.
+                </div>
+              </section>
+            );
+          }
+
+          const wordCounts = reviewEntries.map((entry) => entry.wordCount);
           const sortedWordCounts = [...wordCounts].sort((a, b) => a - b);
           const mid = Math.floor(sortedWordCounts.length / 2);
           const medianWordCount = sortedWordCounts.length % 2 === 1
             ? sortedWordCounts[mid]
             : Math.round((sortedWordCounts[mid - 1] + sortedWordCounts[mid]) / 2);
-
-          // Calculate average for comparison
           const totalWords = wordCounts.reduce((sum, count) => sum + count, 0);
           const avgWordCount = Math.round(totalWords / wordCounts.length);
+          const shortestReview = Math.min(...wordCounts);
+          const longestReview = Math.max(...wordCounts);
+          const over200 = wordCounts.filter((count) => count >= 200).length;
+          const percentOver200 = Math.round((over200 / wordCounts.length) * 100);
+          const voiceLabel =
+            avgWordCount >= 200 ? "essayist" : avgWordCount >= 80 ? "balanced" : "punchy";
+
+          const sentimentByMonth = new Map<string, { total: number; count: number }>();
+          const sentimentPoints: Array<{ month: string; sentiment: number; count: number }> = [];
+          for (const entry of reviewEntries) {
+            const tokens = entry.text
+              .toLowerCase()
+              .replace(/[^a-z0-9\s']/g, " ")
+              .split(/\s+/)
+              .filter((w) => w.length > 2);
+            let score = 0;
+            for (const token of tokens) {
+              if (positiveWords.has(token)) score += 1;
+              if (negativeWords.has(token)) score -= 1;
+            }
+            const normalized = tokens.length ? score / tokens.length : 0;
+            if (!entry.date) continue;
+            const dateObj = new Date(entry.date);
+            if (Number.isNaN(dateObj.getTime())) continue;
+            const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}`;
+            const bucket = sentimentByMonth.get(monthKey) || { total: 0, count: 0 };
+            bucket.total += normalized;
+            bucket.count += 1;
+            sentimentByMonth.set(monthKey, bucket);
+          }
+          Array.from(sentimentByMonth.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .forEach(([month, bucket]) => {
+              sentimentPoints.push({
+                month,
+                sentiment: bucket.count ? Number((bucket.total / bucket.count).toFixed(3)) : 0,
+                count: bucket.count,
+              });
+            });
+
+          const scatterPoints = reviewEntries
+            .filter((entry) => typeof entry.rating === "number" && !Number.isNaN(entry.rating))
+            .map((entry) => ({
+              rating: entry.rating,
+              words: entry.wordCount,
+              title: entry.review.Name,
+              year: entry.review.Year,
+              date: entry.date,
+            }));
+
+          const ratedReviews = reviewEntries.filter((entry) => typeof entry.rating === "number");
+          const mostLoved = ratedReviews.reduce((best, entry) => {
+            if (!best) return entry;
+            if ((entry.rating ?? 0) > (best.rating ?? 0)) return entry;
+            if ((entry.rating ?? 0) === (best.rating ?? 0) && entry.wordCount > best.wordCount) return entry;
+            return best;
+          }, null as typeof reviewEntries[number] | null);
+          const mostHated = ratedReviews.reduce((worst, entry) => {
+            if (!worst) return entry;
+            if ((entry.rating ?? 0) < (worst.rating ?? 0)) return entry;
+            if ((entry.rating ?? 0) === (worst.rating ?? 0) && entry.wordCount > worst.wordCount) return entry;
+            return worst;
+          }, null as typeof reviewEntries[number] | null);
+
+          const lovedIsLong = mostLoved ? mostLoved.wordCount > 80 || mostLoved.text.length > 320 : false;
+          const hatedIsLong = mostHated ? mostHated.wordCount > 80 || mostHated.text.length > 320 : false;
+
+          const uniqueWatchedCount = films.length || 0;
+          const reviewDensity = uniqueWatchedCount ? Math.round((reviews.length / uniqueWatchedCount) * 100) : 0;
 
           return (
             <section style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%" }}>
@@ -5860,6 +6009,131 @@ function App() {
                 <div>
                   <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{totalWords.toLocaleString()}</div>
                   <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Total Words</div>
+                </div>
+              </div>
+              <div className="lb-review-grid">
+                <div className="lb-review-card">
+                  <div className="lb-review-card-title">Your voice</div>
+                  <div className="lb-review-card-metric">{voiceLabel}</div>
+                  <div className="lb-review-card-sub">Shortest: {shortestReview} · Longest: {longestReview}</div>
+                  <div className="lb-review-card-sub">{percentOver200}% of reviews are 200+ words</div>
+                </div>
+                <div className="lb-review-card">
+                  <div className="lb-review-card-title">Review density</div>
+                  <div className="lb-review-card-metric">{reviewDensity}%</div>
+                  <div className="lb-review-card-sub">
+                    {reviews.length} reviews across {uniqueWatchedCount} watched films
+                  </div>
+                </div>
+              </div>
+              <div className="lb-review-grid lb-review-grid-2">
+                <div className="lb-review-card lb-review-card-chart">
+                  <div className="lb-review-card-title">Sentiment over time</div>
+                  {sentimentPoints.length > 0 ? (
+                    <div className="lb-review-chart">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={sentimentPoints} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+                          <CartesianGrid stroke="rgba(68, 85, 102, 0.35)" strokeDasharray="3 3" />
+                          <XAxis dataKey="month" tick={{ fill: "#9ab", fontSize: 10 }} minTickGap={20} />
+                          <YAxis tick={{ fill: "#9ab", fontSize: 10 }} width={32} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: "#1b2026", border: "1px solid #345", color: "#ccd" }}
+                            content={({ payload, label }) => {
+                              const point = payload?.[0]?.payload as any;
+                              if (!point) return null;
+                              return (
+                                <div style={{ fontSize: "12px", color: "#ccd", backgroundColor: "#1b2026", border: "1px solid #345", padding: "8px 10px", borderRadius: "6px" }}>
+                                  <div style={{ fontWeight: 600 }}>Month: {label}</div>
+                                  <div style={{ marginTop: "4px" }}>Sentiment: {Number(point.sentiment).toFixed(3)}</div>
+                                  <div>Reviews: {point.count}</div>
+                                </div>
+                              );
+                            }}
+                          />
+                          <Line type="monotone" dataKey="sentiment" stroke="#3EBDF4" strokeWidth={2} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="lb-review-card-sub">Not enough dated reviews yet.</div>
+                  )}
+                </div>
+                <div className="lb-review-card lb-review-card-chart">
+                  <div className="lb-review-card-title">Rating vs word count</div>
+                  {scatterPoints.length > 0 ? (
+                    <div className="lb-review-chart">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ScatterChart margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+                          <CartesianGrid stroke="rgba(68, 85, 102, 0.35)" strokeDasharray="3 3" />
+                          <XAxis type="number" dataKey="rating" domain={[0, 5]} tick={{ fill: "#9ab", fontSize: 10 }} />
+                          <YAxis type="number" dataKey="words" tick={{ fill: "#9ab", fontSize: 10 }} width={36} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: "#1b2026", border: "1px solid #345", color: "#ccd" }}
+                            cursor={{ stroke: "#3EBDF4", strokeWidth: 1 }}
+                            content={({ payload }) => {
+                              const point = payload?.[0]?.payload as any;
+                              if (!point) return null;
+                              return (
+                                <div style={{ fontSize: "12px", color: "#ccd", backgroundColor: "#1b2026", border: "1px solid #345", padding: "8px 10px", borderRadius: "6px" }}>
+                                  <div style={{ fontWeight: 600 }}>{point.title}{point.year ? ` (${point.year})` : ""}</div>
+                                  <div style={{ marginTop: "4px" }}>Rating: ★{Number(point.rating).toFixed(1)}</div>
+                                  <div>Words: {point.words}</div>
+                                  {point.date && <div style={{ color: "#9ab", marginTop: "4px" }}>{point.date}</div>}
+                                </div>
+                              );
+                            }}
+                          />
+                          <Scatter data={scatterPoints} fill="#00e054" />
+                        </ScatterChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="lb-review-card-sub">Add ratings to see the scatter.</div>
+                  )}
+                </div>
+                <div className="lb-review-card">
+                  <div className="lb-review-card-title">Most loved review</div>
+                  {mostLoved ? (
+                    <>
+                      <div className="lb-review-card-metric">{mostLoved.review.Name} ({mostLoved.review.Year}) · ★{mostLoved.rating}</div>
+                      <div className={`lb-review-excerpt ${lovedIsLong && !reviewLovedExpanded ? "lb-review-excerpt-collapsed" : ""}`}>
+                        <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(mostLoved.text) }} />
+                      </div>
+                      {lovedIsLong && (
+                        <button
+                          type="button"
+                          className="lb-review-toggle"
+                          onClick={() => setReviewLovedExpanded((prev) => !prev)}
+                        >
+                          {reviewLovedExpanded ? "Show less" : "Read full review"}
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <div className="lb-review-card-sub">No rated reviews yet.</div>
+                  )}
+                </div>
+                <div className="lb-review-card">
+                  <div className="lb-review-card-title">Most hated review</div>
+                  {mostHated ? (
+                    <>
+                      <div className="lb-review-card-metric">{mostHated.review.Name} ({mostHated.review.Year}) · ★{mostHated.rating}</div>
+                      <div className={`lb-review-excerpt ${hatedIsLong && !reviewHatedExpanded ? "lb-review-excerpt-collapsed" : ""}`}>
+                        <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(mostHated.text) }} />
+                      </div>
+                      {hatedIsLong && (
+                        <button
+                          type="button"
+                          className="lb-review-toggle"
+                          onClick={() => setReviewHatedExpanded((prev) => !prev)}
+                        >
+                          {reviewHatedExpanded ? "Show less" : "Read full review"}
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <div className="lb-review-card-sub">No rated reviews yet.</div>
+                  )}
                 </div>
               </div>
             </section>
