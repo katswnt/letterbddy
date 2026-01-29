@@ -308,11 +308,11 @@
 }
 
 .lb-watchlist-pace {
-  margin-top: 18px;
+  margin-top: 10px;
   font-size: 13px;
   color: #ccd;
   text-align: center;
-  max-width: 720px;
+  max-width: 680px;
   width: 100%;
   padding: 0 12px;
   line-height: 1.5;
@@ -991,6 +991,7 @@
   justify-content: center;
   font-size: 14px;
   color: #9ab;
+  line-height: 1;
   transition: border-color 0.15s ease, color 0.15s ease;
 }
 
@@ -1254,8 +1255,10 @@
   background: rgba(255, 128, 2, 0.12);
 }
 
-.lb-builder-shuffle-center {
+.lb-builder-shuffle-row {
+  display: flex;
   justify-content: center;
+  margin-bottom: 12px;
 }
 
 /* Preview table */

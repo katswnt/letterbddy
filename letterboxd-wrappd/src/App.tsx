@@ -131,6 +131,7 @@ type WatchlistBuilderState = {
   listMode: "any" | "all";
   listSources: string[];
   shuffleSeed: number;
+  shuffleAllSeed: number | null;
   origin: "anywhere" | "not-usa" | "non-english" | "africa" | "asia" | "europe" | "latin-america" | "middle-east" | "oceania";
   seen: "havent-seen" | "have-seen" | "any";
   watchlistBias: "any" | "prefer" | "exclude";
@@ -1686,7 +1687,7 @@ const WatchlistBuilder = memo(({
 
       {/* Sorting/shuffle info */}
       {(builderRankedCount > 0 || builderRandomCount > 0) && (
-        <div className={`lb-builder-meta ${builderRandomCount > 1 ? "lb-builder-shuffle-center" : ""}`}>
+        <div className="lb-builder-meta">
           <span>
             {builderRankedCount > 0 && <>{builderRankedCount} ranked by consensus</>}
             {builderRankedCount > 0 && builderRandomCount > 0 && " · "}
@@ -1697,11 +1698,13 @@ const WatchlistBuilder = memo(({
               from {builderRandomSources.join(", ")}
             </span>
           )}
-          {builderRandomCount > 1 && (
-            <button type="button" className="lb-builder-shuffle-btn" onClick={onShuffle}>
-              Shuffle
-            </button>
-          )}
+        </div>
+      )}
+      {builderResults.length > 1 && (
+        <div className="lb-builder-shuffle-row">
+          <button type="button" className="lb-builder-shuffle-btn" onClick={onShuffle}>
+            Shuffle
+          </button>
         </div>
       )}
 
@@ -2263,6 +2266,7 @@ function App() {
     listMode: "any",
     listSources: [],
     shuffleSeed: Date.now(),
+    shuffleAllSeed: null,
     origin: "anywhere",
     seen: "havent-seen",
     watchlistBias: "any",
@@ -3364,6 +3368,7 @@ function App() {
       listMode,
       listSources,
       shuffleSeed,
+      shuffleAllSeed,
       watchlistBias,
     } = builderState;
     const hasDiary = filteredUris.size > 0;
@@ -3502,6 +3507,19 @@ function App() {
       }
       return copy;
     };
+    const shuffleResults = (items: CuratedFilm[], seed: number) => {
+      const rng = (s: number) => () => {
+        s = (s * 9301 + 49297) % 233280;
+        return s / 233280;
+      };
+      const rand = rng(seed);
+      const copy = [...items];
+      for (let i = copy.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(rand() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    };
 
     let results: CuratedFilm[] = [];
     let rankedCount = 0;
@@ -3557,6 +3575,10 @@ function App() {
       results = sortByWatchlistPrefer(results);
     }
 
+    if (shuffleAllSeed && results.length > 1) {
+      results = shuffleResults(results, shuffleAllSeed);
+    }
+
     return { results, rankedCount, randomCount, randomSources, seenExcludedCount };
   }, [
     curatedPayload,
@@ -3579,7 +3601,8 @@ function App() {
   const builderSeenExcluded = builderOutput.seenExcludedCount;
 
   const handleBuilderShuffle = useCallback(() => {
-    setBuilderState((prev) => ({ ...prev, shuffleSeed: Date.now() }));
+    const seed = Date.now();
+    setBuilderState((prev) => ({ ...prev, shuffleSeed: seed, shuffleAllSeed: seed }));
   }, []);
 
   const handleBuilderRemove = useCallback((url: string) => {
@@ -6027,7 +6050,7 @@ function App() {
           >
             <h2 style={{ color: "#fff", fontSize: "20px", fontWeight: 600, margin: 0, textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
               Watchlist Builder
-              <span className="lb-builder-toggle-icon">
+              <span className="lb-builder-toggle-icon" aria-hidden="true">
                 {builderExpanded ? "−" : "+"}
               </span>
             </h2>
