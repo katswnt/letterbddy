@@ -5867,14 +5867,6 @@ function App() {
 
         {/* Review stats - only show if reviews have been uploaded */}
         {reviews.length > 0 && (() => {
-          const stopwords = new Set([
-            "the", "and", "for", "that", "with", "this", "was", "but", "are", "you", "your",
-            "from", "they", "their", "just", "have", "has", "had", "she", "him", "her", "his",
-            "not", "what", "when", "where", "who", "why", "how", "its", "it's", "into", "out",
-            "about", "over", "under", "after", "before", "then", "than", "too", "very", "really",
-            "also", "still", "more", "most", "least", "been", "were", "because", "could", "would",
-            "should", "did", "does", "doing", "done", "cant", "can't", "won", "won't", "dont", "don't",
-          ]);
           const positiveWords = new Set([
             "amazing", "beautiful", "brilliant", "charming", "clever", "emotional", "fun",
             "funny", "great", "gorgeous", "heartbreaking", "hilarious", "joy", "lovely",
