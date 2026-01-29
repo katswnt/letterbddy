@@ -4506,7 +4506,17 @@ function App() {
           <h1 style={{ fontSize: "28px", fontWeight: 700, color: "#fff", marginBottom: "6px", letterSpacing: "0.5px" }}>
             Letterbddy
           </h1>
-          <div style={{ fontSize: "12px", color: "#9ab", marginBottom: "10px" }}>by Kat Swint</div>
+          <div style={{ fontSize: "12px", color: "#9ab", marginBottom: "10px" }}>
+            by{" "}
+            <a
+              href="https://x.com/katswint"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#c6d2de", textDecoration: "none" }}
+            >
+              Kat Swint
+            </a>
+          </div>
         </header>
 
         <input
