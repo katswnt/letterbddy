@@ -1452,11 +1452,19 @@ const WatchlistBuilder = memo(({
 }: WatchlistBuilderProps) => {
 
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  const hasBlackDirectorData = useMemo(
+    () => curatedPayload?.films?.some((film) => typeof film.is_by_black_director === "boolean") ?? false,
+    [curatedPayload]
+  );
 
   const handleChange = useCallback(
     (key: keyof WatchlistBuilderState) => (e: ChangeEvent<HTMLSelectElement>) => {
       const value = key === "count" ? Number(e.target.value) : e.target.value;
-      setBuilderState((prev) => ({ ...prev, [key]: value }));
+      setBuilderState((prev) => ({
+        ...prev,
+        [key]: value,
+        shuffleAllSeed: key === "shuffleAllSeed" ? (value as number | null) : null,
+      }));
     },
     [setBuilderState]
   );
@@ -1562,9 +1570,10 @@ const WatchlistBuilder = memo(({
               <input
                 type="checkbox"
                 checked={builderState.directorBlack}
-                onChange={(e) => setBuilderState((prev) => ({ ...prev, directorBlack: e.target.checked }))}
+                onChange={(e) => setBuilderState((prev) => ({ ...prev, directorBlack: e.target.checked, shuffleAllSeed: null }))}
+                disabled={!hasBlackDirectorData}
               />
-              Black directors
+              Black directors{!hasBlackDirectorData ? " (unavailable)" : ""}
             </label>
             <BlackDirectorsInfo align="center" />
             {hasCreatorFilter && (
@@ -3566,7 +3575,7 @@ function App() {
         Boolean(film.lists && Object.prototype.hasOwnProperty.call(film.lists, "imdb-top-250"));
       const imdbBucket: CuratedFilm[] = [];
       const otherBucket: CuratedFilm[] = [];
-      for (const film of results) {
+      for (const film of afterSeen) {
         if (isImdb(film)) imdbBucket.push(film);
         else otherBucket.push(film);
       }
