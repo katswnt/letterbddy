@@ -105,12 +105,12 @@ export async function setCached(key: string, value: unknown, expiresInSeconds?: 
 
 // Cache key prefixes
 export const CACHE_KEYS = {
-  TMDB_DATA: 'tmdb:v2:',
-  LETTERBOXD_MAPPING: 'lb:v3:', // v3: invalidate bad entries cached during Cloudflare blocking
+  TMDB_DATA: 'tmdb:v3:',
+  LETTERBOXD_MAPPING: 'lb:v4:', // v4: invalidate bad entries cached during Cloudflare blocking
 } as const;
 
 // Cache durations
 export const CACHE_DURATION = {
-  TMDB_DATA: 60 * 60 * 24 * 30, // 30 days
-  LETTERBOXD_MAPPING: 60 * 60 * 24 * 90, // 90 days
+  TMDB_DATA: 60 * 60 * 24 * 180, // 180 days
+  LETTERBOXD_MAPPING: 60 * 60 * 24 * 180, // 180 days
 } as const;

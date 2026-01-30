@@ -2135,10 +2135,6 @@ const DoubleFeatureBuilder = memo(({
 
   return (
     <div className="lb-double">
-      <div className="lb-double-header">
-        <h3>Double Feature Builder</h3>
-        <p>Pick a pairing rule and get instant double features.</p>
-      </div>
       <div className="lb-double-row">
         <span>Source</span>
         <div className="lb-double-toggle">
@@ -2755,6 +2751,7 @@ function App() {
   const [curatedPayload, setCuratedPayload] = useState<CuratedListsPayload | null>(null);
   const [curatedLoading, setCuratedLoading] = useState<boolean>(false);
   const [builderExpanded, setBuilderExpanded] = useState<boolean>(false);
+  const [doubleFeatureExpanded, setDoubleFeatureExpanded] = useState<boolean>(false);
   const [builderExcluded, setBuilderExcluded] = useState<string[]>([]);
   const [builderState, setBuilderState] = useState<WatchlistBuilderState>({
     count: 50,
@@ -5153,11 +5150,11 @@ function App() {
             style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px" }}
           >
           <div>
-            <label style={{ fontSize: "14px", color: "#ccd", display: "block", marginBottom: "8px" }}>
-              Upload Diary CSV
+            <label style={{ fontSize: "18px", fontWeight: 600, color: "#fff", display: "block", marginBottom: "4px" }}>
+              Diary Analysis
             </label>
             <p style={{ fontSize: "12px", color: "#9ab", marginBottom: "12px" }}>
-              Export from Letterboxd: Settings → Import & Export → Export Your Data
+              Drop your diary CSV here. Find it in Letterboxd → Settings → Data → Export.
             </p>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
               <span style={{ fontSize: "13px", color: "#9ab" }}>Choose file:</span>
@@ -6821,14 +6818,42 @@ function App() {
             padding: "24px",
           }}
         >
-          <DoubleFeatureBuilder
-            curatedPayload={curatedPayload}
-            watchlistMovies={watchlistMovies}
-            diarySlugs={diarySlugs}
-            diaryTitleYears={diaryTitleYears}
-            watchlistSlugs={watchlistSlugs}
-            watchlistTitleYears={watchlistTitleYears}
-          />
+          <div
+            style={{
+              userSelect: "none",
+              textAlign: "center",
+            }}
+          >
+            <h2 style={{ color: "#fff", fontSize: "18px", fontWeight: 600, margin: 0 }}>
+              Double Feature Builder
+            </h2>
+            <p style={{ color: "#9ab", fontSize: "12px", margin: "6px 0 0" }}>
+              Pick a pairing rule and get instant double features.
+            </p>
+          </div>
+          {!doubleFeatureExpanded && (
+            <button
+              type="button"
+              className="lb-builder-cta"
+              onClick={() => setDoubleFeatureExpanded(true)}
+            >
+              Get Started →
+            </button>
+          )}
+          <div className={`lb-builder-collapse ${doubleFeatureExpanded ? "lb-builder-collapse--open" : ""}`}>
+            <div className="lb-builder-collapse-inner">
+              <div style={{ marginTop: "20px" }}>
+                <DoubleFeatureBuilder
+                  curatedPayload={curatedPayload}
+                  watchlistMovies={watchlistMovies}
+                  diarySlugs={diarySlugs}
+                  diaryTitleYears={diaryTitleYears}
+                  watchlistSlugs={watchlistSlugs}
+                  watchlistTitleYears={watchlistTitleYears}
+                />
+              </div>
+            </div>
+          </div>
         </section>
       </div>
 
