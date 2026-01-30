@@ -137,6 +137,45 @@ type CuratedListsPayload = {
   films: CuratedFilm[];
 };
 
+type DoubleFeatureSource = "curated" | "watchlist";
+type DoubleFeatureMode =
+  | "time-box"
+  | "short-long"
+  | "balanced"
+  | "same-continent-diff-language"
+  | "us-vs-nonus"
+  | "same-director-diff-decade"
+  | "women-directors-diff-countries"
+  | "then-now-genre"
+  | "decade-hop"
+  | "oldest-newest";
+
+type DoubleFeatureItem = {
+  key: string;
+  name: string;
+  year: number | null;
+  url?: string;
+  runtime: number | null;
+  releaseDate: string | null;
+  directorNames: string[];
+  genres: string[];
+  countryCodes: string[];
+  continentCodes: string[];
+  language: string | null;
+  isAmerican: boolean | null;
+  isEnglish: boolean | null;
+  directedByWoman: boolean;
+  onWatchlist: boolean;
+};
+
+type DoubleFeaturePair = {
+  a: DoubleFeatureItem;
+  b: DoubleFeatureItem;
+  reason: string;
+  score: number;
+  reasons: string[];
+};
+
 type WatchlistBuilderState = {
   count: number;
   quality: "any" | "critically-acclaimed" | "highest-rated" | "imdb-popularity";
@@ -1808,6 +1847,412 @@ const WatchlistBuilder = memo(({
   );
 });
 
+const DoubleFeatureBuilder = memo(({
+  curatedPayload,
+  watchlistMovies,
+  diarySlugs,
+  diaryTitleYears,
+  watchlistSlugs,
+  watchlistTitleYears,
+}: {
+  curatedPayload: CuratedListsPayload | null;
+  watchlistMovies: WatchlistMovie[];
+  diarySlugs: Set<string>;
+  diaryTitleYears: Set<string>;
+  watchlistSlugs: Set<string>;
+  watchlistTitleYears: Set<string>;
+}) => {
+  const [source, setSource] = useState<DoubleFeatureSource>("curated");
+  const [mode, setMode] = useState<DoubleFeatureMode>("time-box");
+  const [hours, setHours] = useState<number>(4);
+  const [shuffleSeed, setShuffleSeed] = useState<number>(Date.now());
+  const [expandedStubs, setExpandedStubs] = useState<Set<string>>(new Set());
+
+  const toggleStub = useCallback((key: string) => {
+    setExpandedStubs((prev) => {
+      const next = new Set(prev);
+      // Parse "idx-side" and compute partner key
+      const [idx, side] = key.split("-");
+      const partnerKey = `${idx}-${side === "0" ? "1" : "0"}`;
+      if (next.has(key)) {
+        next.delete(key);
+        next.delete(partnerKey);
+      } else {
+        next.add(key);
+        next.add(partnerKey);
+      }
+      return next;
+    });
+  }, []);
+
+  const curatedPool = useMemo<DoubleFeatureItem[]>(() => {
+    if (!curatedPayload) return [];
+    const today = new Date();
+    const isReleased = (releaseDate: string | null, year: number | null) => {
+      if (releaseDate) {
+        const date = new Date(releaseDate);
+        if (!Number.isNaN(date.getTime())) {
+          return date <= today;
+        }
+      }
+      return year != null ? year <= today.getFullYear() : false;
+    };
+    return curatedPayload.films
+      .filter((film) => film.tmdb_data && film.tmdb_error == null)
+      .map((film) => {
+        const tmdb = film.tmdb_data || {};
+        const url = film.url || "";
+        const slugMatch = url.match(/\/film\/([^/]+)/i);
+        const slug = slugMatch ? slugMatch[1] : "";
+        const titleYearKey = `${String(film.name || "").trim().toLowerCase()}|${String(film.year || "").trim()}`;
+        const seen =
+          (slug && diarySlugs.has(slug)) ||
+          (titleYearKey && diaryTitleYears.has(titleYearKey));
+        return {
+          key: film.url,
+          name: film.name,
+          year: typeof film.year === "number" ? film.year : null,
+          url: film.url,
+          runtime: typeof tmdb.runtime === "number" ? tmdb.runtime : null,
+          releaseDate: tmdb.release_date || null,
+          directorNames: Array.isArray(tmdb.directors) ? tmdb.directors.map((d: any) => d.name).filter(Boolean) : [],
+          genres: Array.isArray(tmdb.genres) ? tmdb.genres : [],
+          countryCodes: tmdb.production_countries?.codes || [],
+          continentCodes: (tmdb.production_countries?.codes || []).map((c: string) => getContinentCode(c)).filter(Boolean),
+          language: tmdb.original_language || null,
+          isAmerican: typeof tmdb.is_american === "boolean" ? tmdb.is_american : null,
+          isEnglish: typeof tmdb.is_english === "boolean" ? tmdb.is_english : null,
+          directedByWoman: tmdb.directed_by_woman === true,
+          onWatchlist:
+            (slug && watchlistSlugs.has(slug)) ||
+            (titleYearKey && watchlistTitleYears.has(titleYearKey)),
+          seen,
+        } as DoubleFeatureItem & { seen?: boolean };
+      })
+      .filter((item) => !(item as any).seen)
+      .filter((item) => isReleased(item.releaseDate, item.year));
+  }, [curatedPayload, diarySlugs, diaryTitleYears, watchlistSlugs, watchlistTitleYears]);
+
+  const watchlistPool = useMemo<DoubleFeatureItem[]>(() => {
+    return watchlistMovies.map((movie) => ({
+      key: movie.uri,
+      name: movie.name,
+      year: movie.year ? Number(movie.year) : null,
+      url: movie.uri,
+      runtime: typeof movie.runtime === "number" ? movie.runtime : null,
+      releaseDate: null,
+      directorNames: movie.director ? [movie.director] : [],
+      genres: [],
+      countryCodes: [],
+      continentCodes: movie.continents || [],
+      language: null,
+      isAmerican: movie.notAmerican ? false : true,
+      isEnglish: movie.notEnglish ? false : true,
+      directedByWoman: movie.directedByWoman,
+      onWatchlist: true,
+    }));
+  }, [watchlistMovies]);
+
+  const pool = source === "curated" ? curatedPool : watchlistPool;
+  const modeOptions = useMemo(() => {
+    const base = [
+      { id: "time-box", label: "Time box (total runtime)" },
+      { id: "short-long", label: "Short + long combo" },
+      { id: "balanced", label: "Balanced runtimes" },
+      { id: "decade-hop", label: "Adjacent decades" },
+      { id: "oldest-newest", label: "Oldest + newest" },
+    ];
+    if (source === "curated") {
+      base.push(
+        { id: "same-continent-diff-language", label: "Same continent, different language" },
+        { id: "us-vs-nonus", label: "US + non‑US" },
+        { id: "same-director-diff-decade", label: "Same director, different decade" },
+        { id: "women-directors-diff-countries", label: "Women directors, different countries" },
+      );
+    }
+    return base as { id: DoubleFeatureMode; label: string }[];
+  }, [source]);
+
+  const pairs = useMemo<DoubleFeaturePair[]>(() => {
+    if (pool.length < 2) return [];
+    const rng = (seed: number) => () => {
+      seed = (seed * 9301 + 49297) % 233280;
+      return seed / 233280;
+    };
+    const rand = rng(shuffleSeed);
+    const sorted = [...pool];
+    for (let i = sorted.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rand() * (i + 1));
+      [sorted[i], sorted[j]] = [sorted[j], sorted[i]];
+    }
+    const results: DoubleFeaturePair[] = [];
+    const used = new Set<string>();
+
+    const scorePair = (a: DoubleFeatureItem, b: DoubleFeatureItem) => {
+      const reasons: string[] = [];
+      let score = 0;
+      const overlap = (arrA: string[], arrB: string[]) => arrA.some((v) => arrB.includes(v));
+      if (overlap(a.directorNames, b.directorNames) && a.directorNames.length > 0) {
+        score += 30;
+        reasons.push("Same director");
+      }
+      if (overlap(a.genres, b.genres) && a.genres.length > 0) {
+        score += 15;
+        reasons.push("Same genre");
+      }
+      if (overlap(a.countryCodes, b.countryCodes) && a.countryCodes.length > 0) {
+        score += 10;
+        reasons.push("Same country");
+      }
+      if (overlap(a.continentCodes, b.continentCodes) && a.continentCodes.length > 0) {
+        score += 8;
+        reasons.push("Same continent");
+      }
+      if (a.language && b.language && a.language === b.language) {
+        score += 6;
+        reasons.push("Same language");
+      }
+      return { score, reasons };
+    };
+
+    const pickPair = (a: DoubleFeatureItem, b: DoubleFeatureItem) => {
+      const runtimeTotal = (a.runtime || 0) + (b.runtime || 0);
+      const decade = (year: number | null) => (year ? Math.floor(year / 10) * 10 : null);
+      const inSameDecade = decade(a.year) != null && decade(a.year) === decade(b.year);
+      const diffDecade = decade(a.year) != null && decade(b.year) != null && decade(a.year) !== decade(b.year);
+      const adjacentDecade = diffDecade && Math.abs((decade(a.year) || 0) - (decade(b.year) || 0)) === 10;
+      const { score, reasons } = scorePair(a, b);
+      const watchlistBoost = source === "curated" && (a.onWatchlist || b.onWatchlist) ? 10 : 0;
+
+      switch (mode) {
+        case "time-box":
+          if (!a.runtime || !b.runtime) return null;
+          if (runtimeTotal > hours * 60) return null;
+          return { reason: `Total ${Math.round(runtimeTotal)} min`, score: score + 10 + watchlistBoost, reasons };
+        case "short-long":
+          if (!a.runtime || !b.runtime) return null;
+          if (!((a.runtime < 90 && b.runtime > 120) || (b.runtime < 90 && a.runtime > 120))) return null;
+          return { reason: `${a.runtime} min + ${b.runtime} min`, score: score + 20 + watchlistBoost, reasons };
+        case "balanced":
+          if (!a.runtime || !b.runtime) return null;
+          if (Math.abs(a.runtime - b.runtime) > 15) return null;
+          return { reason: `Both within 15 min`, score: score + 10 + watchlistBoost, reasons };
+        case "same-continent-diff-language":
+          if (!a.language || !b.language) return null;
+          if (a.language === b.language) return null;
+          if (!a.continentCodes.length || !b.continentCodes.length) return null;
+          if (!a.continentCodes.some((c) => b.continentCodes.includes(c))) return null;
+          return { reason: `Same continent, different languages`, score: score + 12 + watchlistBoost, reasons };
+        case "us-vs-nonus":
+          if (a.isAmerican == null || b.isAmerican == null) return null;
+          if (a.isAmerican === b.isAmerican) return null;
+          return { reason: `US + non‑US pairing`, score: score + 12 + watchlistBoost, reasons };
+        case "same-director-diff-decade":
+          if (!a.directorNames.length || !b.directorNames.length) return null;
+          if (!a.directorNames.some((d) => b.directorNames.includes(d))) return null;
+          if (!diffDecade) return null;
+          return { reason: `Same director, different decades`, score: score + 20 + watchlistBoost, reasons };
+        case "women-directors-diff-countries":
+          if (!(a.directedByWoman && b.directedByWoman)) return null;
+          if (!a.countryCodes.length || !b.countryCodes.length) return null;
+          if (a.countryCodes.some((c) => b.countryCodes.includes(c))) return null;
+          return { reason: `Women directors, different countries`, score: score + 16 + watchlistBoost, reasons };
+        case "decade-hop":
+          if (!adjacentDecade) return null;
+          return { reason: `Adjacent decades`, score: score + 10 + watchlistBoost, reasons };
+        case "oldest-newest":
+          if (!a.year || !b.year) return null;
+          return { reason: `Oldest + newest`, score: score + 10 + watchlistBoost, reasons };
+        default:
+          return null;
+      }
+    };
+
+    const candidatePool = sorted.slice(0, Math.min(320, sorted.length));
+    const candidates: DoubleFeaturePair[] = [];
+    for (let i = 0; i < candidatePool.length; i += 1) {
+      for (let j = i + 1; j < candidatePool.length; j += 1) {
+        const a = candidatePool[i];
+        const b = candidatePool[j];
+        const picked = pickPair(a, b);
+        if (!picked) continue;
+        const { reason, score, reasons } = picked;
+        candidates.push({ a, b, reason, score, reasons });
+      }
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    for (const pair of candidates) {
+      if (results.length >= 10) break;
+      if (used.has(pair.a.key) || used.has(pair.b.key)) continue;
+      results.push(pair);
+      used.add(pair.a.key);
+      used.add(pair.b.key);
+    }
+    if (results.length < 5) {
+      for (const pair of candidates) {
+        if (results.length >= 10) break;
+        results.push(pair);
+      }
+    }
+
+    if (mode === "oldest-newest") {
+      const today = new Date();
+      const isReleased = (item: DoubleFeatureItem) => {
+        if (item.releaseDate) {
+          const date = new Date(item.releaseDate);
+          if (!Number.isNaN(date.getTime())) {
+            return date <= today;
+          }
+        }
+        return item.year != null ? item.year <= today.getFullYear() : false;
+      };
+      const withYear = sorted.filter((item) => item.year != null && isReleased(item));
+      const oldest = [...withYear].sort((a, b) => (a.year || 0) - (b.year || 0)).slice(0, 10);
+      const newest = [...withYear].sort((a, b) => (b.year || 0) - (a.year || 0)).slice(0, 10);
+      const shuffledNewest = [...newest];
+      for (let i = shuffledNewest.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(rand() * (i + 1));
+        [shuffledNewest[i], shuffledNewest[j]] = [shuffledNewest[j], shuffledNewest[i]];
+      }
+      const pairsLocal: DoubleFeaturePair[] = [];
+      for (let i = 0; i < Math.min(oldest.length, shuffledNewest.length); i += 1) {
+        const a = oldest[i];
+        const b = shuffledNewest[i];
+        const yearsApart = a.year && b.year ? Math.abs(b.year - a.year) : null;
+        const reasonBase = `Oldest (${a.year}) + newest (${b.year})`;
+        pairsLocal.push({
+          a,
+          b,
+          reason: yearsApart === 100 ? `${reasonBase} · 100 years apart` : reasonBase,
+          score: yearsApart === 100 ? 40 : 10,
+          reasons: yearsApart === 100 ? ["100 years apart"] : [],
+        });
+      }
+      return pairsLocal;
+    }
+
+    return results;
+  }, [pool, mode, hours, shuffleSeed]);
+
+  return (
+    <div className="lb-double">
+      <div className="lb-double-header">
+        <h3>Double Feature Builder</h3>
+        <p>Pick a pairing rule and get instant double features.</p>
+      </div>
+      <div className="lb-double-row">
+        <span>Source</span>
+        <div className="lb-double-toggle">
+          <button
+            type="button"
+            className={source === "watchlist" ? "active" : ""}
+            onClick={() => setSource("watchlist")}
+          >
+            My watchlist
+          </button>
+          <button
+            type="button"
+            className={source === "curated" ? "active" : ""}
+            onClick={() => setSource("curated")}
+          >
+            Curated lists
+          </button>
+        </div>
+        <span className="lb-double-hint">
+          Curated lists are the best of the best. We also exclude anything in your diary.
+        </span>
+      </div>
+      <div className="lb-double-row">
+        <span>Mode</span>
+        <select value={mode} onChange={(e) => setMode(e.target.value as DoubleFeatureMode)}>
+          {modeOptions.map((opt) => (
+            <option key={opt.id} value={opt.id}>{opt.label}</option>
+          ))}
+        </select>
+        {mode === "time-box" && (
+          <div className="lb-double-time">
+            <span>I have</span>
+            <input type="number" min={1} max={12} value={hours} onChange={(e) => setHours(Number(e.target.value))} />
+            <span>hours</span>
+          </div>
+        )}
+        {mode === "oldest-newest" && (
+          <span className="lb-double-hint">Newest uses released titles (based on release date).</span>
+        )}
+      </div>
+      <div className="lb-double-actions">
+        <button type="button" onClick={() => setShuffleSeed(Date.now())}>Shuffle pairs</button>
+      </div>
+      <div className="lb-double-results">
+        {pairs.length === 0 && (
+          <div className="lb-double-empty">
+            Not enough matches yet — try a different mode{source === "curated" ? " or add more watchlist films." : "."}
+          </div>
+        )}
+        {pairs.map((pair, idx) => (
+          <div key={`${pair.a.key}-${pair.b.key}-${idx}`} className="lb-double-ticket">
+            {[pair.a, pair.b].map((item, side) => {
+              const stubKey = `${idx}-${side}`;
+              const isOpen = expandedStubs.has(stubKey);
+              return (
+                <Fragment key={stubKey}>
+                  {side === 1 && (
+                    <div className="lb-double-join">
+                      <div className="lb-double-perf" />
+                      <div className="lb-double-join-badge">+</div>
+                      <div className="lb-double-perf" />
+                    </div>
+                  )}
+                  <div
+                    className={`lb-double-stub${isOpen ? " is-open" : ""}`}
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest("a")) return;
+                      toggleStub(stubKey);
+                    }}
+                  >
+                    <div className="lb-double-stub-title">
+                      {item.url ? (
+                        <a href={item.url} target="_blank" rel="noopener noreferrer">
+                          {item.name}
+                        </a>
+                      ) : (
+                        item.name
+                      )}
+                    </div>
+                    <div className="lb-double-stub-meta">{item.year || "—"}{item.runtime ? ` · ${item.runtime}m` : ""}</div>
+                    {isOpen && (
+                      <div className="lb-double-stub-detail">
+                        {item.directorNames.length > 0 && (
+                          <div><span className="lb-double-detail-label">Dir</span> {item.directorNames.join(", ")}</div>
+                        )}
+                        {item.language && (
+                          <div><span className="lb-double-detail-label">Lang</span> {item.language.toUpperCase()}</div>
+                        )}
+                        {item.countryCodes.length > 0 && (
+                          <div><span className="lb-double-detail-label">From</span> {item.countryCodes.join(", ")}</div>
+                        )}
+                        {item.genres.length > 0 && (
+                          <div><span className="lb-double-detail-label">Genre</span> {item.genres.slice(0, 3).join(", ")}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </Fragment>
+              );
+            })}
+            {pair.reason && (
+              <div className="lb-double-reason">
+                {pair.reason}
+                {pair.reasons?.length ? ` · ${pair.reasons.join(" · ")}` : ""}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+});
+
 type WatchlistTableProps = {
   watchlistMovies: WatchlistMovie[];
   watchlistPaceText?: ReactNode | null;
@@ -3308,9 +3753,9 @@ function App() {
     [filteredUris, canonicalizeUri]
   );
 
-  // Lazy-load curated list data when builder is expanded
+  // Load curated list data (used by Watchlist Builder + Double Feature Builder)
   useEffect(() => {
-    if (!builderExpanded || curatedPayload || curatedLoading) return;
+    if (curatedPayload || curatedLoading) return;
     setCuratedLoading(true);
     fetch("/curated-lists-enriched.json")
       .then((r) => {
@@ -3330,7 +3775,7 @@ function App() {
           })
           .catch(() => setCuratedLoading(false));
       });
-  }, [builderExpanded, curatedPayload, curatedLoading]);
+  }, [curatedPayload, curatedLoading]);
 
   // Set of diary slugs for "haven't seen" / "have seen" filtering (all-time)
   const diarySlugs = useMemo(() => {
@@ -5302,7 +5747,7 @@ function App() {
         {rows.length > 0 && (
           <section style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
             <div style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%", textAlign: "center" }}>
-              <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>Ratings</h2>
+              <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#fff", marginBottom: "4px" }}>Ratings</h2>
               {ratingCount === 0 && (
                 <p style={{ fontSize: "12px", color: "#9ab", marginTop: "-8px" }}>
                   No ratings found in this file.
@@ -5913,7 +6358,7 @@ function App() {
           const over200 = wordCounts.filter((count) => count >= 200).length;
           const percentOver200 = Math.round((over200 / wordCounts.length) * 100);
           const voiceLabel =
-            avgWordCount >= 200 ? "essayist" : avgWordCount >= 80 ? "balanced" : "punchy";
+            avgWordCount >= 200 ? "verbose" : avgWordCount >= 80 ? "measured" : "concise";
 
           const sentimentByMonth = new Map<string, { total: number; count: number }>();
           const sentimentPoints: Array<{ month: string; sentiment: number; count: number }> = [];
@@ -6005,6 +6450,7 @@ function App() {
                 <div className="lb-review-card">
                   <div className="lb-review-card-title">Your voice</div>
                   <div className="lb-review-card-metric">{voiceLabel}</div>
+                  <div className="lb-review-card-sub">Based on average review length.</div>
                   <div className="lb-review-card-sub">Shortest: {shortestReview} · Longest: {longestReview}</div>
                   <div className="lb-review-card-sub">{percentOver200}% of reviews are 200+ words</div>
                 </div>
@@ -6135,7 +6581,7 @@ function App() {
           ref={watchlistSectionRef}
           style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px" }}
         >
-          <h2 style={{ fontSize: "20px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
+          <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
             Watchlist Analysis
           </h2>
           {/* Only show upload description when upload UI is visible */}
@@ -6326,7 +6772,7 @@ function App() {
               textAlign: "center",
             }}
           >
-            <h2 style={{ color: "#fff", fontSize: "20px", fontWeight: 600, margin: 0 }}>
+            <h2 style={{ color: "#fff", fontSize: "18px", fontWeight: 600, margin: 0 }}>
               Watchlist Builder
               {builderExpanded && <span style={{ fontSize: "12px", color: "#9ab", fontWeight: 400, marginLeft: "8px" }}>▴</span>}
             </h2>
@@ -6368,6 +6814,22 @@ function App() {
               </div>
             </div>
           </div>
+        </section>
+        <section
+          style={{
+            backgroundColor: "rgba(68, 85, 102, 0.2)",
+            borderRadius: "8px",
+            padding: "24px",
+          }}
+        >
+          <DoubleFeatureBuilder
+            curatedPayload={curatedPayload}
+            watchlistMovies={watchlistMovies}
+            diarySlugs={diarySlugs}
+            diaryTitleYears={diaryTitleYears}
+            watchlistSlugs={watchlistSlugs}
+            watchlistTitleYears={watchlistTitleYears}
+          />
         </section>
       </div>
 
