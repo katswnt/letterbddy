@@ -2018,7 +2018,6 @@ const DoubleFeatureBuilder = memo(({
     const pickPair = (a: DoubleFeatureItem, b: DoubleFeatureItem) => {
       const runtimeTotal = (a.runtime || 0) + (b.runtime || 0);
       const decade = (year: number | null) => (year ? Math.floor(year / 10) * 10 : null);
-      const inSameDecade = decade(a.year) != null && decade(a.year) === decade(b.year);
       const diffDecade = decade(a.year) != null && decade(b.year) != null && decade(a.year) !== decade(b.year);
       const adjacentDecade = diffDecade && Math.abs((decade(a.year) || 0) - (decade(b.year) || 0)) === 10;
       const { score, reasons } = scorePair(a, b);
