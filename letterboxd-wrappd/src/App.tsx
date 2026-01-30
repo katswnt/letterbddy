@@ -874,12 +874,21 @@ const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, cl
   return (
       <div
         className={className}
-        style={{ height, overflowY: "auto", overflowX: "hidden", position: "relative", width: "100%" }}
+        style={{ height, overflowY: "auto", position: "relative", width: "100%" }}
         ref={containerRef}
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       onWheel={(event) => {
         const el = containerRef.current;
         if (!el) return;
+        // Forward horizontal scroll to the table container parent
+        if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+          const scrollParent = el.closest(".lb-table-container");
+          if (scrollParent) {
+            scrollParent.scrollLeft += event.deltaX;
+            event.preventDefault();
+            return;
+          }
+        }
         const atTop = el.scrollTop <= 0;
         const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
         if ((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)) {
@@ -2597,7 +2606,7 @@ const WatchlistTable = memo(({
 
       <div
         className="lb-table-container"
-        style={{ ["--lb-table-min-width" as any]: "880px" }}
+        style={{ ["--lb-table-min-width" as any]: "800px" }}
         ref={tableScrollRef}
       >
         <div className="lb-table-inner">
@@ -2669,7 +2678,7 @@ const WatchlistTable = memo(({
           items={filteredMovies}
           renderRow={renderRow}
           className="lb-list"
-          minWidth={880}
+          minWidth={800}
         />
         <div className="lb-table-key">
           Dir♀ = Directed by women · Writ♀ = Written by women · Blk Dir = Films by Black directors <BlackDirectorsInfo align="center" /> · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
@@ -3583,6 +3592,18 @@ function App() {
     }
   }, [tasteSortMode, tasteCategory]);
 
+  const prevDiaryLoadedRef = useRef(false);
+  const prevIsLoadingRef = useRef(false);
+  useEffect(() => {
+    const finishedLoading = prevIsLoadingRef.current && !isLoading;
+    if ((finishedLoading || !prevDiaryLoadedRef.current) && diaryLoaded && !isLoading) {
+      setManualUploadOpen(false);
+      setPendingUploadTarget(null);
+    }
+    prevDiaryLoadedRef.current = diaryLoaded;
+    prevIsLoadingRef.current = isLoading;
+  }, [diaryLoaded, isLoading]);
+
 
   // Filter rows based on selected time range
   const filteredRows = useMemo(
@@ -3599,6 +3620,33 @@ function App() {
       }),
     [rows, dateFilter]
   );
+
+  // Normalize URIs for matching - convert user-scoped URLs to canonical /film/<slug>/ format,
+  // and canonicalize boxd.it shortlinks using uriMap if available
+  const canonicalizeUri = useCallback((uri: string): string => {
+    uri = (uri || "").trim();
+    if (!uri) return uri;
+
+    // Normalize trailing slash handling
+    uri = uri.replace(/\/+$/, "");
+
+    // If it's a boxd.it shortlink, prefer the server-provided mapping
+    if (/^https?:\/\/boxd\.it\//i.test(uri)) {
+      const mapped = uriMap ? uriMap[uri] : null;
+      if (typeof mapped === "string" && mapped.trim()) {
+        return mapped.trim();
+      }
+      return uri;
+    }
+
+    // Canonicalize Letterboxd film URLs (including user-scoped)
+    const match = uri.match(/https?:\/\/letterboxd\.com\/(?:[^/]+\/)?film\/([^/]+)/i);
+    if (match) {
+      return `https://letterboxd.com/film/${match[1]}/`;
+    }
+
+    return uri;
+  }, [uriMap]);
 
   // Build a map of unique films (dedupe rewatches)
   const films = useMemo(() => {
@@ -3638,10 +3686,64 @@ function App() {
     (film) => film.hasRewatch || film.entryCount > 1
   ).length; // films you rewatched at least once
 
-  const reviewStats = useMemo(() => {
+  type ReviewStats =
+    | { hasReviews: false; hasEntries: false }
+    | { hasReviews: true; hasEntries: false }
+    | {
+        hasReviews: true;
+        hasEntries: true;
+        reviewEntries: Array<{
+          review: ReviewRow;
+          text: string;
+          words: string[];
+          wordCount: number;
+          rating: number | null;
+          date: string;
+        }>;
+        totalWords: number;
+        medianWordCount: number;
+        avgWordCount: number;
+        shortestReview: number;
+        longestReview: number;
+        percentOver200: number;
+        voiceLabel: "concise" | "measured" | "verbose";
+        sentimentPoints: Array<{ month: string; sentiment: number; count: number }>;
+        scatterPoints: Array<{ rating: number | null; words: number; title: string; year?: string; date?: string }>;
+        mostLoved: {
+          review: ReviewRow;
+          text: string;
+          words: string[];
+          wordCount: number;
+          rating: number | null;
+          date: string;
+        } | null;
+        mostHated: {
+          review: ReviewRow;
+          text: string;
+          words: string[];
+          wordCount: number;
+          rating: number | null;
+          date: string;
+        } | null;
+        lovedIsLong: boolean;
+        hatedIsLong: boolean;
+        reviewDensity: number;
+      };
+
+  const reviewStats = useMemo<ReviewStats>(() => {
     if (reviews.length === 0) {
       return { hasReviews: false, hasEntries: false };
     }
+
+    const diaryKeySet = new Set(
+      filteredRows.map((row) => {
+        const uri = canonicalizeUri(row["Letterboxd URI"] || "");
+        if (uri) return uri;
+        const name = (row.Name || "").trim().toLowerCase();
+        const year = (row.Year || "").trim();
+        return name ? `${name} (${year || "????"})` : "";
+      }).filter(Boolean)
+    );
 
     const reviewEntries = reviews
       .map((review) => {
@@ -3651,7 +3753,19 @@ function App() {
         const date = review["Watched Date"] || review.Date || "";
         return { review, text, words, wordCount: words.length, rating, date };
       })
-      .filter((entry) => entry.text.length > 0);
+      .filter((entry) => {
+        if (entry.text.length === 0) return false;
+        if (dateFilter === "all") return true;
+        if (filteredRows.length > 0 && diaryKeySet.size > 0) {
+          const uri = canonicalizeUri(entry.review["Letterboxd URI"] || "");
+          const name = (entry.review.Name || "").trim().toLowerCase();
+          const year = (entry.review.Year || "").trim();
+          const key = uri || (name ? `${name} (${year || "????"})` : "");
+          return key ? diaryKeySet.has(key) : false;
+        }
+        if (!entry.date) return false;
+        return entry.date.slice(0, 4) === dateFilter;
+      });
 
     if (reviewEntries.length === 0) {
       return { hasReviews: true, hasEntries: false };
@@ -3756,7 +3870,7 @@ function App() {
       hatedIsLong,
       reviewDensity,
     };
-  }, [reviews, films]);
+  }, [reviews, films, dateFilter, filteredRows, canonicalizeUri]);
 
   // TMDb stats (from movieIndex, filtered to match current date range)
   // Get unique Letterboxd URIs from filtered diary rows
@@ -3786,33 +3900,6 @@ function App() {
     [filteredRows, ratingFilter]
   );
   
-  // Normalize URIs for matching - convert user-scoped URLs to canonical /film/<slug>/ format,
-  // and canonicalize boxd.it shortlinks using uriMap if available
-  const canonicalizeUri = useCallback((uri: string): string => {
-    uri = (uri || "").trim();
-    if (!uri) return uri;
-
-    // Normalize trailing slash handling
-    uri = uri.replace(/\/+$/, "");
-
-    // If it's a boxd.it shortlink, prefer the server-provided mapping
-    if (/^https?:\/\/boxd\.it\//i.test(uri)) {
-      const mapped = uriMap ? uriMap[uri] : null;
-      if (typeof mapped === "string" && mapped.trim()) {
-        return mapped.trim();
-      }
-      return uri;
-    }
-
-    // Canonicalize Letterboxd film URLs (including user-scoped)
-    const match = uri.match(/https?:\/\/letterboxd\.com\/(?:[^/]+\/)?film\/([^/]+)/i);
-    if (match) {
-      return `https://letterboxd.com/film/${match[1]}/`;
-    }
-
-    return uri;
-  }, [uriMap]);
-
   const movieLookup = useMemo(() => {
     if (!movieIndex) return null;
 
@@ -5297,11 +5384,11 @@ function App() {
         )}
 
         {/* Input section - also opens for reviews since reviews is nested inside */}
-        {(manualUploadOpen || pendingUploadTarget === "diary" || pendingUploadTarget === "reviews" || !diaryLoaded || isLoading) && (
-          <section
-            ref={diarySectionRef}
-            style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px" }}
-          >
+          {(manualUploadOpen || pendingUploadTarget === "diary" || pendingUploadTarget === "reviews" || !diaryLoaded || isLoading) && (
+            <section
+              ref={diarySectionRef}
+              style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px" }}
+            >
           <div>
             <label style={{ fontSize: "18px", fontWeight: 600, color: "#fff", display: "block", marginBottom: "4px" }}>
               Diary Analysis
@@ -5381,11 +5468,13 @@ function App() {
                 {rssLoading ? "Fetching…" : "Fetch last 50"}
               </button>
             </div>
-            <p className="lb-rss-note">
-              RSS only includes your most recent 50 diary entries. This preview misses
-              year filters, heatmap history, trend comparisons, and some Taste DNA stats.
-              For full stats, upload your diary.csv.
-            </p>
+            {isRssPreview && (
+              <p className="lb-rss-note">
+                RSS only includes your most recent 50 diary entries. This preview misses
+                year filters, heatmap history, trend comparisons, and some Taste DNA stats.
+                For full stats, upload your diary.csv.
+              </p>
+            )}
             {rssError && <p className="lb-rss-error">{rssError}</p>}
           </div>
 
@@ -5553,25 +5642,12 @@ function App() {
 
         {/* Time range selector */}
         {rows.length > 0 && !isDiaryFormat && (
-          <section
-            style={{
-              backgroundColor: "rgba(0, 224, 84, 0.1)",
-              border: "1px solid rgba(0, 224, 84, 0.3)",
-              borderRadius: "8px",
-              padding: "12px 16px",
-              marginBottom: "16px",
-              maxWidth: "600px",
-              margin: "0 auto 16px",
-              textAlign: "center",
-            }}
-          >
-            <p style={{ fontSize: "14px", color: "#9ab", margin: 0 }}>
-              <strong style={{ color: "#00e054" }}>watched.csv detected</strong>
-              {" — "}
-              Year filter and activity calendar are unavailable because this file doesn't include watch dates.
-              For these features, upload your <strong>diary.csv</strong> instead.
-            </p>
-          </section>
+          <div className="lb-rss-preview-note">
+            <strong style={{ color: "#00e054" }}>watched.csv detected</strong>
+            {" — "}
+            Cute, but it has no watch dates. Year filters, the heatmap, and trend comparisons are disabled.
+            For the full analysis, upload your <strong>diary.csv</strong> instead.
+          </div>
         )}
 
         {rows.length > 0 && availableYears.length > 0 && (
@@ -6481,7 +6557,9 @@ function App() {
                   <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Avg Words</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{reviewStats.totalWords.toLocaleString()}</div>
+                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>
+                    {reviewStats.hasEntries ? reviewStats.totalWords.toLocaleString() : "—"}
+                  </div>
                   <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Total Words</div>
                 </div>
               </div>
@@ -6504,7 +6582,7 @@ function App() {
               <div className="lb-review-grid lb-review-grid-2">
                 <div className="lb-review-card lb-review-card-chart">
                   <div className="lb-review-card-title">Sentiment over time</div>
-                  {reviewStats.sentimentPoints.length > 0 ? (
+                  {reviewStats.hasEntries && reviewStats.sentimentPoints.length > 0 ? (
                     <div className="lb-review-chart">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={reviewStats.sentimentPoints} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
@@ -6535,7 +6613,7 @@ function App() {
                 </div>
                 <div className="lb-review-card lb-review-card-chart">
                   <div className="lb-review-card-title">Rating vs word count</div>
-                  {reviewStats.scatterPoints.length > 0 ? (
+                  {reviewStats.hasEntries && reviewStats.scatterPoints.length > 0 ? (
                     <div className="lb-review-chart">
                       <ResponsiveContainer width="100%" height="100%">
                         <ScatterChart margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
@@ -6618,7 +6696,7 @@ function App() {
                 Reviews
               </h3>
               <div style={{ textAlign: "center", color: "#9ab", fontSize: "13px" }}>
-                Add written reviews to unlock insights here.
+                {reviewStats.hasReviews ? "No reviews in this time range yet." : "Add written reviews to unlock insights here."}
               </div>
             </section>
           )

@@ -109,8 +109,6 @@
   border-top: 1px solid #345;
   position: relative;
   --lb-table-min-width: 600px;
-  display: flex;
-  justify-content: center;
 }
 
 .lb-table-head {
@@ -220,8 +218,8 @@
 }
 
 .lb-watchlist-grid {
-  grid-template-columns: minmax(200px, 1fr) 150px 60px 70px 120px 48px 60px 60px 48px 48px 48px;
-  min-width: 876px;
+  grid-template-columns: minmax(160px, 1fr) 130px 50px 58px 100px 48px 60px 60px 48px 48px 48px;
+  min-width: 796px;
 }
 
 .lb-cell {
@@ -603,8 +601,7 @@
 
 .lb-table-inner {
   min-width: var(--lb-table-min-width);
-  width: max-content;
-  margin: 0 auto;
+  width: 100%;
   position: relative;
 }
 
