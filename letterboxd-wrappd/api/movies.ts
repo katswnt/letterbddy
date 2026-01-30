@@ -22,7 +22,7 @@ async function getCriterionSlugs(): Promise<Set<string>> {
   // Check cache first
   const cached = await getCached<string[]>(CRITERION_CACHE_KEY);
   if (cached && cached.length > 0) {
-    console.log('Criterion list loaded from cache:', cached.length, 'films');
+    // console.log('Criterion list loaded from cache:', cached.length, 'films');
     return new Set(cached);
   }
 
@@ -31,7 +31,7 @@ async function getCriterionSlugs(): Promise<Set<string>> {
     const parsed = JSON.parse(jsonText);
     const slugs = Array.isArray(parsed) ? parsed.filter((s) => typeof s === 'string') : [];
 
-    console.log('Criterion slugs loaded from file:', slugs.length, 'films');
+    // console.log('Criterion slugs loaded from file:', slugs.length, 'films');
 
     if (slugs.length > 0) {
       await setCached(CRITERION_CACHE_KEY, slugs, CRITERION_CACHE_DURATION);
@@ -48,7 +48,7 @@ async function getCriterionSlugs(): Promise<Set<string>> {
 async function getBlackDirectorSlugs(): Promise<Set<string>> {
   const cached = await getCached<string[]>(BLACK_DIRECTORS_CACHE_KEY);
   if (cached && cached.length > 0) {
-    console.log('Black directors list loaded from cache:', cached.length, 'films');
+    // console.log('Black directors list loaded from cache:', cached.length, 'films');
     return new Set(cached);
   }
 
@@ -59,7 +59,7 @@ async function getBlackDirectorSlugs(): Promise<Set<string>> {
       const parsed = JSON.parse(slugText);
       const slugs = Array.isArray(parsed) ? parsed.filter((s) => typeof s === 'string') : [];
       if (slugs.length > 0) {
-        console.log('Black directors slugs loaded from JSON:', slugs.length, 'films');
+        // console.log('Black directors slugs loaded from JSON:', slugs.length, 'films');
         await setCached(BLACK_DIRECTORS_CACHE_KEY, slugs, BLACK_DIRECTORS_CACHE_DURATION);
         return new Set(slugs);
       }
@@ -96,7 +96,7 @@ async function getBlackDirectorSlugs(): Promise<Set<string>> {
     }
 
     const unique = Array.from(new Set(slugs));
-    console.log('Black directors slugs loaded from file:', unique.length, 'films');
+    // console.log('Black directors slugs loaded from file:', unique.length, 'films');
 
     if (unique.length > 0) {
       await setCached(BLACK_DIRECTORS_CACHE_KEY, unique, BLACK_DIRECTORS_CACHE_DURATION);
@@ -213,7 +213,7 @@ async function getTmdbRefFromLetterboxd(url: string): Promise<TmdbRef | null> {
   try {
     // Convert to canonical URL (user-scoped pages don't have TMDb links)
     const canonicalUrl = toCanonicalUrl(url);
-    console.log('Fetching Letterboxd page:', canonicalUrl, '(original:', url, ')');
+    // console.log('Fetching Letterboxd page:', canonicalUrl, '(original:', url, ')');
     const response = await fetch(canonicalUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -221,20 +221,20 @@ async function getTmdbRefFromLetterboxd(url: string): Promise<TmdbRef | null> {
         'Accept-Language': 'en-US,en;q=0.5',
       },
     });
-    console.log('Letterboxd response status:', response.status);
+    // console.log('Letterboxd response status:', response.status);
     const html = await response.text();
-    console.log('Got HTML, length:', html.length);
+    // console.log('Got HTML, length:', html.length);
 
     // Detect Cloudflare challenge page - DO NOT use this data
     if (html.includes('Just a moment') || html.includes('cf-browser-verification') || html.includes('challenge-platform')) {
-      console.log('Cloudflare challenge detected, cannot scrape:', canonicalUrl);
+      // console.log('Cloudflare challenge detected, cannot scrape:', canonicalUrl);
       return null;
     }
 
     // Look for TMDb link in the page (handle both http and https, with or without www)
     const tmdbMovieMatch = html.match(/href=["']https?:\/\/(www\.)?themoviedb\.org\/movie\/(\d+)/);
     if (tmdbMovieMatch) {
-      console.log('Found TMDb movie ID:', tmdbMovieMatch[2]);
+      // console.log('Found TMDb movie ID:', tmdbMovieMatch[2]);
       const { title, year } = extractTitleYearFromHtml(html);
       return { id: parseInt(tmdbMovieMatch[2], 10), type: 'movie', title, year };
     }
@@ -242,7 +242,7 @@ async function getTmdbRefFromLetterboxd(url: string): Promise<TmdbRef | null> {
     // Alternative: look for data attribute
     const dataMatch = html.match(/data-tmdb-id=["'](\d+)["']/);
     if (dataMatch) {
-      console.log('Found TMDb ID (data attr):', dataMatch[1]);
+      // console.log('Found TMDb ID (data attr):', dataMatch[1]);
       const { title, year } = extractTitleYearFromHtml(html);
       return { id: parseInt(dataMatch[1], 10), type: 'movie', title, year };
     }
@@ -250,11 +250,11 @@ async function getTmdbRefFromLetterboxd(url: string): Promise<TmdbRef | null> {
     // Log a snippet of HTML around "themoviedb" to help debug
     const tmdbIndex = html.indexOf('themoviedb');
     if (tmdbIndex > -1) {
-      console.log('Found themoviedb at index', tmdbIndex, '- snippet:', html.slice(Math.max(0, tmdbIndex - 50), tmdbIndex + 100));
+      // console.log('Found themoviedb at index', tmdbIndex, '- snippet:', html.slice(Math.max(0, tmdbIndex - 50), tmdbIndex + 100));
     }
 
     const { title, year } = extractTitleYearFromHtml(html);
-    console.log('No TMDb ID found in page');
+    // console.log('No TMDb ID found in page');
     return { id: null, type: null, title, year };
   } catch (e) {
     console.error('Error fetching Letterboxd page:', e);
@@ -313,10 +313,10 @@ async function searchTmdbByTitle(
     }
     // Only return if we have a strong match (at least exact title)
     if (bestScore >= MIN_SCORE) {
-      console.log(`TMDb search: "${title}" (${year}) -> matched "${best.title}" (${best.release_date?.slice(0,4)}) score=${bestScore}`);
+      // console.log(`TMDb search: "${title}" (${year}) -> matched "${best.title}" (${best.release_date?.slice(0,4)}) score=${bestScore}`);
       return { id: best.id, type };
     }
-    console.log(`TMDb search: "${title}" (${year}) -> no strong match found (best score=${bestScore})`);
+    // console.log(`TMDb search: "${title}" (${year}) -> no strong match found (best score=${bestScore})`);
     return null;
   };
 
@@ -392,7 +392,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Check if KV is available
   const redisAvailable = await isRedisAvailable();
-  console.log('Redis available:', redisAvailable);
+  // console.log('Redis available:', redisAvailable);
 
   try {
     // Parse the request body (CSV content or URLs to enrich)
@@ -423,14 +423,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } else if (body?.urls && Array.isArray(body.urls)) {
         // Batch mode: just enrich these specific URLs
         urlsToEnrich = body.urls;
-        console.log('Enriching batch of', urlsToEnrich.length, 'URLs');
+        // console.log('Enriching batch of', urlsToEnrich.length, 'URLs');
       } else if (Buffer.isBuffer(body)) {
         csvContent = body.toString('utf-8');
       } else if (typeof body === 'object' && body !== null) {
         // Check if it's already parsed JSON with urls
         if (body.urls && Array.isArray(body.urls)) {
           urlsToEnrich = body.urls;
-          console.log('Enriching batch of', urlsToEnrich.length, 'URLs (parsed object)');
+          // console.log('Enriching batch of', urlsToEnrich.length, 'URLs (parsed object)');
         } else {
           return res.status(400).json({ error: 'No CSV content or URLs provided', bodyType: typeof body });
         }
@@ -523,7 +523,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let networkFetches = 0;
 
     // Phase 2 & 3: Get TMDb IDs and details
-    console.log('Enrich check:', { enrich, parseOnly, urlsToEnrichLen: urlsToEnrich?.length, movieIndexLen: Object.keys(movieIndex).length });
+    // console.log('Enrich check:', { enrich, parseOnly, urlsToEnrichLen: urlsToEnrich?.length, movieIndexLen: Object.keys(movieIndex).length });
     if (enrich && !parseOnly) {
       // Fetch Criterion Collection list for checking
       const criterionSlugs = await getCriterionSlugs();
@@ -533,17 +533,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // When CSV is provided, limit to batchLimit
       const movieUrls = Object.keys(movieIndex);
       const urlsToProcess = urlsToEnrich ? movieUrls : movieUrls.slice(0, batchLimit);
-      console.log('Processing', urlsToProcess.length, 'URLs for enrichment');
+      // console.log('Processing', urlsToProcess.length, 'URLs for enrichment');
 
       const concurrencyLimit = 4;
       await mapWithConcurrency(urlsToProcess, concurrencyLimit, async (resolved) => {
-        console.log('Processing URL:', resolved);
+        // console.log('Processing URL:', resolved);
         // Phase 2: Get TMDb ID
         if (!movieIndex[resolved].tmdb_movie_id) {
           // Check cache for Letterboxd -> TMDb ID mapping
           if (redisAvailable) {
             const cached = await getCachedLetterboxdMapping(resolved);
-            console.log('Cache lookup for', resolved, ':', cached);
+            // console.log('Cache lookup for', resolved, ':', cached);
             if (cached) {
               if (typeof cached === 'number') {
                 movieIndex[resolved].tmdb_movie_id = cached;
@@ -561,7 +561,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const csvYear = movieIndex[resolved].csv_year;
 
             if (csvName) {
-              console.log(`Searching TMDb for: "${csvName}" (${csvYear || 'no year'})`);
+              // console.log(`Searching TMDb for: "${csvName}" (${csvYear || 'no year'})`);
               const searchResult = await searchTmdbByTitle(csvName, csvYear, tmdbApiKey!);
 
               if (searchResult) {
@@ -579,7 +579,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               }
             } else {
               // No CSV name available, try Letterboxd as last resort
-              console.log('No CSV name, trying Letterboxd for:', resolved);
+              // console.log('No CSV name, trying Letterboxd for:', resolved);
               const tmdbRef = await getTmdbRefFromLetterboxd(resolved);
 
               if (tmdbRef?.id) {
@@ -638,7 +638,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               const runtime = details.runtime;
               const wasFromFallback = movieIndex[resolved].tmdb_source === 'fallback_search';
               if (wasFromFallback && typeof runtime === 'number' && runtime < 40) {
-                console.log(`Rejecting fallback match for ${resolved}: runtime ${runtime}min is too short`);
+                // console.log(`Rejecting fallback match for ${resolved}: runtime ${runtime}min is too short`);
                 movieIndex[resolved].tmdb_error = `Fallback match rejected: ${runtime}min runtime too short`;
                 delete movieIndex[resolved].tmdb_movie_id;
                 delete movieIndex[resolved].tmdb_source;

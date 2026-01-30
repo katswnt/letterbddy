@@ -2752,6 +2752,8 @@ function App() {
   const [curatedLoading, setCuratedLoading] = useState<boolean>(false);
   const [builderExpanded, setBuilderExpanded] = useState<boolean>(false);
   const [doubleFeatureExpanded, setDoubleFeatureExpanded] = useState<boolean>(false);
+  const [faqOpen, setFaqOpen] = useState<Set<number>>(new Set());
+  const [faqExpanded, setFaqExpanded] = useState(false);
   const [builderExcluded, setBuilderExcluded] = useState<string[]>([]);
   const [builderState, setBuilderState] = useState<WatchlistBuilderState>({
     count: 50,
@@ -6306,27 +6308,157 @@ function App() {
 
         {/* Review stats - only show if reviews have been uploaded */}
         {reviews.length > 0 && (() => {
-          const positiveWords = new Set([
-            "amazing", "beautiful", "brilliant", "charming", "clever", "emotional", "fun",
-            "funny", "great", "gorgeous", "heartbreaking", "hilarious", "joy", "lovely",
-            "masterpiece", "perfect", "stunning", "terrific", "wonderful", "wow", "love",
-            "loved", "favorite", "favourite", "incredible",
-          ]);
-          const negativeWords = new Set([
-            "awful", "bad", "boring", "confusing", "cringe", "dull", "flat", "forgettable",
-            "hate", "hated", "mess", "poor", "ridiculous", "slow", "terrible", "ugh",
-            "unwatchable", "weak", "worst", "waste", "annoying",
-          ]);
+          const positiveWords = useMemo(
+            () =>
+              new Set([
+                "amazing", "beautiful", "brilliant", "charming", "clever", "emotional", "fun",
+                "funny", "great", "gorgeous", "heartbreaking", "hilarious", "joy", "lovely",
+                "masterpiece", "perfect", "stunning", "terrific", "wonderful", "wow", "love",
+                "loved", "favorite", "favourite", "incredible",
+              ]),
+            []
+          );
+          const negativeWords = useMemo(
+            () =>
+              new Set([
+                "awful", "bad", "boring", "confusing", "cringe", "dull", "flat", "forgettable",
+                "hate", "hated", "mess", "poor", "ridiculous", "slow", "terrible", "ugh",
+                "unwatchable", "weak", "worst", "waste", "annoying",
+              ]),
+            []
+          );
 
-          const reviewEntries = reviews
-            .map((review) => {
-              const text = (review.Review || "").trim();
-              const words = text.split(/\s+/).filter((w) => w.length > 0);
-              const rating = review.Rating ? Number(review.Rating) : null;
-              const date = review["Watched Date"] || review.Date || "";
-              return { review, text, words, wordCount: words.length, rating, date };
-            })
-            .filter((entry) => entry.text.length > 0);
+          const reviewEntries = useMemo(
+            () =>
+              reviews
+                .map((review) => {
+                  const text = (review.Review || "").trim();
+                  const words = text.split(/\s+/).filter((w) => w.length > 0);
+                  const rating = review.Rating ? Number(review.Rating) : null;
+                  const date = review["Watched Date"] || review.Date || "";
+                  return { review, text, words, wordCount: words.length, rating, date };
+                })
+                .filter((entry) => entry.text.length > 0),
+            [reviews]
+          );
+
+          const reviewMetrics = useMemo(() => {
+            if (reviewEntries.length === 0) {
+              return {
+                wordCounts: [] as number[],
+                medianWordCount: 0,
+                avgWordCount: 0,
+                shortestReview: 0,
+                longestReview: 0,
+                percentOver200: 0,
+                voiceLabel: "concise" as "concise" | "measured" | "verbose",
+              };
+            }
+            const wordCounts = reviewEntries.map((entry) => entry.wordCount);
+            const sortedWordCounts = [...wordCounts].sort((a, b) => a - b);
+            const mid = Math.floor(sortedWordCounts.length / 2);
+            const medianWordCount = sortedWordCounts.length % 2 === 1
+              ? sortedWordCounts[mid]
+              : Math.round((sortedWordCounts[mid - 1] + sortedWordCounts[mid]) / 2);
+            const totalWords = wordCounts.reduce((sum, count) => sum + count, 0);
+            const avgWordCount = Math.round(totalWords / wordCounts.length);
+            const shortestReview = Math.min(...wordCounts);
+            const longestReview = Math.max(...wordCounts);
+            const over200 = wordCounts.filter((count) => count >= 200).length;
+            const percentOver200 = Math.round((over200 / wordCounts.length) * 100);
+            const voiceLabel =
+              avgWordCount >= 200 ? "verbose" : avgWordCount >= 80 ? "measured" : "concise";
+            return {
+              wordCounts,
+              medianWordCount,
+              avgWordCount,
+              shortestReview,
+              longestReview,
+              percentOver200,
+              voiceLabel,
+            };
+          }, [reviewEntries]);
+
+          const sentimentPoints = useMemo(() => {
+            const sentimentByMonth = new Map<string, { total: number; count: number }>();
+            const points: Array<{ month: string; sentiment: number; count: number }> = [];
+            for (const entry of reviewEntries) {
+              const tokens = entry.text
+                .toLowerCase()
+                .replace(/[^a-z0-9\s']/g, " ")
+                .split(/\s+/)
+                .filter((w) => w.length > 2);
+              let score = 0;
+              for (const token of tokens) {
+                if (positiveWords.has(token)) score += 1;
+                if (negativeWords.has(token)) score -= 1;
+              }
+              const normalized = tokens.length ? score / tokens.length : 0;
+              if (!entry.date) continue;
+              const dateObj = new Date(entry.date);
+              if (Number.isNaN(dateObj.getTime())) continue;
+              const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}`;
+              const bucket = sentimentByMonth.get(monthKey) || { total: 0, count: 0 };
+              bucket.total += normalized;
+              bucket.count += 1;
+              sentimentByMonth.set(monthKey, bucket);
+            }
+            Array.from(sentimentByMonth.entries())
+              .sort((a, b) => a[0].localeCompare(b[0]))
+              .forEach(([month, bucket]) => {
+                points.push({
+                  month,
+                  sentiment: bucket.count ? Number((bucket.total / bucket.count).toFixed(3)) : 0,
+                  count: bucket.count,
+                });
+              });
+            return points;
+          }, [reviewEntries, positiveWords, negativeWords]);
+
+          const scatterPoints = useMemo(
+            () =>
+              reviewEntries
+                .filter((entry) => typeof entry.rating === "number" && !Number.isNaN(entry.rating))
+                .map((entry) => ({
+                  rating: entry.rating,
+                  words: entry.wordCount,
+                  title: entry.review.Name,
+                  year: entry.review.Year,
+                  date: entry.date,
+                })),
+            [reviewEntries]
+          );
+
+          const ratedReviews = useMemo(
+            () => reviewEntries.filter((entry) => typeof entry.rating === "number" && !Number.isNaN(entry.rating)),
+            [reviewEntries]
+          );
+          const mostLoved = useMemo(
+            () =>
+              ratedReviews.reduce((best, entry) => {
+                if (!best) return entry;
+                if ((entry.rating ?? 0) > (best.rating ?? 0)) return entry;
+                if ((entry.rating ?? 0) === (best.rating ?? 0) && entry.wordCount > best.wordCount) return entry;
+                return best;
+              }, null as typeof reviewEntries[number] | null),
+            [ratedReviews, reviewEntries]
+          );
+          const mostHated = useMemo(
+            () =>
+              ratedReviews.reduce((worst, entry) => {
+                if (!worst) return entry;
+                if ((entry.rating ?? 0) < (worst.rating ?? 0)) return entry;
+                if ((entry.rating ?? 0) === (worst.rating ?? 0) && entry.wordCount > worst.wordCount) return entry;
+                return worst;
+              }, null as typeof reviewEntries[number] | null),
+            [ratedReviews, reviewEntries]
+          );
+
+          const lovedIsLong = mostLoved ? mostLoved.wordCount > 80 || mostLoved.text.length > 320 : false;
+          const hatedIsLong = mostHated ? mostHated.wordCount > 80 || mostHated.text.length > 320 : false;
+
+          const uniqueWatchedCount = films.length || 0;
+          const reviewDensity = uniqueWatchedCount ? Math.round((reviews.length / uniqueWatchedCount) * 100) : 0;
 
           if (reviewEntries.length === 0) {
             return (
@@ -6341,83 +6473,16 @@ function App() {
             );
           }
 
-          const wordCounts = reviewEntries.map((entry) => entry.wordCount);
-          const sortedWordCounts = [...wordCounts].sort((a, b) => a - b);
-          const mid = Math.floor(sortedWordCounts.length / 2);
-          const medianWordCount = sortedWordCounts.length % 2 === 1
-            ? sortedWordCounts[mid]
-            : Math.round((sortedWordCounts[mid - 1] + sortedWordCounts[mid]) / 2);
-          const totalWords = wordCounts.reduce((sum, count) => sum + count, 0);
-          const avgWordCount = Math.round(totalWords / wordCounts.length);
-          const shortestReview = Math.min(...wordCounts);
-          const longestReview = Math.max(...wordCounts);
-          const over200 = wordCounts.filter((count) => count >= 200).length;
-          const percentOver200 = Math.round((over200 / wordCounts.length) * 100);
-          const voiceLabel =
-            avgWordCount >= 200 ? "verbose" : avgWordCount >= 80 ? "measured" : "concise";
+          const {
+            medianWordCount,
+            avgWordCount,
+            shortestReview,
+            longestReview,
+            percentOver200,
+            voiceLabel,
+          } = reviewMetrics;
 
-          const sentimentByMonth = new Map<string, { total: number; count: number }>();
-          const sentimentPoints: Array<{ month: string; sentiment: number; count: number }> = [];
-          for (const entry of reviewEntries) {
-            const tokens = entry.text
-              .toLowerCase()
-              .replace(/[^a-z0-9\s']/g, " ")
-              .split(/\s+/)
-              .filter((w) => w.length > 2);
-            let score = 0;
-            for (const token of tokens) {
-              if (positiveWords.has(token)) score += 1;
-              if (negativeWords.has(token)) score -= 1;
-            }
-            const normalized = tokens.length ? score / tokens.length : 0;
-            if (!entry.date) continue;
-            const dateObj = new Date(entry.date);
-            if (Number.isNaN(dateObj.getTime())) continue;
-            const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}`;
-            const bucket = sentimentByMonth.get(monthKey) || { total: 0, count: 0 };
-            bucket.total += normalized;
-            bucket.count += 1;
-            sentimentByMonth.set(monthKey, bucket);
-          }
-          Array.from(sentimentByMonth.entries())
-            .sort((a, b) => a[0].localeCompare(b[0]))
-            .forEach(([month, bucket]) => {
-              sentimentPoints.push({
-                month,
-                sentiment: bucket.count ? Number((bucket.total / bucket.count).toFixed(3)) : 0,
-                count: bucket.count,
-              });
-            });
-
-          const scatterPoints = reviewEntries
-            .filter((entry) => typeof entry.rating === "number" && !Number.isNaN(entry.rating))
-            .map((entry) => ({
-              rating: entry.rating,
-              words: entry.wordCount,
-              title: entry.review.Name,
-              year: entry.review.Year,
-              date: entry.date,
-            }));
-
-          const ratedReviews = reviewEntries.filter((entry) => typeof entry.rating === "number");
-          const mostLoved = ratedReviews.reduce((best, entry) => {
-            if (!best) return entry;
-            if ((entry.rating ?? 0) > (best.rating ?? 0)) return entry;
-            if ((entry.rating ?? 0) === (best.rating ?? 0) && entry.wordCount > best.wordCount) return entry;
-            return best;
-          }, null as typeof reviewEntries[number] | null);
-          const mostHated = ratedReviews.reduce((worst, entry) => {
-            if (!worst) return entry;
-            if ((entry.rating ?? 0) < (worst.rating ?? 0)) return entry;
-            if ((entry.rating ?? 0) === (worst.rating ?? 0) && entry.wordCount > worst.wordCount) return entry;
-            return worst;
-          }, null as typeof reviewEntries[number] | null);
-
-          const lovedIsLong = mostLoved ? mostLoved.wordCount > 80 || mostLoved.text.length > 320 : false;
-          const hatedIsLong = mostHated ? mostHated.wordCount > 80 || mostHated.text.length > 320 : false;
-
-          const uniqueWatchedCount = films.length || 0;
-          const reviewDensity = uniqueWatchedCount ? Math.round((reviews.length / uniqueWatchedCount) * 100) : 0;
+          const totalWords = reviewMetrics.wordCounts.reduce((sum, count) => sum + count, 0);
 
           return (
             <section style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%" }}>
@@ -6857,24 +6922,90 @@ function App() {
         </section>
       </div>
 
-      <div style={{ fontSize: "12px", color: "#9ab", margin: "40px 0 24px", textAlign: "center" }}>
-        <a
-          href="https://letterboxd.com/katswnt"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            color: "#9ab",
-            textDecoration: "none",
-            display: "inline-block",
-            padding: "8px 14px",
-            borderRadius: "6px",
-            border: "1px solid #456",
-            backgroundColor: "rgba(68, 85, 102, 0.25)",
-            fontWeight: 600,
-          }}
-        >
-          Follow me on Letterboxd!
-        </a>
+      {/* ── Footer: FAQ + Letterboxd ── */}
+      <div className="lb-footer">
+        <div className="lb-footer-buttons">
+          <button className="lb-footer-btn" onClick={() => setFaqExpanded((p) => !p)}>
+            FAQ
+          </button>
+          {!faqExpanded && (
+            <a
+              className="lb-footer-btn"
+              href="https://letterboxd.com/katswnt"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Follow me on Letterboxd!
+            </a>
+          )}
+        </div>
+
+        <div className={`lb-builder-collapse${faqExpanded ? " lb-builder-collapse--open" : ""}`}>
+          <div className="lb-builder-collapse-inner">
+            <div className="lb-faq">
+              {[
+                {
+                  q: "You haven't seen _____?!",
+                  a: `✋ I started using Letterboxd in late 2024, so my diary only shows what I've watched since then\u2014not my full viewing history. I also add movies I want to rewatch to my watchlist sometimes, so you'll see some titles in there that I've already seen.`,
+                },
+                {
+                  q: "You're missing ____ from the ____ collection!",
+                  a: `If you spot a gap in one of the curated lists, <a href="https://x.com/katswnt" target="_blank" rel="noopener noreferrer">DM me on Twitter</a> and I'll get it fixed.`,
+                },
+                {
+                  q: "Where does the film data come from?",
+                  a: `Film metadata (posters, directors, genres, etc.) comes from <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">TMDb</a>. Diary and watchlist data comes from your Letterboxd CSV exports. The curated lists were scraped from public Letterboxd lists and stored as static CSVs.`,
+                },
+                {
+                  q: "Is my data stored anywhere?",
+                  a: "Nope. Everything runs in your browser. Your CSV files are parsed client-side and nothing is uploaded or stored on a server.",
+                },
+                {
+                  q: "Why don't some films have metadata?",
+                  a: "The app matches your Letterboxd entries to TMDb by title and year. If the title doesn't match exactly (e.g. alternate translations or special characters), the lookup can miss. These films still appear in your stats\u2014they just won't have posters or detailed info.",
+                },
+                {
+                  q: "How are the double feature pairings chosen?",
+                  a: "Each mode uses a different rule to pair films\u2014same director, shared genre, matching decade, etc. Within those constraints, pairings are randomized, so you'll get different results each time you shuffle.",
+                },
+              ].map((item, i) => (
+                <div className="lb-faq-item" key={i}>
+                  <button
+                    className="lb-faq-q"
+                    onClick={() =>
+                      setFaqOpen((prev) => {
+                        const next = new Set(prev);
+                        next.has(i) ? next.delete(i) : next.add(i);
+                        return next;
+                      })
+                    }
+                  >
+                    {item.q}
+                    <span className={`lb-faq-chevron${faqOpen.has(i) ? " lb-faq-chevron--open" : ""}`}>▾</span>
+                  </button>
+                  <div className={`lb-faq-a${faqOpen.has(i) ? " lb-faq-a--open" : ""}`}>
+                    <div className="lb-faq-a-inner">
+                      <p dangerouslySetInnerHTML={{ __html: item.a }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {faqExpanded && (
+          <div style={{ marginTop: 16 }}>
+            <a
+              className="lb-footer-btn"
+              href="https://letterboxd.com/katswnt"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Follow me on Letterboxd!
+            </a>
+          </div>
+        )}
       </div>
     </main>
   );

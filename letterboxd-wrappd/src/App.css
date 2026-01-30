@@ -1845,3 +1845,113 @@
     padding: 4px 8px;
   }
 }
+
+/* ── Footer ── */
+.lb-footer {
+  margin: 40px 0 24px;
+  text-align: center;
+}
+
+.lb-footer-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.lb-footer-btn {
+  color: #9ab;
+  text-decoration: none;
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid #456;
+  background-color: rgba(68, 85, 102, 0.25);
+  font-weight: 600;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.lb-footer-btn:hover {
+  color: #ccd;
+  border-color: #567;
+}
+
+/* ── FAQ Accordion ── */
+.lb-faq {
+  max-width: 640px;
+  margin: 16px auto 0;
+  padding: 0 16px;
+}
+
+.lb-faq-item {
+  border-top: 1px solid #334;
+  text-align: left;
+}
+
+.lb-faq-item:last-child {
+  border-bottom: 1px solid #334;
+}
+
+.lb-faq-q {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 0;
+  background: none;
+  border: none;
+  color: #ccd;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.lb-faq-q:hover {
+  color: #fff;
+}
+
+.lb-faq-chevron {
+  flex-shrink: 0;
+  margin-left: 12px;
+  font-size: 12px;
+  color: #789;
+  transition: transform 0.2s ease;
+}
+
+.lb-faq-chevron--open {
+  transform: rotate(180deg);
+}
+
+.lb-faq-a {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+}
+
+.lb-faq-a--open {
+  grid-template-rows: 1fr;
+}
+
+.lb-faq-a-inner {
+  overflow: hidden;
+}
+
+.lb-faq-a-inner p {
+  margin: 0 0 14px;
+  color: #9ab;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.lb-faq-a-inner a {
+  color: #3EBDF4;
+  text-decoration: none;
+}
+
+.lb-faq-a-inner a:hover {
+  text-decoration: underline;
+}
