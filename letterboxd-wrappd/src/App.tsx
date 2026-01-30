@@ -321,6 +321,19 @@ const sanitizeReviewHtml = (input: string) => {
   return doc.body.innerHTML;
 };
 
+const REVIEW_POSITIVE_WORDS = new Set([
+  "amazing", "beautiful", "brilliant", "charming", "clever", "emotional", "fun",
+  "funny", "great", "gorgeous", "heartbreaking", "hilarious", "joy", "lovely",
+  "masterpiece", "perfect", "stunning", "terrific", "wonderful", "wow", "love",
+  "loved", "favorite", "favourite", "incredible",
+]);
+
+const REVIEW_NEGATIVE_WORDS = new Set([
+  "awful", "bad", "boring", "confusing", "cringe", "dull", "flat", "forgettable",
+  "hate", "hated", "mess", "poor", "ridiculous", "slow", "terrible", "ugh",
+  "unwatchable", "weak", "worst", "waste", "annoying",
+]);
+
 const TrendInfo = ({ align = "center" }: { align?: "left" | "center" | "right" }) => {
   const [open, setOpen] = useState(false);
   return (
@@ -3625,6 +3638,126 @@ function App() {
     (film) => film.hasRewatch || film.entryCount > 1
   ).length; // films you rewatched at least once
 
+  const reviewStats = useMemo(() => {
+    if (reviews.length === 0) {
+      return { hasReviews: false, hasEntries: false };
+    }
+
+    const reviewEntries = reviews
+      .map((review) => {
+        const text = (review.Review || "").trim();
+        const words = text.split(/\s+/).filter((w) => w.length > 0);
+        const rating = review.Rating ? Number(review.Rating) : null;
+        const date = review["Watched Date"] || review.Date || "";
+        return { review, text, words, wordCount: words.length, rating, date };
+      })
+      .filter((entry) => entry.text.length > 0);
+
+    if (reviewEntries.length === 0) {
+      return { hasReviews: true, hasEntries: false };
+    }
+
+    const wordCounts = reviewEntries.map((entry) => entry.wordCount);
+    const sortedWordCounts = [...wordCounts].sort((a, b) => a - b);
+    const mid = Math.floor(sortedWordCounts.length / 2);
+    const medianWordCount = sortedWordCounts.length % 2 === 1
+      ? sortedWordCounts[mid]
+      : Math.round((sortedWordCounts[mid - 1] + sortedWordCounts[mid]) / 2);
+    const totalWords = wordCounts.reduce((sum, count) => sum + count, 0);
+    const avgWordCount = Math.round(totalWords / wordCounts.length);
+    const shortestReview = Math.min(...wordCounts);
+    const longestReview = Math.max(...wordCounts);
+    const over200 = wordCounts.filter((count) => count >= 200).length;
+    const percentOver200 = Math.round((over200 / wordCounts.length) * 100);
+    const voiceLabel =
+      avgWordCount >= 200 ? "verbose" : avgWordCount >= 80 ? "measured" : "concise";
+
+    const sentimentByMonth = new Map<string, { total: number; count: number }>();
+    const sentimentPoints: Array<{ month: string; sentiment: number; count: number }> = [];
+    for (const entry of reviewEntries) {
+      const tokens = entry.text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s']/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length > 2);
+      let score = 0;
+      for (const token of tokens) {
+        if (REVIEW_POSITIVE_WORDS.has(token)) score += 1;
+        if (REVIEW_NEGATIVE_WORDS.has(token)) score -= 1;
+      }
+      const normalized = tokens.length ? score / tokens.length : 0;
+      if (!entry.date) continue;
+      const dateObj = new Date(entry.date);
+      if (Number.isNaN(dateObj.getTime())) continue;
+      const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}`;
+      const bucket = sentimentByMonth.get(monthKey) || { total: 0, count: 0 };
+      bucket.total += normalized;
+      bucket.count += 1;
+      sentimentByMonth.set(monthKey, bucket);
+    }
+    Array.from(sentimentByMonth.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .forEach(([month, bucket]) => {
+        sentimentPoints.push({
+          month,
+          sentiment: bucket.count ? Number((bucket.total / bucket.count).toFixed(3)) : 0,
+          count: bucket.count,
+        });
+      });
+
+    const scatterPoints = reviewEntries
+      .filter((entry) => typeof entry.rating === "number" && !Number.isNaN(entry.rating))
+      .map((entry) => ({
+        rating: entry.rating,
+        words: entry.wordCount,
+        title: entry.review.Name,
+        year: entry.review.Year,
+        date: entry.date,
+      }));
+
+    const ratedReviews = reviewEntries.filter(
+      (entry) => typeof entry.rating === "number" && !Number.isNaN(entry.rating)
+    );
+    const mostLoved = ratedReviews.reduce((best, entry) => {
+      if (!best) return entry;
+      if ((entry.rating ?? 0) > (best.rating ?? 0)) return entry;
+      if ((entry.rating ?? 0) === (best.rating ?? 0) && entry.wordCount > best.wordCount) return entry;
+      return best;
+    }, null as typeof reviewEntries[number] | null);
+    const mostHated = ratedReviews.reduce((worst, entry) => {
+      if (!worst) return entry;
+      if ((entry.rating ?? 0) < (worst.rating ?? 0)) return entry;
+      if ((entry.rating ?? 0) === (worst.rating ?? 0) && entry.wordCount > worst.wordCount) return entry;
+      return worst;
+    }, null as typeof reviewEntries[number] | null);
+
+    const lovedIsLong = mostLoved ? mostLoved.wordCount > 80 || mostLoved.text.length > 320 : false;
+    const hatedIsLong = mostHated ? mostHated.wordCount > 80 || mostHated.text.length > 320 : false;
+
+    const uniqueWatchedCount = films.length || 0;
+    const reviewDensity = uniqueWatchedCount ? Math.round((reviews.length / uniqueWatchedCount) * 100) : 0;
+
+    return {
+      hasReviews: true,
+      hasEntries: true,
+      reviewEntries,
+      totalWords,
+      medianWordCount,
+      avgWordCount,
+      shortestReview,
+      longestReview,
+      percentOver200,
+      voiceLabel,
+      sentimentPoints,
+      scatterPoints,
+      mostLoved,
+      mostHated,
+      lovedIsLong,
+      hatedIsLong,
+      reviewDensity,
+    };
+  }, [reviews, films]);
+
   // TMDb stats (from movieIndex, filtered to match current date range)
   // Get unique Letterboxd URIs from filtered diary rows
   const filteredUris = useMemo(
@@ -5144,6 +5277,24 @@ function App() {
             </button>
           </section>
         )}
+        {!isLoading && isRssPreview && rows.length > 0 && (
+          <div
+            style={{
+              marginTop: "10px",
+              marginBottom: "16px",
+              textAlign: "center",
+              fontSize: "12px",
+              color: "#9ab",
+              backgroundColor: "rgba(68, 85, 102, 0.2)",
+              border: "1px solid rgba(68, 85, 102, 0.4)",
+              borderRadius: "8px",
+              padding: "10px 14px",
+            }}
+          >
+            RSS preview is limited to your most recent 50 entries. You’ll miss year filters, heatmap history,
+            trend comparisons, and some Taste DNA stats. For full stats, upload your diary.csv.
+          </div>
+        )}
 
         {/* Input section - also opens for reviews since reviews is nested inside */}
         {(manualUploadOpen || pendingUploadTarget === "diary" || pendingUploadTarget === "reviews" || !diaryLoaded || isLoading) && (
@@ -5231,7 +5382,9 @@ function App() {
               </button>
             </div>
             <p className="lb-rss-note">
-              RSS only includes your most recent 50 diary entries. For full stats, upload your diary.csv.
+              RSS only includes your most recent 50 diary entries. This preview misses
+              year filters, heatmap history, trend comparisons, and some Taste DNA stats.
+              For full stats, upload your diary.csv.
             </p>
             {rssError && <p className="lb-rss-error">{rssError}</p>}
           </div>
@@ -5318,7 +5471,8 @@ function App() {
           )}
           {!isLoading && rows.length > 0 && isRssPreview && (
             <div className="lb-rss-preview-note">
-              RSS is a quick preview (last 50 entries). For complete stats, upload your full diary.csv.
+              RSS is a quick preview (last 50 entries). You&apos;ll miss year filters, heatmap history,
+              trend comparisons, and some Taste DNA stats. For complete stats, upload your full diary.csv.
             </div>
           )}
 
@@ -6307,184 +6461,8 @@ function App() {
         )}
 
         {/* Review stats - only show if reviews have been uploaded */}
-        {reviews.length > 0 && (() => {
-          const positiveWords = useMemo(
-            () =>
-              new Set([
-                "amazing", "beautiful", "brilliant", "charming", "clever", "emotional", "fun",
-                "funny", "great", "gorgeous", "heartbreaking", "hilarious", "joy", "lovely",
-                "masterpiece", "perfect", "stunning", "terrific", "wonderful", "wow", "love",
-                "loved", "favorite", "favourite", "incredible",
-              ]),
-            []
-          );
-          const negativeWords = useMemo(
-            () =>
-              new Set([
-                "awful", "bad", "boring", "confusing", "cringe", "dull", "flat", "forgettable",
-                "hate", "hated", "mess", "poor", "ridiculous", "slow", "terrible", "ugh",
-                "unwatchable", "weak", "worst", "waste", "annoying",
-              ]),
-            []
-          );
-
-          const reviewEntries = useMemo(
-            () =>
-              reviews
-                .map((review) => {
-                  const text = (review.Review || "").trim();
-                  const words = text.split(/\s+/).filter((w) => w.length > 0);
-                  const rating = review.Rating ? Number(review.Rating) : null;
-                  const date = review["Watched Date"] || review.Date || "";
-                  return { review, text, words, wordCount: words.length, rating, date };
-                })
-                .filter((entry) => entry.text.length > 0),
-            [reviews]
-          );
-
-          const reviewMetrics = useMemo(() => {
-            if (reviewEntries.length === 0) {
-              return {
-                wordCounts: [] as number[],
-                medianWordCount: 0,
-                avgWordCount: 0,
-                shortestReview: 0,
-                longestReview: 0,
-                percentOver200: 0,
-                voiceLabel: "concise" as "concise" | "measured" | "verbose",
-              };
-            }
-            const wordCounts = reviewEntries.map((entry) => entry.wordCount);
-            const sortedWordCounts = [...wordCounts].sort((a, b) => a - b);
-            const mid = Math.floor(sortedWordCounts.length / 2);
-            const medianWordCount = sortedWordCounts.length % 2 === 1
-              ? sortedWordCounts[mid]
-              : Math.round((sortedWordCounts[mid - 1] + sortedWordCounts[mid]) / 2);
-            const totalWords = wordCounts.reduce((sum, count) => sum + count, 0);
-            const avgWordCount = Math.round(totalWords / wordCounts.length);
-            const shortestReview = Math.min(...wordCounts);
-            const longestReview = Math.max(...wordCounts);
-            const over200 = wordCounts.filter((count) => count >= 200).length;
-            const percentOver200 = Math.round((over200 / wordCounts.length) * 100);
-            const voiceLabel =
-              avgWordCount >= 200 ? "verbose" : avgWordCount >= 80 ? "measured" : "concise";
-            return {
-              wordCounts,
-              medianWordCount,
-              avgWordCount,
-              shortestReview,
-              longestReview,
-              percentOver200,
-              voiceLabel,
-            };
-          }, [reviewEntries]);
-
-          const sentimentPoints = useMemo(() => {
-            const sentimentByMonth = new Map<string, { total: number; count: number }>();
-            const points: Array<{ month: string; sentiment: number; count: number }> = [];
-            for (const entry of reviewEntries) {
-              const tokens = entry.text
-                .toLowerCase()
-                .replace(/[^a-z0-9\s']/g, " ")
-                .split(/\s+/)
-                .filter((w) => w.length > 2);
-              let score = 0;
-              for (const token of tokens) {
-                if (positiveWords.has(token)) score += 1;
-                if (negativeWords.has(token)) score -= 1;
-              }
-              const normalized = tokens.length ? score / tokens.length : 0;
-              if (!entry.date) continue;
-              const dateObj = new Date(entry.date);
-              if (Number.isNaN(dateObj.getTime())) continue;
-              const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}`;
-              const bucket = sentimentByMonth.get(monthKey) || { total: 0, count: 0 };
-              bucket.total += normalized;
-              bucket.count += 1;
-              sentimentByMonth.set(monthKey, bucket);
-            }
-            Array.from(sentimentByMonth.entries())
-              .sort((a, b) => a[0].localeCompare(b[0]))
-              .forEach(([month, bucket]) => {
-                points.push({
-                  month,
-                  sentiment: bucket.count ? Number((bucket.total / bucket.count).toFixed(3)) : 0,
-                  count: bucket.count,
-                });
-              });
-            return points;
-          }, [reviewEntries, positiveWords, negativeWords]);
-
-          const scatterPoints = useMemo(
-            () =>
-              reviewEntries
-                .filter((entry) => typeof entry.rating === "number" && !Number.isNaN(entry.rating))
-                .map((entry) => ({
-                  rating: entry.rating,
-                  words: entry.wordCount,
-                  title: entry.review.Name,
-                  year: entry.review.Year,
-                  date: entry.date,
-                })),
-            [reviewEntries]
-          );
-
-          const ratedReviews = useMemo(
-            () => reviewEntries.filter((entry) => typeof entry.rating === "number" && !Number.isNaN(entry.rating)),
-            [reviewEntries]
-          );
-          const mostLoved = useMemo(
-            () =>
-              ratedReviews.reduce((best, entry) => {
-                if (!best) return entry;
-                if ((entry.rating ?? 0) > (best.rating ?? 0)) return entry;
-                if ((entry.rating ?? 0) === (best.rating ?? 0) && entry.wordCount > best.wordCount) return entry;
-                return best;
-              }, null as typeof reviewEntries[number] | null),
-            [ratedReviews, reviewEntries]
-          );
-          const mostHated = useMemo(
-            () =>
-              ratedReviews.reduce((worst, entry) => {
-                if (!worst) return entry;
-                if ((entry.rating ?? 0) < (worst.rating ?? 0)) return entry;
-                if ((entry.rating ?? 0) === (worst.rating ?? 0) && entry.wordCount > worst.wordCount) return entry;
-                return worst;
-              }, null as typeof reviewEntries[number] | null),
-            [ratedReviews, reviewEntries]
-          );
-
-          const lovedIsLong = mostLoved ? mostLoved.wordCount > 80 || mostLoved.text.length > 320 : false;
-          const hatedIsLong = mostHated ? mostHated.wordCount > 80 || mostHated.text.length > 320 : false;
-
-          const uniqueWatchedCount = films.length || 0;
-          const reviewDensity = uniqueWatchedCount ? Math.round((reviews.length / uniqueWatchedCount) * 100) : 0;
-
-          if (reviewEntries.length === 0) {
-            return (
-              <section style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%" }}>
-                <h3 style={{ fontSize: "16px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
-                  Reviews
-                </h3>
-                <div style={{ textAlign: "center", color: "#9ab", fontSize: "13px" }}>
-                  Add written reviews to unlock insights here.
-                </div>
-              </section>
-            );
-          }
-
-          const {
-            medianWordCount,
-            avgWordCount,
-            shortestReview,
-            longestReview,
-            percentOver200,
-            voiceLabel,
-          } = reviewMetrics;
-
-          const totalWords = reviewMetrics.wordCounts.reduce((sum, count) => sum + count, 0);
-
-          return (
+        {reviews.length > 0 && (
+          reviewStats.hasEntries ? (
             <section style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%" }}>
               <h3 style={{ fontSize: "16px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
                 Reviews
@@ -6495,41 +6473,41 @@ function App() {
                   <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Reviews</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{medianWordCount}</div>
+                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{reviewStats.medianWordCount}</div>
                   <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Median Words</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{avgWordCount}</div>
+                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{reviewStats.avgWordCount}</div>
                   <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Avg Words</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{totalWords.toLocaleString()}</div>
+                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{reviewStats.totalWords.toLocaleString()}</div>
                   <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Total Words</div>
                 </div>
               </div>
               <div className="lb-review-grid">
                 <div className="lb-review-card">
                   <div className="lb-review-card-title">Your voice</div>
-                  <div className="lb-review-card-metric">{voiceLabel}</div>
+                  <div className="lb-review-card-metric">{reviewStats.voiceLabel}</div>
                   <div className="lb-review-card-sub">Based on average review length.</div>
-                  <div className="lb-review-card-sub">Shortest: {shortestReview} · Longest: {longestReview}</div>
-                  <div className="lb-review-card-sub">{percentOver200}% of reviews are 200+ words</div>
+                  <div className="lb-review-card-sub">Shortest: {reviewStats.shortestReview} · Longest: {reviewStats.longestReview}</div>
+                  <div className="lb-review-card-sub">{reviewStats.percentOver200}% of reviews are 200+ words</div>
                 </div>
                 <div className="lb-review-card">
                   <div className="lb-review-card-title">Review density</div>
-                  <div className="lb-review-card-metric">{reviewDensity}%</div>
+                  <div className="lb-review-card-metric">{reviewStats.reviewDensity}%</div>
                   <div className="lb-review-card-sub">
-                    {reviews.length} reviews across {uniqueWatchedCount} watched films
+                    {reviews.length} reviews across {films.length} watched films
                   </div>
                 </div>
               </div>
               <div className="lb-review-grid lb-review-grid-2">
                 <div className="lb-review-card lb-review-card-chart">
                   <div className="lb-review-card-title">Sentiment over time</div>
-                  {sentimentPoints.length > 0 ? (
+                  {reviewStats.sentimentPoints.length > 0 ? (
                     <div className="lb-review-chart">
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={sentimentPoints} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+                        <LineChart data={reviewStats.sentimentPoints} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
                           <CartesianGrid stroke="rgba(68, 85, 102, 0.35)" strokeDasharray="3 3" />
                           <XAxis dataKey="month" tick={{ fill: "#9ab", fontSize: 10 }} minTickGap={20} />
                           <YAxis tick={{ fill: "#9ab", fontSize: 10 }} width={32} />
@@ -6557,7 +6535,7 @@ function App() {
                 </div>
                 <div className="lb-review-card lb-review-card-chart">
                   <div className="lb-review-card-title">Rating vs word count</div>
-                  {scatterPoints.length > 0 ? (
+                  {reviewStats.scatterPoints.length > 0 ? (
                     <div className="lb-review-chart">
                       <ResponsiveContainer width="100%" height="100%">
                         <ScatterChart margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
@@ -6580,7 +6558,7 @@ function App() {
                               );
                             }}
                           />
-                          <Scatter data={scatterPoints} fill="#00e054" />
+                          <Scatter data={reviewStats.scatterPoints} fill="#00e054" />
                         </ScatterChart>
                       </ResponsiveContainer>
                     </div>
@@ -6590,13 +6568,13 @@ function App() {
                 </div>
                 <div className="lb-review-card">
                   <div className="lb-review-card-title">Most loved review</div>
-                  {mostLoved ? (
+                  {reviewStats.mostLoved ? (
                     <>
-                      <div className="lb-review-card-metric">{mostLoved.review.Name} ({mostLoved.review.Year}) · ★{mostLoved.rating}</div>
-                      <div className={`lb-review-excerpt ${lovedIsLong && !reviewLovedExpanded ? "lb-review-excerpt-collapsed" : ""}`}>
-                        <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(mostLoved.text) }} />
+                      <div className="lb-review-card-metric">{reviewStats.mostLoved.review.Name} ({reviewStats.mostLoved.review.Year}) · ★{reviewStats.mostLoved.rating}</div>
+                      <div className={`lb-review-excerpt ${reviewStats.lovedIsLong && !reviewLovedExpanded ? "lb-review-excerpt-collapsed" : ""}`}>
+                        <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(reviewStats.mostLoved.text) }} />
                       </div>
-                      {lovedIsLong && (
+                      {reviewStats.lovedIsLong && (
                         <button
                           type="button"
                           className="lb-review-toggle"
@@ -6612,13 +6590,13 @@ function App() {
                 </div>
                 <div className="lb-review-card">
                   <div className="lb-review-card-title">Most hated review</div>
-                  {mostHated ? (
+                  {reviewStats.mostHated ? (
                     <>
-                      <div className="lb-review-card-metric">{mostHated.review.Name} ({mostHated.review.Year}) · ★{mostHated.rating}</div>
-                      <div className={`lb-review-excerpt ${hatedIsLong && !reviewHatedExpanded ? "lb-review-excerpt-collapsed" : ""}`}>
-                        <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(mostHated.text) }} />
+                      <div className="lb-review-card-metric">{reviewStats.mostHated.review.Name} ({reviewStats.mostHated.review.Year}) · ★{reviewStats.mostHated.rating}</div>
+                      <div className={`lb-review-excerpt ${reviewStats.hatedIsLong && !reviewHatedExpanded ? "lb-review-excerpt-collapsed" : ""}`}>
+                        <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(reviewStats.mostHated.text) }} />
                       </div>
-                      {hatedIsLong && (
+                      {reviewStats.hatedIsLong && (
                         <button
                           type="button"
                           className="lb-review-toggle"
@@ -6634,8 +6612,17 @@ function App() {
                 </div>
               </div>
             </section>
-          );
-        })()}
+          ) : (
+            <section style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%" }}>
+              <h3 style={{ fontSize: "16px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
+                Reviews
+              </h3>
+              <div style={{ textAlign: "center", color: "#9ab", fontSize: "13px" }}>
+                Add written reviews to unlock insights here.
+              </div>
+            </section>
+          )
+        )}
 
         {/* Watchlist Analysis Section - always visible, inner parts conditionally shown */}
         <section
