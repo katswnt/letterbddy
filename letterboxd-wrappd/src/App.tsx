@@ -1537,6 +1537,11 @@ type WatchlistBuilderProps = {
   seenExcludedCount: number;
   hasDiary: boolean;
   watchlistCount: number;
+  katFavorites: Array<{ name: string; year: string; url: string }>;
+  katFavoritesUnseen: Array<{ name: string; year: string; url: string }>;
+  katFavoritesLoading: boolean;
+  katFavoritesError: string | null;
+  onKatFavoritesExport: () => void;
   onShuffle: () => void;
   onRemove: (url: string) => void;
 };
@@ -1553,11 +1558,17 @@ const WatchlistBuilder = memo(({
   seenExcludedCount,
   hasDiary,
   watchlistCount,
+  katFavorites,
+  katFavoritesUnseen,
+  katFavoritesLoading,
+  katFavoritesError,
+  onKatFavoritesExport,
   onShuffle,
   onRemove,
 }: WatchlistBuilderProps) => {
 
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [katFavoritesOpen, setKatFavoritesOpen] = useState(false);
   const hasBlackDirectorData = useMemo(
     () => curatedPayload?.films?.some((film) => typeof film.is_by_black_director === "boolean") ?? false,
     [curatedPayload]
@@ -1628,6 +1639,7 @@ const WatchlistBuilder = memo(({
   const listEntries = Object.entries(curatedPayload.lists || {});
   const selectedSourceCount = builderState.listSources.length || listEntries.length;
   const hasCreatorFilter = builderState.directorWomen || builderState.writerWomen || builderState.directorBlack;
+  const katVisible = katFavorites.length > 0 || katFavoritesLoading || katFavoritesError;
 
   return (
     <div className="lb-builder">
@@ -1784,6 +1796,55 @@ const WatchlistBuilder = memo(({
           ))}
           <div className="lb-builder-sources-key">
             <span className="lb-builder-ranked-icon">🏆</span> position matters · others are unranked collections
+          </div>
+        </div>
+      )}
+
+      {katVisible && (
+        <div className="lb-builder-kat-hint">
+          <button
+            type="button"
+            className="lb-builder-kat-link"
+            onClick={() => setKatFavoritesOpen((p) => !p)}
+          >
+            psst — want to add Kat's 20 favorite watches of 2025?
+          </button>
+          <div className={`lb-builder-collapse${katFavoritesOpen ? " lb-builder-collapse--open" : ""}`}>
+            <div className="lb-builder-collapse-inner">
+              <div className="lb-builder-kat">
+                <div className="lb-builder-kat-header">
+                  <div className="lb-builder-kat-sub">
+                    {katFavoritesLoading
+                      ? "Loading…"
+                      : katFavoritesError
+                      ? "Couldn't load the list."
+                      : `${katFavoritesUnseen.length} you haven't logged yet`}
+                  </div>
+                  {!katFavoritesLoading && !katFavoritesError && katFavoritesUnseen.length > 0 && (
+                    <button type="button" className="lb-builder-kat-btn" onClick={onKatFavoritesExport}>
+                      Add unseen to watchlist CSV
+                    </button>
+                  )}
+                </div>
+                {!katFavoritesLoading && !katFavoritesError && (
+                  <div className="lb-builder-kat-list">
+                    {katFavorites.map((film) => {
+                      const unseen = katFavoritesUnseen.some((u) => u.url === film.url);
+                      return (
+                        <div key={film.url} className={`lb-builder-kat-row${unseen ? "" : " is-muted"}`}>
+                          <a href={film.url} target="_blank" rel="noopener noreferrer">
+                            {film.name}
+                          </a>
+                          <span>{film.year}</span>
+                          {!unseen && <span className="lb-builder-kat-tag">already logged</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {katFavoritesError && <div className="lb-builder-kat-error">{katFavoritesError}</div>}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2736,6 +2797,15 @@ function App() {
   const [watchlistContinentFilter, setWatchlistContinentFilter] = useState<string | null>(null);
   const [reviewLovedExpanded, setReviewLovedExpanded] = useState<boolean>(false);
   const [reviewHatedExpanded, setReviewHatedExpanded] = useState<boolean>(false);
+  const [scatterReview, setScatterReview] = useState<{
+    title: string;
+    year?: string;
+    rating?: number | null;
+    words: number;
+    date?: string;
+    text: string;
+    url?: string;
+  } | null>(null);
   const [tasteSortMode, setTasteSortMode] = useState<"rated" | "watched">("rated");
   const [tasteCategory, setTasteCategory] = useState<string>("womenDirectors");
   const [tasteExpandedPerson, setTasteExpandedPerson] = useState<string | null>(null);
@@ -2774,6 +2844,9 @@ function App() {
   const [curatedLoading, setCuratedLoading] = useState<boolean>(false);
   const [builderExpanded, setBuilderExpanded] = useState<boolean>(false);
   const [doubleFeatureExpanded, setDoubleFeatureExpanded] = useState<boolean>(false);
+  const [katFavorites, setKatFavorites] = useState<Array<{ name: string; year: string; url: string }>>([]);
+  const [katFavoritesLoading, setKatFavoritesLoading] = useState<boolean>(false);
+  const [katFavoritesError, setKatFavoritesError] = useState<string | null>(null);
   const [faqOpen, setFaqOpen] = useState<Set<number>>(new Set());
   const [faqExpanded, setFaqExpanded] = useState(false);
   const [builderExcluded, setBuilderExcluded] = useState<string[]>([]);
@@ -3604,6 +3677,39 @@ function App() {
     prevIsLoadingRef.current = isLoading;
   }, [diaryLoaded, isLoading]);
 
+  useEffect(() => {
+    if (!builderExpanded || katFavoritesLoading || katFavorites.length > 0) return;
+    setKatFavoritesLoading(true);
+    setKatFavoritesError(null);
+    fetch("/kat_favorites_2025.csv")
+      .then((res) => res.text())
+      .then((text) => {
+        const lines = text.split(/\r?\n/);
+        const headerIdx = lines.findIndex((line) => {
+          const lower = line.toLowerCase();
+          return lower.startsWith("position,") || lower.startsWith("name,year,url");
+        });
+        const csvText = headerIdx >= 0 ? lines.slice(headerIdx).join("\n") : text;
+        const result = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+        const rows = (result.data as Array<Record<string, string>>).filter((row) => Object.keys(row).length > 1);
+        const parsed = rows.map((row) => ({
+          name: (row.Name || row.name || "").trim(),
+          year: (row.Year || row.year || "").trim(),
+          url: (row["Letterboxd URI"] || row["Letterboxd URL"] || row.URL || row.Url || "").trim(),
+        })).filter((row) => row.name && row.url);
+        if (parsed.length === 0) {
+          setKatFavoritesError("Couldn’t read Kat’s favorites list. Check the CSV format.");
+        } else {
+          setKatFavorites(parsed);
+        }
+        setKatFavoritesLoading(false);
+      })
+      .catch((err) => {
+        setKatFavoritesError(err?.message || "Failed to load Kat’s favorites.");
+        setKatFavoritesLoading(false);
+      });
+  }, [builderExpanded, katFavoritesLoading, katFavorites.length]);
+
 
   // Filter rows based on selected time range
   const filteredRows = useMemo(
@@ -3827,6 +3933,8 @@ function App() {
         title: entry.review.Name,
         year: entry.review.Year,
         date: entry.date,
+        text: entry.text,
+        url: entry.review["Letterboxd URI"] || "",
       }));
 
     const ratedReviews = reviewEntries.filter(
@@ -4047,6 +4155,39 @@ function App() {
     }
     return set;
   }, [watchlistMovies]);
+
+  const katFavoritesUnseen = useMemo(() => {
+    if (!katFavorites.length) return [];
+    return katFavorites.filter((film) => {
+      const slugMatch = film.url.match(/\/film\/([^/]+)/i);
+      const slug = slugMatch ? slugMatch[1] : "";
+      const titleKey = `${film.name.toLowerCase()}|${film.year || ""}`;
+      const seen =
+        (slug && (diarySlugs.has(slug) || watchlistSlugs.has(slug))) ||
+        (titleKey && (diaryTitleYears.has(titleKey) || watchlistTitleYears.has(titleKey)));
+      return !seen;
+    });
+  }, [katFavorites, diarySlugs, watchlistSlugs, diaryTitleYears, watchlistTitleYears]);
+
+  const handleKatFavoritesExport = useCallback(() => {
+    if (!katFavoritesUnseen.length) return;
+    const csvRows = katFavoritesUnseen.map((film) => ({
+      Date: "",
+      Name: film.name,
+      Year: film.year ?? "",
+      "Letterboxd URI": film.url,
+    }));
+    const csvText = Papa.unparse(csvRows, {
+      columns: ["Date", "Name", "Year", "Letterboxd URI"],
+    });
+    const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "kat_favorites_2025_unseen.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [katFavoritesUnseen]);
 
   // Map origin codes to continent codes for geographic filtering
   const ORIGIN_CONTINENT_MAP: Record<string, string[]> = useMemo(() => ({
@@ -6636,7 +6777,20 @@ function App() {
                               );
                             }}
                           />
-                          <Scatter data={reviewStats.scatterPoints} fill="#00e054" />
+                          <Scatter
+                            data={reviewStats.scatterPoints}
+                            fill="#00e054"
+                            onClick={(data) => {
+                              const payload = (data as any)?.payload;
+                              if (!payload) return;
+                              setScatterReview((prev) => {
+                                if (prev && prev.title === payload.title && prev.year === payload.year) {
+                                  return null;
+                                }
+                                return payload;
+                              });
+                            }}
+                          />
                         </ScatterChart>
                       </ResponsiveContainer>
                     </div>
@@ -6644,13 +6798,41 @@ function App() {
                     <div className="lb-review-card-sub">Add ratings to see the scatter.</div>
                   )}
                 </div>
+                {scatterReview && (
+                  <div className="lb-review-drawer">
+                    <button
+                      type="button"
+                      className="lb-review-drawer-close"
+                      onClick={() => setScatterReview(null)}
+                    >
+                      Close
+                    </button>
+                    <div className="lb-review-drawer-header">
+                      <div className="lb-review-drawer-title">
+                        {scatterReview.title}{scatterReview.year ? ` (${scatterReview.year})` : ""}
+                      </div>
+                      <div className="lb-review-drawer-meta">
+                        {typeof scatterReview.rating === "number" ? `★${Number(scatterReview.rating).toFixed(1)}` : "★—"} · {scatterReview.words} words
+                        {scatterReview.date ? ` · ${scatterReview.date}` : ""}
+                      </div>
+                    </div>
+                    <div className="lb-review-drawer-body">
+                      <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(scatterReview.text.replace(/\n/g, "<br>")) }} />
+                    </div>
+                    {scatterReview.url && (
+                      <a className="lb-review-drawer-link" href={scatterReview.url} target="_blank" rel="noreferrer">
+                        Open on Letterboxd
+                      </a>
+                    )}
+                  </div>
+                )}
                 <div className="lb-review-card">
                   <div className="lb-review-card-title">Most loved review</div>
                   {reviewStats.mostLoved ? (
                     <>
                       <div className="lb-review-card-metric">{reviewStats.mostLoved.review.Name} ({reviewStats.mostLoved.review.Year}) · ★{reviewStats.mostLoved.rating}</div>
                       <div className={`lb-review-excerpt ${reviewStats.lovedIsLong && !reviewLovedExpanded ? "lb-review-excerpt-collapsed" : ""}`}>
-                        <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(reviewStats.mostLoved.text) }} />
+                        <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(reviewStats.mostLoved.text.replace(/\n/g, "<br>")) }} />
                       </div>
                       {reviewStats.lovedIsLong && (
                         <button
@@ -6672,7 +6854,7 @@ function App() {
                     <>
                       <div className="lb-review-card-metric">{reviewStats.mostHated.review.Name} ({reviewStats.mostHated.review.Year}) · ★{reviewStats.mostHated.rating}</div>
                       <div className={`lb-review-excerpt ${reviewStats.hatedIsLong && !reviewHatedExpanded ? "lb-review-excerpt-collapsed" : ""}`}>
-                        <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(reviewStats.mostHated.text) }} />
+                        <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(reviewStats.mostHated.text.replace(/\n/g, "<br>")) }} />
                       </div>
                       {reviewStats.hatedIsLong && (
                         <button
@@ -6934,6 +7116,11 @@ function App() {
                   seenExcludedCount={builderSeenExcluded}
                   hasDiary={filteredUris.size > 0}
                   watchlistCount={watchlistMovies.length}
+                  katFavorites={katFavorites}
+                  katFavoritesUnseen={katFavoritesUnseen}
+                  katFavoritesLoading={katFavoritesLoading}
+                  katFavoritesError={katFavoritesError}
+                  onKatFavoritesExport={handleKatFavoritesExport}
                   onShuffle={handleBuilderShuffle}
                   onRemove={handleBuilderRemove}
                 />
