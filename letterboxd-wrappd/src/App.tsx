@@ -5263,6 +5263,48 @@ function App() {
     return first;
   }, [rows, movieLookup, canonicalizeUri]);
 
+  const personProfileMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!movieLookup) return map;
+    for (const row of rows) {
+      const uriRaw = (row["Letterboxd URI"] || "").trim();
+      if (!uriRaw) continue;
+      const canon = canonicalizeUri(uriRaw);
+      const movie = movieLookup[uriRaw] || movieLookup[canon];
+      if (!movie?.tmdb_data) continue;
+      const directors = movie.tmdb_data?.directors || [];
+      const writers = movie.tmdb_data?.writers || [];
+      for (const person of [...directors, ...writers]) {
+        const name = person?.name;
+        const path = person?.profile_path;
+        if (!name || !path) continue;
+        if (!map.has(name)) map.set(name, path);
+      }
+    }
+    return map;
+  }, [rows, movieLookup, canonicalizeUri]);
+
+  const personProfileById = useMemo(() => {
+    const map = new Map<number, string>();
+    if (!movieLookup) return map;
+    for (const row of rows) {
+      const uriRaw = (row["Letterboxd URI"] || "").trim();
+      if (!uriRaw) continue;
+      const canon = canonicalizeUri(uriRaw);
+      const movie = movieLookup[uriRaw] || movieLookup[canon];
+      if (!movie?.tmdb_data) continue;
+      const directors = movie.tmdb_data?.directors || [];
+      const writers = movie.tmdb_data?.writers || [];
+      for (const person of [...directors, ...writers]) {
+        const id = person?.id;
+        const path = person?.profile_path;
+        if (typeof id !== "number" || !path) continue;
+        if (!map.has(id)) map.set(id, path);
+      }
+    }
+    return map;
+  }, [rows, movieLookup, canonicalizeUri]);
+
   const diversifyNoteRef = useRef<{ lastIndex: number; map: Record<string, string> }>({ lastIndex: -1, map: {} });
   const getDiversifyNote = useCallback((key: string) => {
     if (diversifyNoteRef.current.map[key]) return diversifyNoteRef.current.map[key];
@@ -5274,7 +5316,7 @@ function App() {
   }, []);
 
   const buildPeopleStats = useCallback((entries: Array<{ movie: any; rating: number }>, getPeople: (movie: any) => Array<any>) => {
-    const stats = new Map<string, { name: string; count: number; ratingSum: number; ratingCount: number; profilePath?: string | null }>();
+    const stats = new Map<string, { name: string; count: number; ratingSum: number; ratingCount: number; profilePath?: string | null; id?: number | null }>();
     for (const entry of entries) {
       const people = getPeople(entry.movie) || [];
       const seen = new Set<string>();
@@ -5282,13 +5324,18 @@ function App() {
         const name = person?.name;
         if (!name || seen.has(name)) continue;
         seen.add(name);
-        const current = stats.get(name) || { name, count: 0, ratingSum: 0, ratingCount: 0, profilePath: null };
+        const current = stats.get(name) || { name, count: 0, ratingSum: 0, ratingCount: 0, profilePath: null, id: null };
         current.count += 1;
+        if (typeof person?.id === "number" && current.id == null) current.id = person.id;
         if (!Number.isNaN(entry.rating)) {
           current.ratingSum += entry.rating;
           current.ratingCount += 1;
         }
         if (!current.profilePath && person?.profile_path) current.profilePath = person.profile_path;
+        if (!current.profilePath && personProfileMap.has(name)) current.profilePath = personProfileMap.get(name) || null;
+        if (!current.profilePath && typeof current.id === "number" && personProfileById.has(current.id)) {
+          current.profilePath = personProfileById.get(current.id) || null;
+        }
         stats.set(name, current);
       }
     }
@@ -5299,7 +5346,7 @@ function App() {
       ratingCount: p.ratingCount,
       profilePath: p.profilePath,
     }));
-  }, []);
+  }, [personProfileMap, personProfileById]);
 
   const getFemaleDirectors = useCallback((movie: any) => {
     const tmdb = movie.tmdb_data || {};
