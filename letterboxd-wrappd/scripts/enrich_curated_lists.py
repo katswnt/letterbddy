@@ -178,13 +178,24 @@ def build_tmdb_data(tmdb_id: int, api_key: str) -> dict:
         credits = fetch_tmdb_credits(tmdb_id, api_key)
         crew = credits.get("crew", [])
         directors = [
-            {"id": person.get("id"), "name": person.get("name"), "gender": person.get("gender")}
+            {
+                "id": person.get("id"),
+                "name": person.get("name"),
+                "gender": person.get("gender"),
+                "profile_path": person.get("profile_path"),
+            }
             for person in crew
             if person.get("job") == "Director"
         ]
         writer_jobs = {"Writer", "Screenplay", "Story", "Characters"}
         writers = [
-            {"id": person.get("id"), "name": person.get("name"), "job": person.get("job"), "gender": person.get("gender")}
+            {
+                "id": person.get("id"),
+                "name": person.get("name"),
+                "job": person.get("job"),
+                "gender": person.get("gender"),
+                "profile_path": person.get("profile_path"),
+            }
             for person in crew
             if person.get("job") in writer_jobs
         ]

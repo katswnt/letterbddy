@@ -121,6 +121,52 @@ type CuratedListMeta = {
   ranked?: boolean;
 };
 
+const normalizeTitleYear = (name?: string | null, year?: string | number | null) => {
+  const title = (name || "").trim().toLowerCase();
+  const yearText = year != null ? String(year).trim() : "";
+  if (!title && !yearText) return "";
+  return `${title}|${yearText}`;
+};
+
+const applyLocalEnrichment = ({
+  urls,
+  movieIndex,
+  localIndex,
+  canonicalize,
+}: {
+  urls: string[];
+  movieIndex: Record<string, any>;
+  localIndex: { byUri: Record<string, any>; byTitleYear: Record<string, any> } | null;
+  canonicalize: (value: string) => string;
+}) => {
+  let mergedMovieIndex: Record<string, any> = {};
+  let localHits = 0;
+  const remainingUrls: string[] = [];
+
+  if (localIndex) {
+    for (const url of urls) {
+      const movieData = movieIndex[url];
+      const key = normalizeTitleYear(movieData?.csv_name, movieData?.csv_year);
+      const canonical = canonicalize(url);
+      const entry =
+        localIndex.byUri[url] ||
+        (canonical && localIndex.byUri[canonical]) ||
+        (key && localIndex.byTitleYear[key]);
+      if (entry) {
+        mergedMovieIndex[url] = entry;
+        if (canonical && !mergedMovieIndex[canonical]) mergedMovieIndex[canonical] = entry;
+        localHits += 1;
+      } else {
+        remainingUrls.push(url);
+      }
+    }
+  } else {
+    remainingUrls.push(...urls);
+  }
+
+  return { mergedMovieIndex, remainingUrls, localHits };
+};
+
 type CuratedFilm = {
   name: string;
   year: number | null;
@@ -3044,16 +3090,25 @@ function App() {
       const parsedMovieIndex = parseResult.movieIndex || {}; // Contains csv_name/csv_year
       const totalFilms = allUrls.length;
 
+      const localResult = applyLocalEnrichment({
+        urls: allUrls,
+        movieIndex: parsedMovieIndex,
+        localIndex: localEnrichmentIndex,
+        canonicalize: canonicalizeUri,
+      });
+      let mergedMovieIndex = localResult.mergedMovieIndex;
+      const remainingUrls = localResult.remainingUrls;
+      const localHits = localResult.localHits;
+
       setScrapeStatus(`Found ${totalFilms} films. Enriching with TMDb data...`);
-      setScrapeProgress({ current: 0, total: totalFilms });
+      setScrapeProgress({ current: localHits, total: totalFilms });
 
       // Phase 2: Enrich in batches
-      let mergedMovieIndex: Record<string, any> = {};
       const batchSize = 10;
-      let processed = 0;
+      let processed = localHits;
 
-      for (let i = 0; i < allUrls.length; i += batchSize) {
-        const batch = allUrls.slice(i, i + batchSize);
+      for (let i = 0; i < remainingUrls.length; i += batchSize) {
+        const batch = remainingUrls.slice(i, i + batchSize);
         const batchNum = Math.floor(i / batchSize) + 1;
 
         // Build films data with name/year for this batch
@@ -3282,16 +3337,25 @@ function App() {
         const parsedMovieIndex = parseResult.movieIndex || {}; // Contains csv_name/csv_year
         const totalFilms = allUrls.length;
 
+        const localResult = applyLocalEnrichment({
+          urls: allUrls,
+          movieIndex: parsedMovieIndex,
+          localIndex: localEnrichmentIndex,
+          canonicalize: canonicalizeUri,
+        });
+        let mergedMovieIndex = localResult.mergedMovieIndex;
+        const remainingUrls = localResult.remainingUrls;
+        const localHits = localResult.localHits;
+
         setWatchlistStatus(`Found ${totalFilms} films. Enriching...`);
-        setWatchlistProgress({ current: 0, total: totalFilms });
+        setWatchlistProgress({ current: localHits, total: totalFilms });
 
         // Phase 2: Enrich in batches
-        let mergedMovieIndex: Record<string, any> = {};
         const batchSize = 10;
-        let processed = 0;
+        let processed = localHits;
 
-        for (let i = 0; i < allUrls.length; i += batchSize) {
-          const batch = allUrls.slice(i, i + batchSize);
+        for (let i = 0; i < remainingUrls.length; i += batchSize) {
+          const batch = remainingUrls.slice(i, i + batchSize);
           const batchNum = Math.floor(i / batchSize) + 1;
 
           // Build films data with name/year for this batch
@@ -4175,6 +4239,36 @@ function App() {
           .catch(() => setCuratedLoading(false));
       });
   }, [curatedPayload, curatedLoading]);
+
+  const localEnrichmentIndex = useMemo(() => {
+    if (!curatedPayload?.films?.length) return null;
+    const byUri: Record<string, any> = {};
+    const byTitleYear: Record<string, any> = {};
+
+    for (const film of curatedPayload.films) {
+      if (!film?.tmdb_data) continue;
+      const entry = {
+        tmdb_data: film.tmdb_data,
+        tmdb_movie_id: film.tmdb_movie_id ?? null,
+        letterboxd_url: film.url || "",
+        is_by_black_director: film.is_by_black_director === true,
+        is_in_criterion_collection: Boolean(film.lists?.criterion),
+      };
+      const url = film.url || "";
+      if (url) {
+        byUri[url] = entry;
+        const m = url.match(/\/film\/([^/]+)/i);
+        if (m) {
+          const canonical = `https://letterboxd.com/film/${m[1]}/`;
+          byUri[canonical] = entry;
+        }
+      }
+      const key = normalizeTitleYear(film.name, film.year);
+      if (key) byTitleYear[key] = entry;
+    }
+
+    return { byUri, byTitleYear };
+  }, [curatedPayload]);
 
   // Set of diary slugs for "haven't seen" / "have seen" filtering (all-time)
   const diarySlugs = useMemo(() => {
@@ -5169,6 +5263,48 @@ function App() {
     return first;
   }, [rows, movieLookup, canonicalizeUri]);
 
+  const personProfileMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!movieLookup) return map;
+    for (const row of rows) {
+      const uriRaw = (row["Letterboxd URI"] || "").trim();
+      if (!uriRaw) continue;
+      const canon = canonicalizeUri(uriRaw);
+      const movie = movieLookup[uriRaw] || movieLookup[canon];
+      if (!movie?.tmdb_data) continue;
+      const directors = movie.tmdb_data?.directors || [];
+      const writers = movie.tmdb_data?.writers || [];
+      for (const person of [...directors, ...writers]) {
+        const name = person?.name;
+        const path = person?.profile_path;
+        if (!name || !path) continue;
+        if (!map.has(name)) map.set(name, path);
+      }
+    }
+    return map;
+  }, [rows, movieLookup, canonicalizeUri]);
+
+  const personProfileById = useMemo(() => {
+    const map = new Map<number, string>();
+    if (!movieLookup) return map;
+    for (const row of rows) {
+      const uriRaw = (row["Letterboxd URI"] || "").trim();
+      if (!uriRaw) continue;
+      const canon = canonicalizeUri(uriRaw);
+      const movie = movieLookup[uriRaw] || movieLookup[canon];
+      if (!movie?.tmdb_data) continue;
+      const directors = movie.tmdb_data?.directors || [];
+      const writers = movie.tmdb_data?.writers || [];
+      for (const person of [...directors, ...writers]) {
+        const id = person?.id;
+        const path = person?.profile_path;
+        if (typeof id !== "number" || !path) continue;
+        if (!map.has(id)) map.set(id, path);
+      }
+    }
+    return map;
+  }, [rows, movieLookup, canonicalizeUri]);
+
   const diversifyNoteRef = useRef<{ lastIndex: number; map: Record<string, string> }>({ lastIndex: -1, map: {} });
   const getDiversifyNote = useCallback((key: string) => {
     if (diversifyNoteRef.current.map[key]) return diversifyNoteRef.current.map[key];
@@ -5180,7 +5316,7 @@ function App() {
   }, []);
 
   const buildPeopleStats = useCallback((entries: Array<{ movie: any; rating: number }>, getPeople: (movie: any) => Array<any>) => {
-    const stats = new Map<string, { name: string; count: number; ratingSum: number; ratingCount: number; profilePath?: string | null }>();
+    const stats = new Map<string, { name: string; count: number; ratingSum: number; ratingCount: number; profilePath?: string | null; id?: number | null }>();
     for (const entry of entries) {
       const people = getPeople(entry.movie) || [];
       const seen = new Set<string>();
@@ -5188,13 +5324,18 @@ function App() {
         const name = person?.name;
         if (!name || seen.has(name)) continue;
         seen.add(name);
-        const current = stats.get(name) || { name, count: 0, ratingSum: 0, ratingCount: 0, profilePath: null };
+        const current = stats.get(name) || { name, count: 0, ratingSum: 0, ratingCount: 0, profilePath: null, id: null };
         current.count += 1;
+        if (typeof person?.id === "number" && current.id == null) current.id = person.id;
         if (!Number.isNaN(entry.rating)) {
           current.ratingSum += entry.rating;
           current.ratingCount += 1;
         }
         if (!current.profilePath && person?.profile_path) current.profilePath = person.profile_path;
+        if (!current.profilePath && personProfileMap.has(name)) current.profilePath = personProfileMap.get(name) || null;
+        if (!current.profilePath && typeof current.id === "number" && personProfileById.has(current.id)) {
+          current.profilePath = personProfileById.get(current.id) || null;
+        }
         stats.set(name, current);
       }
     }
@@ -5205,7 +5346,7 @@ function App() {
       ratingCount: p.ratingCount,
       profilePath: p.profilePath,
     }));
-  }, []);
+  }, [personProfileMap, personProfileById]);
 
   const getFemaleDirectors = useCallback((movie: any) => {
     const tmdb = movie.tmdb_data || {};

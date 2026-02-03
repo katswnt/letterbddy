@@ -105,7 +105,7 @@ export async function setCached(key: string, value: unknown, expiresInSeconds?: 
 
 // Cache key prefixes
 export const CACHE_KEYS = {
-  TMDB_DATA: 'tmdb:v3:',
+  TMDB_DATA: 'tmdb:v4:', // v4: include profile_path in cached TMDb data
   LETTERBOXD_MAPPING: 'lb:v4:', // v4: invalidate bad entries cached during Cloudflare blocking
 } as const;
 
