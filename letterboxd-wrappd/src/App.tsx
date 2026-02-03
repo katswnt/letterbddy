@@ -121,6 +121,52 @@ type CuratedListMeta = {
   ranked?: boolean;
 };
 
+const normalizeTitleYear = (name?: string | null, year?: string | number | null) => {
+  const title = (name || "").trim().toLowerCase();
+  const yearText = year != null ? String(year).trim() : "";
+  if (!title && !yearText) return "";
+  return `${title}|${yearText}`;
+};
+
+const applyLocalEnrichment = ({
+  urls,
+  movieIndex,
+  localIndex,
+  canonicalize,
+}: {
+  urls: string[];
+  movieIndex: Record<string, any>;
+  localIndex: { byUri: Record<string, any>; byTitleYear: Record<string, any> } | null;
+  canonicalize: (value: string) => string;
+}) => {
+  let mergedMovieIndex: Record<string, any> = {};
+  let localHits = 0;
+  const remainingUrls: string[] = [];
+
+  if (localIndex) {
+    for (const url of urls) {
+      const movieData = movieIndex[url];
+      const key = normalizeTitleYear(movieData?.csv_name, movieData?.csv_year);
+      const canonical = canonicalize(url);
+      const entry =
+        localIndex.byUri[url] ||
+        (canonical && localIndex.byUri[canonical]) ||
+        (key && localIndex.byTitleYear[key]);
+      if (entry) {
+        mergedMovieIndex[url] = entry;
+        if (canonical && !mergedMovieIndex[canonical]) mergedMovieIndex[canonical] = entry;
+        localHits += 1;
+      } else {
+        remainingUrls.push(url);
+      }
+    }
+  } else {
+    remainingUrls.push(...urls);
+  }
+
+  return { mergedMovieIndex, remainingUrls, localHits };
+};
+
 type CuratedFilm = {
   name: string;
   year: number | null;
@@ -3044,16 +3090,25 @@ function App() {
       const parsedMovieIndex = parseResult.movieIndex || {}; // Contains csv_name/csv_year
       const totalFilms = allUrls.length;
 
+      const localResult = applyLocalEnrichment({
+        urls: allUrls,
+        movieIndex: parsedMovieIndex,
+        localIndex: localEnrichmentIndex,
+        canonicalize: canonicalizeUri,
+      });
+      let mergedMovieIndex = localResult.mergedMovieIndex;
+      const remainingUrls = localResult.remainingUrls;
+      const localHits = localResult.localHits;
+
       setScrapeStatus(`Found ${totalFilms} films. Enriching with TMDb data...`);
-      setScrapeProgress({ current: 0, total: totalFilms });
+      setScrapeProgress({ current: localHits, total: totalFilms });
 
       // Phase 2: Enrich in batches
-      let mergedMovieIndex: Record<string, any> = {};
       const batchSize = 10;
-      let processed = 0;
+      let processed = localHits;
 
-      for (let i = 0; i < allUrls.length; i += batchSize) {
-        const batch = allUrls.slice(i, i + batchSize);
+      for (let i = 0; i < remainingUrls.length; i += batchSize) {
+        const batch = remainingUrls.slice(i, i + batchSize);
         const batchNum = Math.floor(i / batchSize) + 1;
 
         // Build films data with name/year for this batch
@@ -3282,16 +3337,25 @@ function App() {
         const parsedMovieIndex = parseResult.movieIndex || {}; // Contains csv_name/csv_year
         const totalFilms = allUrls.length;
 
+        const localResult = applyLocalEnrichment({
+          urls: allUrls,
+          movieIndex: parsedMovieIndex,
+          localIndex: localEnrichmentIndex,
+          canonicalize: canonicalizeUri,
+        });
+        let mergedMovieIndex = localResult.mergedMovieIndex;
+        const remainingUrls = localResult.remainingUrls;
+        const localHits = localResult.localHits;
+
         setWatchlistStatus(`Found ${totalFilms} films. Enriching...`);
-        setWatchlistProgress({ current: 0, total: totalFilms });
+        setWatchlistProgress({ current: localHits, total: totalFilms });
 
         // Phase 2: Enrich in batches
-        let mergedMovieIndex: Record<string, any> = {};
         const batchSize = 10;
-        let processed = 0;
+        let processed = localHits;
 
-        for (let i = 0; i < allUrls.length; i += batchSize) {
-          const batch = allUrls.slice(i, i + batchSize);
+        for (let i = 0; i < remainingUrls.length; i += batchSize) {
+          const batch = remainingUrls.slice(i, i + batchSize);
           const batchNum = Math.floor(i / batchSize) + 1;
 
           // Build films data with name/year for this batch
@@ -4175,6 +4239,36 @@ function App() {
           .catch(() => setCuratedLoading(false));
       });
   }, [curatedPayload, curatedLoading]);
+
+  const localEnrichmentIndex = useMemo(() => {
+    if (!curatedPayload?.films?.length) return null;
+    const byUri: Record<string, any> = {};
+    const byTitleYear: Record<string, any> = {};
+
+    for (const film of curatedPayload.films) {
+      if (!film?.tmdb_data) continue;
+      const entry = {
+        tmdb_data: film.tmdb_data,
+        tmdb_movie_id: film.tmdb_movie_id ?? null,
+        letterboxd_url: film.url || "",
+        is_by_black_director: film.is_by_black_director === true,
+        is_in_criterion_collection: Boolean(film.lists?.criterion),
+      };
+      const url = film.url || "";
+      if (url) {
+        byUri[url] = entry;
+        const m = url.match(/\/film\/([^/]+)/i);
+        if (m) {
+          const canonical = `https://letterboxd.com/film/${m[1]}/`;
+          byUri[canonical] = entry;
+        }
+      }
+      const key = normalizeTitleYear(film.name, film.year);
+      if (key) byTitleYear[key] = entry;
+    }
+
+    return { byUri, byTitleYear };
+  }, [curatedPayload]);
 
   // Set of diary slugs for "haven't seen" / "have seen" filtering (all-time)
   const diarySlugs = useMemo(() => {
