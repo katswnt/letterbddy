@@ -103,6 +103,7 @@ type WatchlistMovie = {
   notEnglish: boolean;
   inCriterion: boolean;
   criteriaCount: number;
+  posterPath?: string | null;
 };
 
 // Runtime filter options
@@ -166,6 +167,7 @@ type DoubleFeatureItem = {
   isEnglish: boolean | null;
   directedByWoman: boolean;
   onWatchlist: boolean;
+  posterPath?: string | null;
 };
 
 type DoubleFeaturePair = {
@@ -319,6 +321,11 @@ const sanitizeReviewHtml = (input: string) => {
   };
   sanitizeNode(doc.body);
   return doc.body.innerHTML;
+};
+
+const formatReviewHtml = (text: string) => {
+  const normalized = text.trim().replace(/\n{3,}/g, "\n\n");
+  return sanitizeReviewHtml(normalized.replace(/\n/g, "<br>"));
 };
 
 const REVIEW_POSITIVE_WORDS = new Set([
@@ -917,6 +924,7 @@ const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, cl
 
 const HEAT_COLORS = ["#1c232a", "#21462c", "#2f6f3a", "#3fbf5a", "#00e054"];
 const TMDB_PROFILE_BASE = "https://image.tmdb.org/t/p/w185";
+const TMDB_POSTER_BASE = "https://image.tmdb.org/t/p/w200";
 const TASTE_DIVERSIFY_NOTES = [
   "Your watched list has a type. It's time to broaden the dating pool.",
   "The data says: go watch something outside your comfort zone.",
@@ -1611,14 +1619,46 @@ const WatchlistBuilder = memo(({
     const csvText = Papa.unparse(csvRows, {
       columns: ["Date", "Name", "Year", "Letterboxd URI"],
     });
+    const slugify = (value: string) =>
+      value
+        .toLowerCase()
+        .replace(/&/g, "and")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+    const creatorTokens: string[] = [];
+    if (builderState.directorWomen) creatorTokens.push("women-directors");
+    if (builderState.writerWomen) creatorTokens.push("women-writers");
+    if (builderState.directorBlack) creatorTokens.push("black-directors");
+    const creatorsPart = creatorTokens.length
+      ? `${creatorTokens.join("_")}${creatorTokens.length > 1 ? `-${builderState.directorMode}` : ""}`
+      : "any-creators";
+    const originMap: Record<WatchlistBuilderState["origin"], string> = {
+      anywhere: "anywhere",
+      "not-usa": "not-usa",
+      "non-english": "non-english",
+      africa: "africa",
+      asia: "asia",
+      europe: "europe",
+      "latin-america": "latin-america",
+      "middle-east": "middle-east",
+      oceania: "oceania",
+    };
+    const filename = slugify(
+      [
+        "watchlist-builder",
+        creatorsPart,
+        originMap[builderState.origin],
+      ].join("-")
+    );
     const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "watchlist-builder.csv";
+    a.download = `${filename}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [builderResults]);
+  }, [builderResults, builderState]);
 
   const totalMatches = useMemo(() => {
     return builderResults.length;
@@ -2006,6 +2046,7 @@ const DoubleFeatureBuilder = memo(({
           isAmerican: typeof tmdb.is_american === "boolean" ? tmdb.is_american : null,
           isEnglish: typeof tmdb.is_english === "boolean" ? tmdb.is_english : null,
           directedByWoman: tmdb.directed_by_woman === true,
+          posterPath: tmdb.poster_path || null,
           onWatchlist:
             (slug && watchlistSlugs.has(slug)) ||
             (titleYearKey && watchlistTitleYears.has(titleYearKey)),
@@ -2032,6 +2073,7 @@ const DoubleFeatureBuilder = memo(({
       isAmerican: movie.notAmerican ? false : true,
       isEnglish: movie.notEnglish ? false : true,
       directedByWoman: movie.directedByWoman,
+      posterPath: movie.posterPath || null,
       onWatchlist: true,
     }));
   }, [watchlistMovies]);
@@ -2272,6 +2314,7 @@ const DoubleFeatureBuilder = memo(({
             {[pair.a, pair.b].map((item, side) => {
               const stubKey = `${idx}-${side}`;
               const isOpen = expandedStubs.has(stubKey);
+              const posterUrl = item.posterPath ? `${TMDB_POSTER_BASE}${item.posterPath}` : null;
               return (
                 <Fragment key={stubKey}>
                   {side === 1 && (
@@ -2282,38 +2325,50 @@ const DoubleFeatureBuilder = memo(({
                     </div>
                   )}
                   <div
-                    className={`lb-double-stub${isOpen ? " is-open" : ""}`}
+                    className={`lb-double-stub${isOpen ? " is-open" : ""}${side === 1 ? " is-right" : " is-left"}`}
                     onClick={(e) => {
                       if ((e.target as HTMLElement).closest("a")) return;
                       toggleStub(stubKey);
                     }}
                   >
-                    <div className="lb-double-stub-title">
-                      {item.url ? (
-                        <a href={item.url} target="_blank" rel="noopener noreferrer">
-                          {item.name}
-                        </a>
-                      ) : (
-                        item.name
-                      )}
-                    </div>
-                    <div className="lb-double-stub-meta">{item.year || "—"}{item.runtime ? ` · ${item.runtime}m` : ""}</div>
-                    {isOpen && (
-                      <div className="lb-double-stub-detail">
-                        {item.directorNames.length > 0 && (
-                          <div><span className="lb-double-detail-label">Dir</span> {item.directorNames.join(", ")}</div>
-                        )}
-                        {item.language && (
-                          <div><span className="lb-double-detail-label">Lang</span> {item.language.toUpperCase()}</div>
-                        )}
-                        {item.countryCodes.length > 0 && (
-                          <div><span className="lb-double-detail-label">From</span> {item.countryCodes.join(", ")}</div>
-                        )}
-                        {item.genres.length > 0 && (
-                          <div><span className="lb-double-detail-label">Genre</span> {item.genres.slice(0, 3).join(", ")}</div>
-                        )}
+                    {posterUrl && (
+                      <div className="lb-double-poster">
+                        <img
+                          src={posterUrl}
+                          alt={`${item.name} poster`}
+                          loading="lazy"
+                          decoding="async"
+                        />
                       </div>
                     )}
+                    <div className="lb-double-stub-content">
+                      <div className="lb-double-stub-title">
+                        {item.url ? (
+                          <a href={item.url} target="_blank" rel="noopener noreferrer">
+                            {item.name}
+                          </a>
+                        ) : (
+                          item.name
+                        )}
+                      </div>
+                      <div className="lb-double-stub-meta">{item.year || "—"}{item.runtime ? ` · ${item.runtime}m` : ""}</div>
+                      {isOpen && (
+                        <div className="lb-double-stub-detail">
+                          {item.directorNames.length > 0 && (
+                            <div><span className="lb-double-detail-label">Dir</span> {item.directorNames.join(", ")}</div>
+                          )}
+                          {item.language && (
+                            <div><span className="lb-double-detail-label">Lang</span> {item.language.toUpperCase()}</div>
+                          )}
+                          {item.countryCodes.length > 0 && (
+                            <div><span className="lb-double-detail-label">From</span> {item.countryCodes.join(", ")}</div>
+                          )}
+                          {item.genres.length > 0 && (
+                            <div><span className="lb-double-detail-label">Genre</span> {item.genres.slice(0, 3).join(", ")}</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </Fragment>
               );
@@ -3451,6 +3506,7 @@ function App() {
             notEnglish,
             inCriterion,
             criteriaCount,
+            posterPath: tmdbData?.poster_path || null,
           });
         }
       }
@@ -3822,6 +3878,7 @@ function App() {
           wordCount: number;
           rating: number | null;
           date: string;
+          posterUrl?: string | null;
         } | null;
         mostHated: {
           review: ReviewRow;
@@ -3830,11 +3887,50 @@ function App() {
           wordCount: number;
           rating: number | null;
           date: string;
+          posterUrl?: string | null;
         } | null;
         lovedIsLong: boolean;
         hatedIsLong: boolean;
         reviewDensity: number;
       };
+
+  const movieLookup = useMemo(() => {
+    if (!movieIndex) return null;
+
+    const lookup: Record<string, any> = {};
+    for (const [key, movie] of Object.entries(movieIndex)) {
+      // Canonical key
+      lookup[key] = movie;
+
+      // Common alias fields (be liberal; harmless if missing)
+      const aliases: string[] = [];
+      if (typeof movie?.letterboxd_url === "string") aliases.push(movie.letterboxd_url);
+      if (Array.isArray(movie?.letterboxd_urls)) aliases.push(...movie.letterboxd_urls);
+      if (Array.isArray(movie?.source_uris)) aliases.push(...movie.source_uris);
+      if (Array.isArray(movie?.aliases)) aliases.push(...movie.aliases);
+      if (typeof movie?.original_uri === "string") aliases.push(movie.original_uri);
+      if (typeof movie?.shortlink === "string") aliases.push(movie.shortlink);
+      if (typeof movie?.boxd_shortlink === "string") aliases.push(movie.boxd_shortlink);
+
+      for (const a of aliases) {
+        if (typeof a !== "string") continue;
+        const trimmed = a.trim();
+        if (!trimmed) continue;
+        lookup[trimmed] = movie;
+      }
+
+      // Also support user-scoped film URLs by canonicalizing them to /film/<slug>/
+      if (typeof key === "string") {
+        const m = key.match(/https?:\/\/letterboxd\.com\/(?:[^/]+\/)?film\/([^/]+)\/?/i);
+        if (m) {
+          const canonical = `https://letterboxd.com/film/${m[1]}/`;
+          lookup[canonical] = movie;
+        }
+      }
+    }
+
+    return lookup;
+  }, [movieIndex]);
 
   const reviewStats = useMemo<ReviewStats>(() => {
     if (reviews.length === 0) {
@@ -3959,6 +4055,21 @@ function App() {
     const uniqueWatchedCount = films.length || 0;
     const reviewDensity = uniqueWatchedCount ? Math.round((reviews.length / uniqueWatchedCount) * 100) : 0;
 
+    const resolvePoster = (review: ReviewRow): string | null => {
+      if (!movieLookup) return null;
+      const uriRaw = (review["Letterboxd URI"] || "").trim();
+      const canon = uriRaw ? canonicalizeUri(uriRaw) : "";
+      const name = (review.Name || "").trim().toLowerCase();
+      const year = (review.Year || "").trim();
+      const keyByName = name ? `${name}|${year}` : "";
+      const movie =
+        (canon && movieLookup[canon]) ||
+        (uriRaw && movieLookup[uriRaw]) ||
+        (keyByName && movieLookup[keyByName]);
+      const posterPath = movie?.tmdb_data?.poster_path || null;
+      return posterPath ? `${TMDB_POSTER_BASE}${posterPath}` : null;
+    };
+
     return {
       hasReviews: true,
       hasEntries: true,
@@ -3972,13 +4083,13 @@ function App() {
       voiceLabel,
       sentimentPoints,
       scatterPoints,
-      mostLoved,
-      mostHated,
+      mostLoved: mostLoved ? { ...mostLoved, posterUrl: resolvePoster(mostLoved.review) } : null,
+      mostHated: mostHated ? { ...mostHated, posterUrl: resolvePoster(mostHated.review) } : null,
       lovedIsLong,
       hatedIsLong,
       reviewDensity,
     };
-  }, [reviews, films, dateFilter, filteredRows, canonicalizeUri]);
+  }, [reviews, films, dateFilter, filteredRows, canonicalizeUri, movieLookup]);
 
   // TMDb stats (from movieIndex, filtered to match current date range)
   // Get unique Letterboxd URIs from filtered diary rows
@@ -4008,44 +4119,6 @@ function App() {
     [filteredRows, ratingFilter]
   );
   
-  const movieLookup = useMemo(() => {
-    if (!movieIndex) return null;
-
-    const lookup: Record<string, any> = {};
-    for (const [key, movie] of Object.entries(movieIndex)) {
-      // Canonical key
-      lookup[key] = movie;
-
-      // Common alias fields (be liberal; harmless if missing)
-      const aliases: string[] = [];
-      if (typeof movie?.letterboxd_url === "string") aliases.push(movie.letterboxd_url);
-      if (Array.isArray(movie?.letterboxd_urls)) aliases.push(...movie.letterboxd_urls);
-      if (Array.isArray(movie?.source_uris)) aliases.push(...movie.source_uris);
-      if (Array.isArray(movie?.aliases)) aliases.push(...movie.aliases);
-      if (typeof movie?.original_uri === "string") aliases.push(movie.original_uri);
-      if (typeof movie?.shortlink === "string") aliases.push(movie.shortlink);
-      if (typeof movie?.boxd_shortlink === "string") aliases.push(movie.boxd_shortlink);
-
-      for (const a of aliases) {
-        if (typeof a !== "string") continue;
-        const trimmed = a.trim();
-        if (!trimmed) continue;
-        lookup[trimmed] = movie;
-      }
-
-      // Also support user-scoped film URLs by canonicalizing them to /film/<slug>/
-      if (typeof key === "string") {
-        const m = key.match(/https?:\/\/letterboxd\.com\/(?:[^/]+\/)?film\/([^/]+)\/?/i);
-        if (m) {
-          const canonical = `https://letterboxd.com/film/${m[1]}/`;
-          lookup[canonical] = movie;
-        }
-      }
-    }
-
-    return lookup;
-  }, [movieIndex]);
-
   const diaryRatingMap = useMemo(() => {
     const map = new Map<string, { rating: number; date: string }>();
     for (const row of filteredRows) {
@@ -6817,7 +6890,7 @@ function App() {
                       </div>
                     </div>
                     <div className="lb-review-drawer-body">
-                      <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(scatterReview.text.replace(/\n/g, "<br>")) }} />
+                      <span dangerouslySetInnerHTML={{ __html: formatReviewHtml(scatterReview.text) }} />
                     </div>
                     {scatterReview.url && (
                       <a className="lb-review-drawer-link" href={scatterReview.url} target="_blank" rel="noreferrer">
@@ -6826,13 +6899,25 @@ function App() {
                     )}
                   </div>
                 )}
-                <div className="lb-review-card">
+                <div className="lb-review-card lb-review-card--feature">
                   <div className="lb-review-card-title">Most loved review</div>
                   {reviewStats.mostLoved ? (
                     <>
-                      <div className="lb-review-card-metric">{reviewStats.mostLoved.review.Name} ({reviewStats.mostLoved.review.Year}) · ★{reviewStats.mostLoved.rating}</div>
-                      <div className={`lb-review-excerpt ${reviewStats.lovedIsLong && !reviewLovedExpanded ? "lb-review-excerpt-collapsed" : ""}`}>
-                        <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(reviewStats.mostLoved.text.replace(/\n/g, "<br>")) }} />
+                      <div className="lb-review-body">
+                        {reviewStats.mostLoved.posterUrl && (
+                          <img
+                            className="lb-review-poster lb-review-poster-large"
+                            src={reviewStats.mostLoved.posterUrl}
+                            alt={`${reviewStats.mostLoved.review.Name} poster`}
+                            loading="lazy"
+                          />
+                        )}
+                        <div className="lb-review-card-metric">
+                          <div>{reviewStats.mostLoved.review.Name} ({reviewStats.mostLoved.review.Year}) · ★{reviewStats.mostLoved.rating}</div>
+                        </div>
+                        <div className={`lb-review-excerpt ${reviewStats.lovedIsLong && !reviewLovedExpanded ? "lb-review-excerpt-collapsed" : ""}`}>
+                          <span dangerouslySetInnerHTML={{ __html: formatReviewHtml(reviewStats.mostLoved.text) }} />
+                        </div>
                       </div>
                       {reviewStats.lovedIsLong && (
                         <button
@@ -6848,13 +6933,25 @@ function App() {
                     <div className="lb-review-card-sub">No rated reviews yet.</div>
                   )}
                 </div>
-                <div className="lb-review-card">
+                <div className="lb-review-card lb-review-card--feature">
                   <div className="lb-review-card-title">Most hated review</div>
                   {reviewStats.mostHated ? (
                     <>
-                      <div className="lb-review-card-metric">{reviewStats.mostHated.review.Name} ({reviewStats.mostHated.review.Year}) · ★{reviewStats.mostHated.rating}</div>
-                      <div className={`lb-review-excerpt ${reviewStats.hatedIsLong && !reviewHatedExpanded ? "lb-review-excerpt-collapsed" : ""}`}>
-                        <span dangerouslySetInnerHTML={{ __html: sanitizeReviewHtml(reviewStats.mostHated.text.replace(/\n/g, "<br>")) }} />
+                      <div className="lb-review-body">
+                        {reviewStats.mostHated.posterUrl && (
+                          <img
+                            className="lb-review-poster lb-review-poster-large"
+                            src={reviewStats.mostHated.posterUrl}
+                            alt={`${reviewStats.mostHated.review.Name} poster`}
+                            loading="lazy"
+                          />
+                        )}
+                        <div className="lb-review-card-metric">
+                          <div>{reviewStats.mostHated.review.Name} ({reviewStats.mostHated.review.Year}) · ★{reviewStats.mostHated.rating}</div>
+                        </div>
+                        <div className={`lb-review-excerpt ${reviewStats.hatedIsLong && !reviewHatedExpanded ? "lb-review-excerpt-collapsed" : ""}`}>
+                          <span dangerouslySetInnerHTML={{ __html: formatReviewHtml(reviewStats.mostHated.text) }} />
+                        </div>
                       </div>
                       {reviewStats.hatedIsLong && (
                         <button
