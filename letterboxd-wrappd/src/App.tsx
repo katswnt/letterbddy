@@ -1633,12 +1633,6 @@ const WatchlistBuilder = memo(({
     const creatorsPart = creatorTokens.length
       ? `${creatorTokens.join("_")}${creatorTokens.length > 1 ? `-${builderState.directorMode}` : ""}`
       : "any-creators";
-    const qualityMap: Record<WatchlistBuilderState["quality"], string> = {
-      any: "any-quality",
-      "critically-acclaimed": "critically-acclaimed",
-      "highest-rated": "highest-rated",
-      "imdb-popularity": "imdb-popularity",
-    };
     const originMap: Record<WatchlistBuilderState["origin"], string> = {
       anywhere: "anywhere",
       "not-usa": "not-usa",
