@@ -133,11 +133,13 @@ const applyLocalEnrichment = ({
   movieIndex,
   localIndex,
   canonicalize,
+  needsFreshProfile,
 }: {
   urls: string[];
   movieIndex: Record<string, any>;
   localIndex: { byUri: Record<string, any>; byTitleYear: Record<string, any> } | null;
   canonicalize: (value: string) => string;
+  needsFreshProfile: boolean;
 }) => {
   let mergedMovieIndex: Record<string, any> = {};
   let localHits = 0;
@@ -152,8 +154,12 @@ const applyLocalEnrichment = ({
         localIndex.byUri[url] ||
         (canonical && localIndex.byUri[canonical]) ||
         (key && localIndex.byTitleYear[key]);
-      if (entry) {
-        mergedMovieIndex[url] = entry;
+      const hasProfile =
+        !needsFreshProfile ||
+        ((entry.tmdb_data?.directors || []).some((p: any) => p?.profile_path) ||
+          (entry.tmdb_data?.writers || []).some((p: any) => p?.profile_path));
+      if (entry && hasProfile) {
+        mergedMovieIndex[url] = { ...movieData, ...entry };
         if (canonical && !mergedMovieIndex[canonical]) mergedMovieIndex[canonical] = entry;
         localHits += 1;
       } else {
@@ -3090,11 +3096,19 @@ function App() {
       const parsedMovieIndex = parseResult.movieIndex || {}; // Contains csv_name/csv_year
       const totalFilms = allUrls.length;
 
+      const canonicalizeWithMap = (value: string) => {
+        if (/^https?:\/\/boxd\.it\//i.test(value)) {
+          const mapped = uriMap ? uriMap[value] : null;
+          if (typeof mapped === "string" && mapped.trim()) return mapped.trim();
+        }
+        return canonicalizeUri(value);
+      };
       const localResult = applyLocalEnrichment({
         urls: allUrls,
         movieIndex: parsedMovieIndex,
         localIndex: localEnrichmentIndex,
-        canonicalize: canonicalizeUri,
+        canonicalize: canonicalizeWithMap,
+        needsFreshProfile: true,
       });
       let mergedMovieIndex = localResult.mergedMovieIndex;
       const remainingUrls = localResult.remainingUrls;
@@ -3337,11 +3351,19 @@ function App() {
         const parsedMovieIndex = parseResult.movieIndex || {}; // Contains csv_name/csv_year
         const totalFilms = allUrls.length;
 
+        const canonicalizeWithMap = (value: string) => {
+          if (/^https?:\/\/boxd\.it\//i.test(value)) {
+            const mapped = uriMap ? uriMap[value] : null;
+            if (typeof mapped === "string" && mapped.trim()) return mapped.trim();
+          }
+          return canonicalizeUri(value);
+        };
         const localResult = applyLocalEnrichment({
           urls: allUrls,
           movieIndex: parsedMovieIndex,
           localIndex: localEnrichmentIndex,
-          canonicalize: canonicalizeUri,
+          canonicalize: canonicalizeWithMap,
+          needsFreshProfile: true,
         });
         let mergedMovieIndex = localResult.mergedMovieIndex;
         const remainingUrls = localResult.remainingUrls;
