@@ -156,8 +156,8 @@ const applyLocalEnrichment = ({
         (key && localIndex.byTitleYear[key]);
       const hasProfile =
         !needsFreshProfile ||
-        ((entry.tmdb_data?.directors || []).some((p: any) => p?.profile_path) ||
-          (entry.tmdb_data?.writers || []).some((p: any) => p?.profile_path));
+        (((entry?.tmdb_data?.directors || []) as any[]).some((p: any) => p?.profile_path) ||
+          ((entry?.tmdb_data?.writers || []) as any[]).some((p: any) => p?.profile_path));
       if (entry && hasProfile) {
         mergedMovieIndex[url] = { ...movieData, ...entry };
         if (canonical && !mergedMovieIndex[canonical]) mergedMovieIndex[canonical] = entry;
@@ -3811,13 +3811,13 @@ function App() {
   const prevIsLoadingRef = useRef(false);
   useEffect(() => {
     const finishedLoading = prevIsLoadingRef.current && !isLoading;
-    if ((finishedLoading || !prevDiaryLoadedRef.current) && diaryLoaded && !isLoading) {
+    if ((finishedLoading || !prevDiaryLoadedRef.current) && diaryLoaded && !isLoading && movieIndex) {
       setManualUploadOpen(false);
       setPendingUploadTarget(null);
     }
     prevDiaryLoadedRef.current = diaryLoaded;
     prevIsLoadingRef.current = isLoading;
-  }, [diaryLoaded, isLoading]);
+  }, [diaryLoaded, isLoading, movieIndex]);
 
   useEffect(() => {
     if (!builderExpanded || katFavoritesLoading || katFavorites.length > 0) return;
@@ -5931,6 +5931,11 @@ function App() {
               {movieIndex && (
                 <p style={{ color: "#9ab", fontSize: "12px", marginTop: "4px" }}>
                   {Object.keys(movieIndex).length} unique films indexed
+                </p>
+              )}
+              {isLocalDev && (
+                <p style={{ color: "#9ab", fontSize: "11px", marginTop: "6px" }}>
+                  Debug: movieIndex {movieIndex ? Object.keys(movieIndex).length : 0} · uriMap {uriMap ? Object.keys(uriMap).length : 0}
                 </p>
               )}
             </div>
