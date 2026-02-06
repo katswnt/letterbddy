@@ -1573,10 +1573,10 @@ const DiaryTable = memo(({
           className="lb-list"
           minWidth={800}
         />
-        <div className="lb-table-key">
-          Dir♀ = Directed by women · Writ♀ = Written by women · Blk Dir = Films by Black directors <BlackDirectorsInfo align="center" /> · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
         </div>
-        </div>
+      </div>
+      <div className="lb-table-key">
+        Dir♀ = Directed by women · Writ♀ = Written by women · Blk Dir = Films by Black directors <BlackDirectorsInfo align="center" /> · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
       </div>
     </div>
   );
@@ -2002,7 +2002,7 @@ const WatchlistBuilder = memo(({
               <span className="lb-builder-cell-rating">
                 {film.tmdb_data?.vote_average ? film.tmdb_data.vote_average.toFixed(1) : "—"}
               </span>
-              <button type="button" className="lb-builder-remove" onClick={() => onRemove(film.url)}>
+              <button type="button" className="lb-builder-remove" aria-label="Remove film" onClick={() => onRemove(film.url)}>
                 ×
               </button>
             </div>
@@ -2848,10 +2848,10 @@ const WatchlistTable = memo(({
           className="lb-list"
           minWidth={800}
         />
-        <div className="lb-table-key">
-          Dir♀ = Directed by women · Writ♀ = Written by women · Blk Dir = Films by Black directors <BlackDirectorsInfo align="center" /> · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
         </div>
-        </div>
+      </div>
+      <div className="lb-table-key">
+        Dir♀ = Directed by women · Writ♀ = Written by women · Blk Dir = Films by Black directors <BlackDirectorsInfo align="center" /> · !US = Non-American · !EN = Not in English · CC = In the Criterion Collection
       </div>
       {watchlistPaceText && (
         <div className="lb-watchlist-pace">{watchlistPaceText}</div>
@@ -5797,12 +5797,12 @@ function App() {
   }, [moviesWithDataBase]);
 
   return (
-    <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
+    <main style={{ minHeight: "100dvh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
       <Analytics />
       <SpeedInsights />
       <div style={{ width: "100%", maxWidth: "980px", display: "flex", flexDirection: "column", gap: "24px" }}>
         <header style={{ textAlign: "center" }}>
-          <h1 style={{ fontSize: "28px", fontWeight: 700, color: "#fff", marginBottom: "6px", letterSpacing: "0.5px" }}>
+          <h1 style={{ fontSize: "28px", fontWeight: 700, color: "#fff", marginBottom: "6px" }}>
             Letterbddy
           </h1>
           <div style={{ fontSize: "12px", color: "#9ab", marginBottom: "10px" }}>
@@ -6076,8 +6076,10 @@ function App() {
                         height: "100%",
                         borderRadius: "3px",
                         backgroundColor: "#00e054",
-                        width: `${Math.min(100, Math.round((scrapeProgress.current / scrapeProgress.total) * 100))}%`,
-                        transition: "width 0.3s ease",
+                        width: "100%",
+                        transformOrigin: "left",
+                        transform: `scaleX(${Math.min(100, Math.round((scrapeProgress.current / scrapeProgress.total) * 100)) / 100})`,
+                        transition: "transform 200ms ease-out",
                       }}
                     />
                   ) : (
@@ -7130,7 +7132,7 @@ function App() {
                 <div key={row.label} className="lb-comfort-row">
                   <div className="lb-comfort-label">{row.label}</div>
                   <div className="lb-comfort-bar">
-                    <div className="lb-comfort-fill" style={{ width: `${Math.min(100, row.value)}%` }} />
+                    <div className="lb-comfort-fill" style={{ transform: `scaleX(${Math.min(100, row.value) / 100})` }} />
                   </div>
                   <div className="lb-comfort-value">{Math.round(row.value)}%</div>
                   {row.top.length > 0 && (
@@ -7479,8 +7481,10 @@ function App() {
                         height: "100%",
                         borderRadius: "3px",
                         backgroundColor: "#00e054",
-                        width: `${Math.min(100, Math.round((watchlistProgress.current / watchlistProgress.total) * 100))}%`,
-                        transition: "width 0.3s ease"
+                        width: "100%",
+                        transformOrigin: "left",
+                        transform: `scaleX(${Math.min(100, Math.round((watchlistProgress.current / watchlistProgress.total) * 100)) / 100})`,
+                        transition: "transform 200ms ease-out",
                       }}
                     />
                   ) : (
