@@ -6075,7 +6075,8 @@ function App() {
         body: JSON.stringify(shareSnapshot),
       });
       if (!res.ok) {
-        throw new Error(await res.text());
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error || "Failed to create link");
       }
       const data = await res.json();
       setShareUrl(data.url || "");
