@@ -2880,6 +2880,7 @@ function App() {
   // Watchlist state
   const [watchlistMovies, setWatchlistMovies] = useState<WatchlistMovie[]>([]);
   const [watchlistRows, setWatchlistRows] = useState<WatchlistRow[]>([]);
+  const [watchlistOverdueSeed, setWatchlistOverdueSeed] = useState<number>(0);
   const [watchlistStatus, setWatchlistStatus] = useState<string | null>(null);
   const [watchlistProgress, setWatchlistProgress] = useState<{ current: number; total: number } | null>(null);
   const [isWatchlistLoading, setIsWatchlistLoading] = useState<boolean>(false);
@@ -2921,6 +2922,9 @@ function App() {
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
   );
+  const [windowWidth, setWindowWidth] = useState<number>(() =>
+    typeof window !== "undefined" ? window.innerWidth : 1200
+  );
   const [watchlistMissingCount, setWatchlistMissingCount] = useState<number>(0);
   const [watchlistMissingSamples, setWatchlistMissingSamples] = useState<WatchlistRow[]>([]);
   const [watchlistMissingDebug, setWatchlistMissingDebug] = useState<Array<{
@@ -2946,6 +2950,12 @@ function App() {
   const [manualUploadOpen, setManualUploadOpen] = useState<boolean>(false);
   const [pendingUploadTarget, setPendingUploadTarget] = useState<"diary" | "reviews" | "watchlist" | null>(null);
   const builderToggleGuard = useRef<number>(0);
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Watchlist Builder state
   const [curatedPayload, setCuratedPayload] = useState<CuratedListsPayload | null>(null);
@@ -5230,6 +5240,19 @@ function App() {
     if (watchlistRows.length === 0) return [];
     const now = new Date();
     const nowMonths = now.getFullYear() * 12 + now.getMonth();
+    const posterLookup = new Map<string, string | null>();
+    const runtimeByUri = new Map<string, number | null>();
+    const posterByTitleYear = new Map<string, string | null>();
+    const runtimeByTitleYear = new Map<string, number | null>();
+    watchlistMovies.forEach((movie) => {
+      const canon = canonicalizeUri(movie.uri || "");
+      if (canon) posterLookup.set(canon, movie.posterPath || null);
+      if (canon) runtimeByUri.set(canon, movie.runtime ?? null);
+      const nameKey = `${String(movie.name || "").trim().toLowerCase()}|${String(movie.year || "").trim()}`;
+      if (nameKey !== "|") posterByTitleYear.set(nameKey, movie.posterPath || null);
+      if (nameKey !== "|") runtimeByTitleYear.set(nameKey, movie.runtime ?? null);
+    });
+
     const overdueItems: Array<{
       name: string;
       year: string;
@@ -5237,6 +5260,8 @@ function App() {
       addedDate: string;
       ageLabel: string;
       sortKey: number;
+      posterPath: string | null;
+      runtime: number | null;
     }> = [];
 
     for (const row of watchlistRows) {
@@ -5245,32 +5270,38 @@ function App() {
       const uriRaw = (row["Letterboxd URI"] || "").trim();
       if (!name || !uriRaw) continue;
 
+      const addedDate = (row.Date || "").trim();
+      if (!addedDate) continue;
+
+      const parsedDate = new Date(addedDate);
+      if (Number.isNaN(parsedDate.getTime())) continue;
+
       const canonical = canonicalizeUri(uriRaw);
       const titleKey = `${name.toLowerCase()}|${year}`;
       if ((canonical && diarySlugs.has(canonical)) || (titleKey && diaryTitleYears.has(titleKey))) {
         continue;
       }
 
-      let ageLabel = "Unknown";
-      let sortKey = Number.MAX_SAFE_INTEGER;
-      const addedDate = (row.Date || "").trim();
-      if (addedDate) {
-        const parsedDate = new Date(addedDate);
-        if (!Number.isNaN(parsedDate.getTime())) {
-          sortKey = parsedDate.getTime();
-          const monthsDiff = nowMonths - (parsedDate.getFullYear() * 12 + parsedDate.getMonth());
-          const safeMonths = Math.max(0, monthsDiff);
-          const years = Math.floor(safeMonths / 12);
-          const months = safeMonths % 12;
-          if (years > 0) {
-            ageLabel = months > 0 ? `${years}y ${months}m` : `${years}y`;
-          } else if (months > 0) {
-            ageLabel = `${months}m`;
-          } else {
-            ageLabel = "New";
-          }
-        }
+      const sortKey = parsedDate.getTime();
+      const monthsDiff = nowMonths - (parsedDate.getFullYear() * 12 + parsedDate.getMonth());
+      const safeMonths = Math.max(0, monthsDiff);
+      const years = Math.floor(safeMonths / 12);
+      const months = safeMonths % 12;
+      let ageLabel = "New";
+      if (years > 0) {
+        ageLabel = months > 0 ? `${years}y ${months}m` : `${years}y`;
+      } else if (months > 0) {
+        ageLabel = `${months}m`;
       }
+
+      const posterPath =
+        (canonical ? posterLookup.get(canonical) || null : null) ||
+        posterByTitleYear.get(titleKey) ||
+        null;
+      const runtime =
+        (canonical ? runtimeByUri.get(canonical) ?? null : null) ||
+        runtimeByTitleYear.get(titleKey) ||
+        null;
 
       overdueItems.push({
         name,
@@ -5279,12 +5310,40 @@ function App() {
         addedDate,
         ageLabel,
         sortKey,
+        posterPath,
+        runtime,
       });
     }
 
     overdueItems.sort((a, b) => a.sortKey - b.sortKey);
-    return overdueItems.slice(0, 10);
-  }, [watchlistRows, canonicalizeUri, diarySlugs, diaryTitleYears]);
+    const poolSize = Math.max(1, Math.ceil(overdueItems.length * 0.1));
+    const oldestPool = overdueItems.slice(0, poolSize);
+    const displayCount = (() => {
+      if (windowWidth < 510) return 6;
+      if (windowWidth < 760) return 9;
+      if (windowWidth < 980) return 12;
+      return 18;
+    })();
+    if (oldestPool.length <= displayCount) return oldestPool;
+
+    const shuffled = [...oldestPool];
+    let seed = watchlistOverdueSeed || 1;
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      seed = (seed * 9301 + 49297) % 233280;
+      const rand = seed / 233280;
+      const j = Math.floor(rand * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled.slice(0, displayCount);
+  }, [
+    watchlistRows,
+    canonicalizeUri,
+    diarySlugs,
+    diaryTitleYears,
+    watchlistMovies,
+    watchlistOverdueSeed,
+    windowWidth,
+  ]);
 
   const tasteFilmEntries = useMemo(() => {
     if (!movieLookup) return [];
@@ -5719,9 +5778,10 @@ function App() {
       if (genre) genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
 
       const countries = tmdb.production_countries?.codes || [];
-      const countryCodes = new Set<string>();
-      countries.forEach((code: string) => code && countryCodes.add(code));
-      countryCodes.forEach((code) => countryCounts.set(code, (countryCounts.get(code) || 0) + 1));
+      const primaryCountry = countries[0];
+      if (primaryCountry) {
+        countryCounts.set(primaryCountry, (countryCounts.get(primaryCountry) || 0) + 1);
+      }
     }
 
     const directors = countTop3Share(directorCounts);
@@ -7050,16 +7110,22 @@ function App() {
           <section className="lb-comfort-zone">
             <div className="lb-comfort-header">
               <div className="lb-comfort-title">Comfort Zone Index</div>
-              <div className="lb-comfort-score">{Math.round(comfortZoneStats.index)}%</div>
-            </div>
-            <div className="lb-comfort-subnote">
-              Share of your watches that come from your top 3 directors, genres, and countries.
+              <div className={`lb-comfort-score${(() => {
+                const idx = comfortZoneStats.index;
+                if (idx < 30) return " lb-comfort-score--adventurous";
+                if (idx < 50) return " lb-comfort-score--balanced";
+                if (idx < 70) return " lb-comfort-score--comfortable";
+                return " lb-comfort-score--cozy";
+              })()}`}>{Math.round(comfortZoneStats.index)}%</div>
+              <div className="lb-comfort-subnote">
+                Share of your watches from your top 3 directors, genres, and countries.
+              </div>
             </div>
             <div className="lb-comfort-bars">
               {[
-                { label: "Top 3 directors", value: comfortZoneStats.directors.percent, top: comfortZoneStats.directors.topLabels },
-                { label: "Top 3 genres", value: comfortZoneStats.genres.percent, top: comfortZoneStats.genres.topLabels },
-                { label: "Top 3 countries", value: comfortZoneStats.countries.percent, top: comfortZoneStats.countries.topLabels },
+                { label: "Directors", value: comfortZoneStats.directors.percent, top: comfortZoneStats.directors.topLabels },
+                { label: "Genres", value: comfortZoneStats.genres.percent, top: comfortZoneStats.genres.topLabels },
+                { label: "Countries", value: comfortZoneStats.countries.percent, top: comfortZoneStats.countries.topLabels },
               ].map((row: { label: string; value: number; top: Array<{ label: string; count: number }> }) => (
                 <div key={row.label} className="lb-comfort-row">
                   <div className="lb-comfort-label">{row.label}</div>
@@ -7069,7 +7135,12 @@ function App() {
                   <div className="lb-comfort-value">{Math.round(row.value)}%</div>
                   {row.top.length > 0 && (
                     <div className="lb-comfort-top">
-                      Top: {row.top.map((item) => `${item.label} (${item.count})`).join(", ")}
+                      <span className="lb-comfort-top-label">Top 3:</span>
+                      {row.top.map((item) => (
+                        <span key={item.label} className="lb-comfort-top-item">
+                          {item.label} ({item.count})
+                        </span>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -7504,20 +7575,47 @@ function App() {
           )}
           {watchlistOverdue.length > 0 && (
             <div className="lb-watchlist-overdue">
-              <div className="lb-watchlist-overdue-title">You keep skipping…</div>
-              <div className="lb-watchlist-overdue-sub">Oldest items on your watchlist (not in your diary).</div>
+              <div className="lb-watchlist-overdue-header">
+                <div>
+                  <div className="lb-watchlist-overdue-title">You keep skipping…</div>
+                  <div className="lb-watchlist-overdue-sub">Fresh picks from the oldest 10% of your watchlist (not in your diary).</div>
+                </div>
+                <button
+                  type="button"
+                  className="lb-builder-shuffle-btn"
+                  onClick={() => setWatchlistOverdueSeed((prev) => prev + 1)}
+                >
+                  Shuffle
+                </button>
+              </div>
               <div className="lb-watchlist-overdue-list">
                 {watchlistOverdue.map((item) => (
-                  <div key={`${item.uri}|${item.addedDate}`} className="lb-watchlist-overdue-row">
+                  <div key={`${item.uri}|${item.addedDate}`} className="lb-watchlist-overdue-card">
+                    <a href={item.uri} target="_blank" rel="noopener noreferrer" className="lb-watchlist-overdue-poster">
+                      {item.posterPath ? (
+                        <img src={`${TMDB_POSTER_BASE}${item.posterPath}`} alt={item.name} loading="lazy" />
+                      ) : (
+                        <span>{item.name.split(" ").slice(0, 2).map((p) => p[0]).join("").toUpperCase()}</span>
+                      )}
+                    </a>
                     <div className="lb-watchlist-overdue-info">
                       <a href={item.uri} target="_blank" rel="noopener noreferrer" className="lb-link">
                         {item.name}{item.year ? ` (${item.year})` : ""}
                       </a>
+                      <div className="lb-watchlist-overdue-runtime">
+                        {formatRuntime(item.runtime)}
+                      </div>
                       <div className="lb-watchlist-overdue-meta">
-                        {item.addedDate ? `Added ${item.addedDate}` : "Added date unknown"}
+                        Added {item.addedDate}
                       </div>
                     </div>
-                    <span className="lb-watchlist-overdue-badge">{item.ageLabel}</span>
+                    <span className={`lb-watchlist-overdue-badge${(() => {
+                      const monthsSinceAdded = Math.floor((Date.now() - item.sortKey) / (1000 * 60 * 60 * 24 * 30.44));
+                      if (monthsSinceAdded >= 48) return " lb-watchlist-overdue-badge--ancient";
+                      if (monthsSinceAdded >= 24) return " lb-watchlist-overdue-badge--old";
+                      if (monthsSinceAdded >= 12) return " lb-watchlist-overdue-badge--medium";
+                      return "";
+                    })()}`}>{item.ageLabel}</span>
                   </div>
                 ))}
               </div>
