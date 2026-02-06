@@ -86,6 +86,153 @@
   --transition-slow: 0.3s ease;
 }
 
+.lb-share-action {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.lb-share-btn {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: linear-gradient(135deg, #FF8002, #e06800);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 22px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 200ms ease, box-shadow 200ms ease;
+  box-shadow: 0 2px 12px rgba(255, 128, 2, 0.3);
+}
+
+.lb-share-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(255, 128, 2, 0.45);
+}
+
+.lb-share-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(255, 128, 2, 0.25);
+}
+
+.lb-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 12, 16, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-overlay);
+  padding: 16px;
+}
+
+.lb-modal {
+  width: min(520px, 92vw);
+  background: rgba(20, 24, 28, 0.95);
+  border: 1px solid rgba(68, 85, 102, 0.45);
+  border-radius: 14px;
+  padding: 18px;
+  color: #ccd;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.lb-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lb-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #fff;
+}
+
+.lb-modal-close {
+  border: none;
+  background: transparent;
+  color: #9ab;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.lb-modal-sub {
+  margin: 0;
+  font-size: 12px;
+  color: #9ab;
+  line-height: 1.5;
+}
+
+.lb-share-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #cfe3f7;
+}
+
+.lb-modal-status {
+  font-size: 12px;
+  color: #9ab;
+}
+
+.lb-modal-error {
+  font-size: 12px;
+  color: #c77;
+}
+
+.lb-share-link {
+  display: flex;
+  gap: 8px;
+}
+
+.lb-share-link input {
+  flex: 1;
+  border-radius: 8px;
+  border: 1px solid #345;
+  background: rgba(20, 24, 28, 0.8);
+  color: #e6f3ff;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.lb-share-link button {
+  border: 1px solid #FF8002;
+  background: none;
+  color: #FF8002;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.lb-share-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.lb-share-actions button {
+  border: 1px solid #345;
+  background: rgba(20, 24, 28, 0.7);
+  color: #c6d2de;
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.lb-share-delete {
+  border-color: rgba(199, 119, 119, 0.6);
+  color: #e2a4a4;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    BASE STYLES
    ═══════════════════════════════════════════════════════════════════════════ */

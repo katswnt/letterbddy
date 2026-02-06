@@ -286,6 +286,48 @@ const mixHex = (a: string, b: string, t: number) => {
   return `#${mix(ar.r, br.r).toString(16).padStart(2, "0")}${mix(ar.g, br.g).toString(16).padStart(2, "0")}${mix(ar.b, br.b).toString(16).padStart(2, "0")}`;
 };
 
+const buildHeatmapLabelList = ({
+  diaryFilters,
+  ratingFilter,
+  decadeFilter,
+  geoFilter,
+  diaryFilterMode,
+}: {
+  diaryFilters: {
+    directedByWoman: boolean;
+    writtenByWoman: boolean;
+    byBlackDirector: boolean;
+    notAmerican: boolean;
+    notEnglish: boolean;
+    inCriterion: boolean;
+  };
+  ratingFilter: string | null;
+  decadeFilter: { type: "decade" | "offset"; label: string } | null;
+  geoFilter: { type: "continent" | "country"; value: string } | null;
+  diaryFilterMode: "all" | "any";
+}) => {
+  const labels: string[] = [];
+  if (diaryFilters.directedByWoman) labels.push("Directed by women");
+  if (diaryFilters.writtenByWoman) labels.push("Written by women");
+  if (diaryFilters.byBlackDirector) labels.push("Films by Black directors");
+  if (diaryFilters.notAmerican) labels.push("Non-American");
+  if (diaryFilters.notEnglish) labels.push("Not in English");
+  if (diaryFilters.inCriterion) labels.push("In the Criterion Collection");
+  if (ratingFilter) labels.push(`${ratingFilter}★`);
+  if (decadeFilter) labels.push(decadeFilter.label);
+  if (geoFilter) {
+    labels.push(
+      geoFilter.type === "continent"
+        ? getContinentLabel(geoFilter.value)
+        : getCountryName(geoFilter.value)
+    );
+  }
+  if (labels.length > 0) {
+    labels.unshift(diaryFilterMode === "any" ? "Match any" : "Match all");
+  }
+  return labels;
+};
+
 const BlackDirectorsInfo = ({ align = "center" }: { align?: "left" | "center" | "right" }) => {
   const [open, setOpen] = useState(false);
   return (
@@ -2860,6 +2902,192 @@ const WatchlistTable = memo(({
   );
 });
 
+type ShareSnapshot = {
+  generatedAt: string;
+  totals: {
+    diaryEntries: number;
+    filmsWithData: number;
+    watchlistCount: number;
+  };
+  breakdown: {
+    directedByWoman: number;
+    writtenByWoman: number;
+    byBlackDirector: number;
+    notAmerican: number;
+    notEnglish: number;
+    inCriterion: number;
+  };
+  taste: {
+    sortMode: "rated" | "watched";
+    categories: Array<{
+      key: string;
+      label: string;
+      type: "person" | "country";
+      items: Array<{
+        name?: string;
+        code?: string;
+        label?: string;
+        count: number;
+        avgRating?: number;
+        profilePath?: string | null;
+      }>;
+    }>;
+  };
+  comfortZone: {
+    index: number;
+    directors: { percent: number; topLabels: Array<{ label: string; count: number }> };
+    genres: { percent: number; topLabels: Array<{ label: string; count: number }> };
+    countries: { percent: number; topLabels: Array<{ label: string; count: number }> };
+  };
+  watchlist: {
+    paceText: string | null;
+  };
+};
+
+const PublicSharePage = ({ token }: { token: string }) => {
+  const [data, setData] = useState<ShareSnapshot | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/share/${token}`);
+        if (!res.ok) {
+          throw new Error("Share link not found");
+        }
+        const json = await res.json();
+        if (!cancelled) setData(json);
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || "Failed to load share");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  if (loading) {
+    return (
+      <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        Loading recap…
+      </main>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {error || "Share link not found."}
+      </main>
+    );
+  }
+
+  const percent = (value: number) =>
+    data.totals.filmsWithData > 0 ? Math.round((value / data.totals.filmsWithData) * 100) : 0;
+
+  const highlightCategory =
+    data.taste.categories.find((c) => c.key === "trustedDirectors") ||
+    data.taste.categories[0];
+
+  return (
+    <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
+      <div style={{ width: "100%", maxWidth: "980px", display: "flex", flexDirection: "column", gap: "24px" }}>
+        <header style={{ textAlign: "center" }}>
+          <h1 style={{ fontSize: "28px", fontWeight: 700, color: "#fff", marginBottom: "6px", letterSpacing: "0.5px" }}>Letterbddy Recap</h1>
+          <div style={{ fontSize: "12px", color: "#9ab" }}>
+            Generated {new Date(data.generatedAt).toLocaleDateString()}
+          </div>
+        </header>
+
+        <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
+          <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", justifyContent: "center", textAlign: "center" }}>
+            <div>
+              <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.totals.diaryEntries}</div>
+              <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Diary entries</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.totals.filmsWithData}</div>
+              <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Films with TMDb data</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.totals.watchlistCount}</div>
+              <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Watchlist</div>
+            </div>
+          </div>
+        </section>
+
+        <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
+          <h2 style={{ fontSize: "16px", color: "#fff", textAlign: "center", marginBottom: "12px" }}>Film Breakdown</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", fontSize: "12px", color: "#9ab" }}>
+            <div>Directed by women: {percent(data.breakdown.directedByWoman)}%</div>
+            <div>Written by women: {percent(data.breakdown.writtenByWoman)}%</div>
+            <div>Films by Black directors: {percent(data.breakdown.byBlackDirector)}%</div>
+            <div>Non‑American: {percent(data.breakdown.notAmerican)}%</div>
+            <div>Not in English: {percent(data.breakdown.notEnglish)}%</div>
+            <div>In Criterion: {percent(data.breakdown.inCriterion)}%</div>
+          </div>
+        </section>
+
+        <section className="lb-comfort-zone">
+          <div className="lb-comfort-header">
+            <div className="lb-comfort-title">Comfort Zone Index</div>
+            <div className="lb-comfort-score">{Math.round(data.comfortZone.index)}%</div>
+          </div>
+          <div className="lb-comfort-subnote">
+            Share of your watches that come from your top 3 directors, genres, and countries.
+          </div>
+          <div className="lb-comfort-bars">
+            {[
+              { label: "Top 3 directors", value: data.comfortZone.directors.percent, top: data.comfortZone.directors.topLabels },
+              { label: "Top 3 genres", value: data.comfortZone.genres.percent, top: data.comfortZone.genres.topLabels },
+              { label: "Top 3 countries", value: data.comfortZone.countries.percent, top: data.comfortZone.countries.topLabels },
+            ].map((row) => (
+              <div key={row.label} className="lb-comfort-row">
+                <div className="lb-comfort-label">{row.label}</div>
+                <div className="lb-comfort-bar">
+                  <div className="lb-comfort-fill" style={{ width: `${Math.min(100, row.value)}%` }} />
+                </div>
+                <div className="lb-comfort-value">{Math.round(row.value)}%</div>
+                {row.top.length > 0 && (
+                  <div className="lb-comfort-top">
+                    Top: {row.top.map((item) => `${item.label} (${item.count})`).join(", ")}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {highlightCategory && (
+          <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
+            <h2 style={{ fontSize: "16px", color: "#fff", textAlign: "center", marginBottom: "12px" }}>{highlightCategory.label}</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "12px", fontSize: "12px", color: "#9ab" }}>
+              {highlightCategory.items.slice(0, 5).map((item) => (
+                <div key={item.name || item.code}>
+                  <div style={{ color: "#e6f3ff", fontSize: "13px" }}>{item.name || item.label || item.code}</div>
+                  <div>{item.count} films</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {data.watchlist.paceText && (
+          <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px", textAlign: "center", fontSize: "13px", color: "#ccd" }}>
+            {data.watchlist.paceText}
+          </section>
+        )}
+      </div>
+    </main>
+  );
+};
+
 function App() {
   const [rows, setRows] = useState<DiaryRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -2964,6 +3192,11 @@ function App() {
   const [doubleFeatureExpanded, setDoubleFeatureExpanded] = useState<boolean>(false);
   const [katFavorites, setKatFavorites] = useState<Array<{ name: string; year: string; url: string }>>([]);
   const [katFavoritesLoading, setKatFavoritesLoading] = useState<boolean>(false);
+  const [shareModalOpen, setShareModalOpen] = useState<boolean>(false);
+  const [shareEnabled, setShareEnabled] = useState<boolean>(false);
+  const [shareUrl, setShareUrl] = useState<string>("");
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [shareLoading, setShareLoading] = useState<boolean>(false);
   const [katFavoritesError, setKatFavoritesError] = useState<string | null>(null);
   const [faqOpen, setFaqOpen] = useState<Set<number>>(new Set());
   const [faqExpanded, setFaqExpanded] = useState(false);
@@ -5088,28 +5321,13 @@ function App() {
     setDecadeFilter((prev) => (prev && prev.type === type && prev.label === label ? null : { type, label }));
   };
 
-  const heatmapFilterLabels = useMemo(() => {
-    const labels: string[] = [];
-    if (diaryFilters.directedByWoman) labels.push("Directed by women");
-    if (diaryFilters.writtenByWoman) labels.push("Written by women");
-    if (diaryFilters.byBlackDirector) labels.push("Films by Black directors");
-    if (diaryFilters.notAmerican) labels.push("Non-American");
-    if (diaryFilters.notEnglish) labels.push("Not in English");
-    if (diaryFilters.inCriterion) labels.push("In the Criterion Collection");
-    if (ratingFilter) labels.push(`${ratingFilter}★`);
-    if (decadeFilter) labels.push(decadeFilter.label);
-    if (geoFilter) {
-      labels.push(
-        geoFilter.type === "continent"
-          ? getContinentLabel(geoFilter.value)
-          : getCountryName(geoFilter.value)
-      );
-    }
-    if (labels.length > 0) {
-      labels.unshift(diaryFilterMode === "any" ? "Match any" : "Match all");
-    }
-    return labels;
-  }, [diaryFilters, ratingFilter, decadeFilter, geoFilter, diaryFilterMode]);
+  const heatmapLabelList = buildHeatmapLabelList({
+    diaryFilters,
+    ratingFilter,
+    decadeFilter,
+    geoFilter,
+    diaryFilterMode,
+  });
 
   const joinLabels = useCallback((labels: string[]) => {
     if (labels.length === 0) return "";
@@ -5226,6 +5444,53 @@ function App() {
         {filterPhrase} in {yearLabel}, {monthLabel}!
       </>
     );
+  }, [
+    isDiaryFormat,
+    rows,
+    watchlistMovies.length,
+    watchlistFilteredCount,
+    watchlistFilterLabels,
+    joinLabels,
+    watchlistFilters.byBlackDirector,
+  ]);
+
+  const watchlistPacePlain = useMemo(() => {
+    if (!isDiaryFormat) return null;
+    if (rows.length === 0 || watchlistMovies.length === 0) return null;
+    if (watchlistFilteredCount === 0) return null;
+
+    const now = new Date();
+    const sixMonthsAgo = new Date(now);
+    sixMonthsAgo.setMonth(now.getMonth() - 6);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+    const daysSpan = Math.max(1, Math.round((now.getTime() - sixMonthsAgo.getTime()) / 86400000));
+
+    const recentCount = rows.filter((row) => {
+      const raw = getWatchedDate(row);
+      if (!raw) return false;
+      const date = new Date(raw);
+      if (Number.isNaN(date.getTime())) return false;
+      return date >= sixMonthsAgo && date <= now;
+    }).length;
+
+    if (recentCount === 0) return null;
+    const pacePerDay = recentCount / daysSpan;
+    if (pacePerDay <= 0) return null;
+    const daysRemaining = watchlistFilteredCount / pacePerDay;
+    const totalMonths = Math.max(1, Math.round(daysRemaining / 30.44));
+    const years = Math.floor(totalMonths / 12);
+    const months = totalMonths % 12;
+
+    const hasBlackDirectorFilter = watchlistFilters.byBlackDirector;
+    const nonBlackLabels = watchlistFilterLabels.filter((label) => label !== "films by Black directors");
+    const hasNonBlackLabels = nonBlackLabels.length > 0;
+    const filterPhrase = watchlistFilterLabels.length
+      ? `your watchlist of ${hasNonBlackLabels ? joinLabels(nonBlackLabels) : ""}${hasNonBlackLabels && hasBlackDirectorFilter ? " and " : ""}${hasBlackDirectorFilter ? "films by Black directors" : ""}${!hasNonBlackLabels && !hasBlackDirectorFilter ? "movies" : ""}`
+      : "your watchlist";
+
+    const yearLabel = `${years} year${years === 1 ? "" : "s"}`;
+    const monthLabel = `${months} month${months === 1 ? "" : "s"}`;
+    return `If you watch movies at the same pace as you have been for the past 6 months, you'll finish ${filterPhrase} in ${yearLabel}, ${monthLabel}!`;
   }, [
     isDiaryFormat,
     rows,
@@ -5675,6 +5940,181 @@ function App() {
     return "";
   }, [activeTasteCategory, tasteExplainers]);
 
+  const shareTasteData = useMemo(() => {
+    return tasteData.map((category) => {
+      if (category.type === "person") {
+        const items = (category.items as TastePerson[]).map((person) => ({
+          name: person.name,
+          count: person.count,
+          avgRating: person.avgRating,
+          profilePath: person.profilePath || null,
+        }));
+        return { key: category.key, label: category.label, type: "person" as const, items };
+      }
+      const items = (category.items as TasteCountry[]).map((country) => ({
+        code: country.code,
+        label: country.name,
+        count: country.count,
+        avgRating: country.avgRating,
+      }));
+      return { key: category.key, label: category.label, type: "country" as const, items };
+    });
+  }, [tasteData]);
+
+  const comfortZoneStats = useMemo(() => {
+    const total = moviesWithDataBase.length;
+    if (!total) {
+      return {
+        total,
+        index: 0,
+        directors: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
+        genres: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
+        countries: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
+      };
+    }
+
+    const countTop3Share = (counts: Map<string, number>, labelMap?: Map<string, string>) => {
+      const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+      const top = sorted.slice(0, 3);
+      const sum = top.reduce((acc, [, value]) => acc + value, 0);
+      const percent = (sum / total) * 100;
+      return {
+        percent: Math.min(100, percent),
+        topLabels: top.map(([label, count]) => ({
+          label: labelMap?.get(label) || label,
+          count,
+        })),
+      };
+    };
+
+    const directorCounts = new Map<string, number>();
+    const genreCounts = new Map<string, number>();
+    const countryCounts = new Map<string, number>();
+
+    for (const movie of moviesWithDataBase) {
+      const tmdb = movie.tmdb_data || {};
+      const directors = tmdb.directors || [];
+      const directorNames = new Set<string>();
+      directors.forEach((d: any) => d?.name && directorNames.add(d.name));
+      directorNames.forEach((name) => directorCounts.set(name, (directorCounts.get(name) || 0) + 1));
+
+      const genre = tmdb.genres?.[0];
+      if (genre) genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
+
+      const countries = tmdb.production_countries?.codes || [];
+      const primaryCountry = countries[0];
+      if (primaryCountry) {
+        countryCounts.set(primaryCountry, (countryCounts.get(primaryCountry) || 0) + 1);
+      }
+    }
+
+    const directors = countTop3Share(directorCounts);
+    const genres = countTop3Share(genreCounts);
+    const countryLabelMap = new Map<string, string>();
+    for (const [code] of countryCounts.entries()) {
+      countryLabelMap.set(code, getCountryName(code));
+    }
+    const countries = countTop3Share(countryCounts, countryLabelMap);
+    const index = (directors.percent + genres.percent + countries.percent) / 3;
+
+    return { total, index, directors, genres, countries };
+  }, [moviesWithDataBase]);
+
+  const shareSnapshot = useMemo<ShareSnapshot>(() => ({
+    generatedAt: new Date().toISOString(),
+    totals: {
+      diaryEntries: totalEntries,
+      filmsWithData: totalMoviesWithData,
+      watchlistCount: watchlistMovies.length,
+    },
+    breakdown: {
+      directedByWoman,
+      writtenByWoman,
+      byBlackDirector,
+      notAmerican,
+      notEnglish,
+      inCriterion,
+    },
+    taste: {
+      sortMode: tasteSortMode,
+      categories: shareTasteData,
+    },
+    comfortZone: comfortZoneStats,
+    watchlist: {
+      paceText: watchlistPacePlain,
+    },
+  }), [
+    totalEntries,
+    totalMoviesWithData,
+    watchlistMovies.length,
+    directedByWoman,
+    writtenByWoman,
+    byBlackDirector,
+    notAmerican,
+    notEnglish,
+    inCriterion,
+    tasteSortMode,
+    shareTasteData,
+    comfortZoneStats,
+    watchlistPacePlain,
+  ]);
+
+  const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  const createShareLink = useCallback(async () => {
+    if (isLocal) {
+      setShareError("Share links are only available on the live site (letterbddy.com)");
+      return;
+    }
+    setShareLoading(true);
+    setShareError(null);
+    try {
+      const res = await fetch("/api/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(shareSnapshot),
+      });
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const data = await res.json();
+      setShareUrl(data.url || "");
+      setShareEnabled(true);
+    } catch (err: any) {
+      setShareError(err.message || "Failed to create link");
+      setShareEnabled(false);
+    } finally {
+      setShareLoading(false);
+    }
+  }, [shareSnapshot]);
+
+  const deleteShareLink = useCallback(async () => {
+    if (!shareUrl) return;
+    const match = shareUrl.match(/\/p\/([^/]+)/);
+    if (!match) {
+      setShareUrl("");
+      return;
+    }
+    try {
+      await fetch(`/api/share/${match[1]}`, { method: "DELETE" });
+    } catch {
+      // Ignore delete failures
+    } finally {
+      setShareUrl("");
+    }
+  }, [shareUrl]);
+
+  const handleShareToggle = useCallback(async (next: boolean) => {
+    setShareEnabled(next);
+    if (next && !shareUrl) {
+      await createShareLink();
+      return;
+    }
+    if (!next && shareUrl) {
+      await deleteShareLink();
+    }
+  }, [createShareLink, deleteShareLink, shareUrl]);
+
   const tasteCriteriaLine = useMemo(() => {
     if (!activeTasteCategory) return "";
     if (activeTasteCategory.type === "country") {
@@ -5737,64 +6177,11 @@ function App() {
     return map;
   }, [activeTasteCategory, tasteFilmEntries]);
 
-  const comfortZoneStats = useMemo(() => {
-    const total = moviesWithDataBase.length;
-    if (!total) {
-      return {
-        total,
-        index: 0,
-        directors: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
-        genres: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
-        countries: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
-      };
-    }
-
-    const countTop3Share = (counts: Map<string, number>, labelMap?: Map<string, string>) => {
-      const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-      const top = sorted.slice(0, 3);
-      const sum = top.reduce((acc, [, value]) => acc + value, 0);
-      const percent = (sum / total) * 100;
-      return {
-        percent: Math.min(100, percent),
-        topLabels: top.map(([label, count]) => ({
-          label: labelMap?.get(label) || label,
-          count,
-        })),
-      };
-    };
-
-    const directorCounts = new Map<string, number>();
-    const genreCounts = new Map<string, number>();
-    const countryCounts = new Map<string, number>();
-
-    for (const movie of moviesWithDataBase) {
-      const tmdb = movie.tmdb_data || {};
-      const directors = tmdb.directors || [];
-      const directorNames = new Set<string>();
-      directors.forEach((d: any) => d?.name && directorNames.add(d.name));
-      directorNames.forEach((name) => directorCounts.set(name, (directorCounts.get(name) || 0) + 1));
-
-      const genre = tmdb.genres?.[0];
-      if (genre) genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
-
-      const countries = tmdb.production_countries?.codes || [];
-      const primaryCountry = countries[0];
-      if (primaryCountry) {
-        countryCounts.set(primaryCountry, (countryCounts.get(primaryCountry) || 0) + 1);
-      }
-    }
-
-    const directors = countTop3Share(directorCounts);
-    const genres = countTop3Share(genreCounts);
-    const countryLabelMap = new Map<string, string>();
-    for (const [code] of countryCounts.entries()) {
-      countryLabelMap.set(code, getCountryName(code));
-    }
-    const countries = countTop3Share(countryCounts, countryLabelMap);
-    const index = (directors.percent + genres.percent + countries.percent) / 3;
-
-    return { total, index, directors, genres, countries };
-  }, [moviesWithDataBase]);
+  const sharePath = typeof window !== "undefined" ? window.location.pathname : "";
+  const shareToken = sharePath.startsWith("/p/") ? sharePath.slice(3).split("/")[0] : "";
+  if (shareToken) {
+    return <PublicSharePage token={shareToken} />;
+  }
 
   return (
     <main style={{ minHeight: "100dvh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
@@ -5816,6 +6203,17 @@ function App() {
               Kat Swint
             </a>
           </div>
+          {films.length > 0 && (
+            <div className="lb-share-action">
+              <button type="button" className="lb-share-btn" onClick={() => setShareModalOpen(true)}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: "6px" }}>
+                  <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                </svg>
+                Share your recap
+              </button>
+            </div>
+          )}
         </header>
 
         <input
@@ -6305,9 +6703,9 @@ function App() {
               <h2>Watching Activity</h2>
               <p>Daily watches from your diary</p>
             </div>
-            {heatmapFilterLabels.length > 0 && (
+            {heatmapLabelList.length > 0 && (
               <div className="lb-heatmap-filter-note">
-                Heatmap filtered by: {heatmapFilterLabels.join(" · ")}
+                Heatmap filtered by: {heatmapLabelList.join(" · ")}
                 {diaryFilters.byBlackDirector && (
                   <>
                     {" "}
@@ -7821,6 +8219,70 @@ function App() {
           </div>
         )}
       </div>
+      {shareModalOpen && (
+        <div className="lb-modal-overlay" role="dialog" aria-modal="true">
+          <div className="lb-modal">
+            <div className="lb-modal-header">
+              <h3>Share your recap</h3>
+              <button type="button" className="lb-modal-close" onClick={() => setShareModalOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <p className="lb-modal-sub">
+              This creates a public, read‑only snapshot of your stats. No raw diary or review text is shared.
+            </p>
+            {isLocal && (
+              <div className="lb-modal-error" style={{ marginBottom: "8px" }}>
+                Share links are only available on the live site (letterbddy.com).
+              </div>
+            )}
+            <label className="lb-share-toggle">
+              <input
+                type="checkbox"
+                checked={shareEnabled}
+                disabled={isLocal}
+                onChange={(e) => handleShareToggle(e.target.checked)}
+              />
+              Create public link
+            </label>
+            {shareLoading && <div className="lb-modal-status">Creating link…</div>}
+            {shareError && <div className="lb-modal-error">{shareError}</div>}
+            {shareUrl && (
+              <div className="lb-share-link">
+                <input type="text" readOnly value={shareUrl} />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(shareUrl);
+                    } catch {
+                      // Ignore clipboard errors
+                    }
+                  }}
+                >
+                  Copy
+                </button>
+              </div>
+            )}
+            <div className="lb-share-actions">
+              <button type="button" onClick={createShareLink} disabled={shareLoading}>
+                Update link
+              </button>
+              <button
+                type="button"
+                className="lb-share-delete"
+                onClick={async () => {
+                  await deleteShareLink();
+                  setShareEnabled(false);
+                }}
+                disabled={!shareUrl || shareLoading}
+              >
+                Delete link
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
