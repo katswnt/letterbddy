@@ -5406,6 +5406,21 @@ function App() {
     }).slice(0, 5);
   }, [tasteSortMode]);
 
+  const rankPeopleStrict = useCallback((items: TastePerson[], minCount: number) => {
+    const filtered = items.filter((p) => p.count >= minCount);
+    const shuffled = [...filtered].sort(() => Math.random() - 0.5);
+    return shuffled.sort((a, b) => {
+      if (tasteSortMode === "watched") {
+        if (b.count !== a.count) return b.count - a.count;
+        if (b.avgRating !== a.avgRating) return b.avgRating - a.avgRating;
+        return 0;
+      }
+      if (b.avgRating !== a.avgRating) return b.avgRating - a.avgRating;
+      if (b.count !== a.count) return b.count - a.count;
+      return 0;
+    }).slice(0, 5);
+  }, [tasteSortMode]);
+
   const rankCountries = useCallback((items: TasteCountry[]) => {
     const filtered = tasteSortMode === "rated" ? items.filter((c) => c.count >= 2) : items;
     // Shuffle first to randomize ties
@@ -5496,11 +5511,13 @@ function App() {
       { key: "topCountries", label: "Top Countries", type: "country", items: rankCountries(countries) },
       { key: "newDiscoveries", label: "New Discoveries", type: "person", items: rankPeople(newDiscoveries, 2) },
       { key: "badHabit", label: "Bad Habit Detector", type: "person", items: badHabit },
+      { key: "trustedDirectors", label: "Directors You Trust", type: "person", items: rankPeopleStrict(allDirectors, 3) },
     ];
   }, [
     tasteEntriesForStats,
     buildPeopleStats,
     rankPeople,
+    rankPeopleStrict,
     rankCountries,
     personFirstDate,
     tasteSortMode,
@@ -5532,6 +5549,7 @@ function App() {
     if (!activeTasteCategory) return "";
     if (activeTasteCategory.key === "newDiscoveries") return tasteExplainers.newDiscoveries;
     if (activeTasteCategory.key === "badHabit") return tasteExplainers.badHabit;
+    if (activeTasteCategory.key === "trustedDirectors") return "Includes directors with 3+ films watched.";
     return "";
   }, [activeTasteCategory, tasteExplainers]);
 
@@ -5550,6 +5568,10 @@ function App() {
       const ratingNote = !isDiaryFormat ? " (ratings from TMDb)" : "";
       return `Directors with 3+ films, sorted by lowest average rating${ratingNote}.`;
     }
+    if (activeTasteCategory.key === "trustedDirectors") {
+      const ratingNote = !isDiaryFormat ? " (ratings from TMDb)" : "";
+      return `Directors with 3+ films, ranked by ${tasteSortMode === "rated" ? "highest average rating" : "most watched"}${ratingNote}.`;
+    }
     const ratingNote = !isDiaryFormat ? " (ratings from TMDb)" : "";
     return `Includes people with 2+ films, ranked by ${tasteSortMode === "rated" ? "highest average rating" : "most watched"}${ratingNote}.`;
   }, [activeTasteCategory, tasteSortMode, isDiaryFormat]);
@@ -5558,7 +5580,7 @@ function App() {
     if (!activeTasteCategory || activeTasteCategory.type !== "person") return new Map<string, Array<{ title: string; year: string; rating: string }>>();
     const map = new Map<string, Array<{ title: string; year: string; rating: string }>>();
     const wantsWriter = ["womenWriters", "nonEnglishWriters"].includes(activeTasteCategory.key);
-    const wantsDirector = ["womenDirectors", "nonEnglishDirectors", "newDiscoveries", "badHabit", "womenDirectorsWriters"].includes(activeTasteCategory.key);
+    const wantsDirector = ["womenDirectors", "nonEnglishDirectors", "newDiscoveries", "badHabit", "womenDirectorsWriters", "trustedDirectors"].includes(activeTasteCategory.key);
     for (const entry of tasteFilmEntries) {
       const tmdb = entry.movie.tmdb_data || {};
       const title = tmdb.title || "Untitled";
