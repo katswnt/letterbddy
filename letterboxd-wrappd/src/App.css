@@ -313,6 +313,74 @@
   line-height: 1.5;
 }
 
+.lb-watchlist-overdue {
+  margin: 16px auto 0;
+  max-width: 820px;
+  background: rgba(20, 24, 28, 0.6);
+  border: 1px solid rgba(68, 85, 102, 0.35);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lb-watchlist-overdue-title {
+  font-size: 13px;
+  color: #e6f3ff;
+  font-weight: 600;
+  text-align: center;
+}
+
+.lb-watchlist-overdue-sub {
+  font-size: 12px;
+  color: #9ab;
+  text-align: center;
+}
+
+.lb-watchlist-overdue-list {
+  display: grid;
+  gap: 10px;
+}
+
+.lb-watchlist-overdue-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(24, 28, 34, 0.7);
+  border: 1px solid rgba(68, 85, 102, 0.25);
+}
+
+.lb-watchlist-overdue-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lb-watchlist-overdue-row .lb-link {
+  font-size: 13px;
+  color: #e6f3ff;
+}
+
+.lb-watchlist-overdue-meta {
+  font-size: 11px;
+  color: #9ab;
+}
+
+.lb-watchlist-overdue-badge {
+  justify-self: end;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(0, 224, 84, 0.12);
+  color: #00e054;
+  border: 1px solid rgba(0, 224, 84, 0.25);
+}
+
 .lb-taste-dna {
   width: 100%;
   max-width: 980px;

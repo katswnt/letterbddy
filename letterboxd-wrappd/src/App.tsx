@@ -2879,6 +2879,7 @@ function App() {
 
   // Watchlist state
   const [watchlistMovies, setWatchlistMovies] = useState<WatchlistMovie[]>([]);
+  const [watchlistRows, setWatchlistRows] = useState<WatchlistRow[]>([]);
   const [watchlistStatus, setWatchlistStatus] = useState<string | null>(null);
   const [watchlistProgress, setWatchlistProgress] = useState<{ current: number; total: number } | null>(null);
   const [isWatchlistLoading, setIsWatchlistLoading] = useState<boolean>(false);
@@ -3277,6 +3278,7 @@ function App() {
     setIsWatchlistLoading(true);
     setWatchlistStatus("Processing watchlist...");
     setWatchlistMovies([]);
+    setWatchlistRows([]);
     setWatchlistMissingCount(0);
     setWatchlistMissingSamples([]);
     setWatchlistMissingDebug([]);
@@ -3496,6 +3498,7 @@ function App() {
       // Parse the original CSV to get movie names/years
       const csvText = await file.text();
       const parsed = Papa.parse<WatchlistRow>(csvText, { header: true, skipEmptyLines: true });
+      setWatchlistRows(parsed.data);
 
       // Build enriched watchlist
       const enrichedMovies: WatchlistMovie[] = [];
@@ -5223,6 +5226,66 @@ function App() {
     watchlistFilters.byBlackDirector,
   ]);
 
+  const watchlistOverdue = useMemo(() => {
+    if (watchlistRows.length === 0) return [];
+    const now = new Date();
+    const nowMonths = now.getFullYear() * 12 + now.getMonth();
+    const overdueItems: Array<{
+      name: string;
+      year: string;
+      uri: string;
+      addedDate: string;
+      ageLabel: string;
+      sortKey: number;
+    }> = [];
+
+    for (const row of watchlistRows) {
+      const name = (row.Name || "").trim();
+      const year = (row.Year || "").trim();
+      const uriRaw = (row["Letterboxd URI"] || "").trim();
+      if (!name || !uriRaw) continue;
+
+      const canonical = canonicalizeUri(uriRaw);
+      const titleKey = `${name.toLowerCase()}|${year}`;
+      if ((canonical && diarySlugs.has(canonical)) || (titleKey && diaryTitleYears.has(titleKey))) {
+        continue;
+      }
+
+      let ageLabel = "Unknown";
+      let sortKey = Number.MAX_SAFE_INTEGER;
+      const addedDate = (row.Date || "").trim();
+      if (addedDate) {
+        const parsedDate = new Date(addedDate);
+        if (!Number.isNaN(parsedDate.getTime())) {
+          sortKey = parsedDate.getTime();
+          const monthsDiff = nowMonths - (parsedDate.getFullYear() * 12 + parsedDate.getMonth());
+          const safeMonths = Math.max(0, monthsDiff);
+          const years = Math.floor(safeMonths / 12);
+          const months = safeMonths % 12;
+          if (years > 0) {
+            ageLabel = months > 0 ? `${years}y ${months}m` : `${years}y`;
+          } else if (months > 0) {
+            ageLabel = `${months}m`;
+          } else {
+            ageLabel = "New";
+          }
+        }
+      }
+
+      overdueItems.push({
+        name,
+        year,
+        uri: canonical || uriRaw,
+        addedDate,
+        ageLabel,
+        sortKey,
+      });
+    }
+
+    overdueItems.sort((a, b) => a.sortKey - b.sortKey);
+    return overdueItems.slice(0, 10);
+  }, [watchlistRows, canonicalizeUri, diarySlugs, diaryTitleYears]);
+
   const tasteFilmEntries = useMemo(() => {
     if (!movieLookup) return [];
     const map = new Map<string, { movie: any; rating: number; dateKey: string }>();
@@ -5618,7 +5681,13 @@ function App() {
   const comfortZoneStats = useMemo(() => {
     const total = moviesWithDataBase.length;
     if (!total) {
-      return { total, index: 0, directors: 0, genres: 0, countries: 0 };
+      return {
+        total,
+        index: 0,
+        directors: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
+        genres: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
+        countries: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
+      };
     }
 
     const countTop3Share = (counts: Map<string, number>, labelMap?: Map<string, string>) => {
@@ -6991,7 +7060,7 @@ function App() {
                 { label: "Top 3 directors", value: comfortZoneStats.directors.percent, top: comfortZoneStats.directors.topLabels },
                 { label: "Top 3 genres", value: comfortZoneStats.genres.percent, top: comfortZoneStats.genres.topLabels },
                 { label: "Top 3 countries", value: comfortZoneStats.countries.percent, top: comfortZoneStats.countries.topLabels },
-              ].map((row) => (
+              ].map((row: { label: string; value: number; top: Array<{ label: string; count: number }> }) => (
                 <div key={row.label} className="lb-comfort-row">
                   <div className="lb-comfort-label">{row.label}</div>
                   <div className="lb-comfort-bar">
@@ -7432,6 +7501,27 @@ function App() {
               watchlistContinentFilter={watchlistContinentFilter}
               setWatchlistContinentFilter={setWatchlistContinentFilter}
             />
+          )}
+          {watchlistOverdue.length > 0 && (
+            <div className="lb-watchlist-overdue">
+              <div className="lb-watchlist-overdue-title">You keep skipping…</div>
+              <div className="lb-watchlist-overdue-sub">Oldest items on your watchlist (not in your diary).</div>
+              <div className="lb-watchlist-overdue-list">
+                {watchlistOverdue.map((item) => (
+                  <div key={`${item.uri}|${item.addedDate}`} className="lb-watchlist-overdue-row">
+                    <div className="lb-watchlist-overdue-info">
+                      <a href={item.uri} target="_blank" rel="noopener noreferrer" className="lb-link">
+                        {item.name}{item.year ? ` (${item.year})` : ""}
+                      </a>
+                      <div className="lb-watchlist-overdue-meta">
+                        {item.addedDate ? `Added ${item.addedDate}` : "Added date unknown"}
+                      </div>
+                    </div>
+                    <span className="lb-watchlist-overdue-badge">{item.ageLabel}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </section>
         {/* Watchlist Builder section — always visible */}
