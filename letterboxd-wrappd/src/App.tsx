@@ -5615,6 +5615,58 @@ function App() {
     return map;
   }, [activeTasteCategory, tasteFilmEntries]);
 
+  const comfortZoneStats = useMemo(() => {
+    const total = moviesWithDataBase.length;
+    if (!total) {
+      return { total, index: 0, directors: 0, genres: 0, countries: 0 };
+    }
+
+    const countTop3Share = (counts: Map<string, number>, labelMap?: Map<string, string>) => {
+      const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+      const top = sorted.slice(0, 3);
+      const sum = top.reduce((acc, [, value]) => acc + value, 0);
+      const percent = (sum / total) * 100;
+      return {
+        percent: Math.min(100, percent),
+        topLabels: top.map(([label, count]) => ({
+          label: labelMap?.get(label) || label,
+          count,
+        })),
+      };
+    };
+
+    const directorCounts = new Map<string, number>();
+    const genreCounts = new Map<string, number>();
+    const countryCounts = new Map<string, number>();
+
+    for (const movie of moviesWithDataBase) {
+      const tmdb = movie.tmdb_data || {};
+      const directors = tmdb.directors || [];
+      const directorNames = new Set<string>();
+      directors.forEach((d: any) => d?.name && directorNames.add(d.name));
+      directorNames.forEach((name) => directorCounts.set(name, (directorCounts.get(name) || 0) + 1));
+
+      const genre = tmdb.genres?.[0];
+      if (genre) genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
+
+      const countries = tmdb.production_countries?.codes || [];
+      const countryCodes = new Set<string>();
+      countries.forEach((code: string) => code && countryCodes.add(code));
+      countryCodes.forEach((code) => countryCounts.set(code, (countryCounts.get(code) || 0) + 1));
+    }
+
+    const directors = countTop3Share(directorCounts);
+    const genres = countTop3Share(genreCounts);
+    const countryLabelMap = new Map<string, string>();
+    for (const [code] of countryCounts.entries()) {
+      countryLabelMap.set(code, getCountryName(code));
+    }
+    const countries = countTop3Share(countryCounts, countryLabelMap);
+    const index = (directors.percent + genres.percent + countries.percent) / 3;
+
+    return { total, index, directors, genres, countries };
+  }, [moviesWithDataBase]);
+
   return (
     <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
       <Analytics />
@@ -6924,6 +6976,37 @@ function App() {
         )}
         {moviesWithDataBase.length > 0 && activeTasteCategory && (
           <div className="lb-taste-criteria lb-taste-criteria-outside">{tasteCriteriaLine}</div>
+        )}
+        {moviesWithDataBase.length > 0 && (
+          <section className="lb-comfort-zone">
+            <div className="lb-comfort-header">
+              <div className="lb-comfort-title">Comfort Zone Index</div>
+              <div className="lb-comfort-score">{Math.round(comfortZoneStats.index)}%</div>
+            </div>
+            <div className="lb-comfort-subnote">
+              Share of your watches that come from your top 3 directors, genres, and countries.
+            </div>
+            <div className="lb-comfort-bars">
+              {[
+                { label: "Top 3 directors", value: comfortZoneStats.directors.percent, top: comfortZoneStats.directors.topLabels },
+                { label: "Top 3 genres", value: comfortZoneStats.genres.percent, top: comfortZoneStats.genres.topLabels },
+                { label: "Top 3 countries", value: comfortZoneStats.countries.percent, top: comfortZoneStats.countries.topLabels },
+              ].map((row) => (
+                <div key={row.label} className="lb-comfort-row">
+                  <div className="lb-comfort-label">{row.label}</div>
+                  <div className="lb-comfort-bar">
+                    <div className="lb-comfort-fill" style={{ width: `${Math.min(100, row.value)}%` }} />
+                  </div>
+                  <div className="lb-comfort-value">{Math.round(row.value)}%</div>
+                  {row.top.length > 0 && (
+                    <div className="lb-comfort-top">
+                      Top: {row.top.map((item) => `${item.label} (${item.count})`).join(", ")}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
         {/* World map by country/continent */}
