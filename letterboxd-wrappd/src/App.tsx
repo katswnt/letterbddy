@@ -6677,7 +6677,7 @@ function App() {
         )}  
 
         {/* Stats for the currently selected time range, deduped by film */}
-        {rows.length > 0 && (
+        {films.length > 0 && (
           <section style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
             {/* Key metrics row */}
             <div className="stats-row" style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center", flexWrap: "wrap" }}>
