@@ -3556,6 +3556,7 @@ function App() {
   const [shareUrl, setShareUrl] = useState<string>("");
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareLoading, setShareLoading] = useState<boolean>(false);
+  const [shareCopied, setShareCopied] = useState<boolean>(false);
   const [katFavoritesError, setKatFavoritesError] = useState<string | null>(null);
   const [faqOpen, setFaqOpen] = useState<Set<number>>(new Set());
   const [faqExpanded, setFaqExpanded] = useState(false);
@@ -6621,7 +6622,7 @@ function App() {
               Kat Swint
             </a>
           </div>
-          {films.length > 0 && (
+          {films.length > 0 && !isLoading && (
             <div className="lb-share-action">
               <button type="button" className="lb-share-btn" onClick={() => setShareModalOpen(true)}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: "6px" }}>
@@ -8670,17 +8671,22 @@ function App() {
                 <input id="share-url-input" type="text" readOnly value={shareUrl} />
                 <button
                   type="button"
-                  onClick={() => {
-                    if (navigator.clipboard?.writeText) {
-                      navigator.clipboard.writeText(shareUrl).catch(() => {});
-                    } else {
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(shareUrl);
+                    } catch {
                       const input = document.getElementById("share-url-input") as HTMLInputElement;
-                      input?.select();
-                      document.execCommand("copy");
+                      if (input) {
+                        input.focus();
+                        input.select();
+                        document.execCommand("copy");
+                      }
                     }
+                    setShareCopied(true);
+                    setTimeout(() => setShareCopied(false), 2000);
                   }}
                 >
-                  Copy
+                  {shareCopied ? "Copied!" : "Copy"}
                 </button>
               </div>
             )}
