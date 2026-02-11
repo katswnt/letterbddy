@@ -103,6 +103,32 @@ export async function setCached(key: string, value: unknown, expiresInSeconds?: 
   }
 }
 
+/**
+ * Set cached value and surface the error message for diagnostics.
+ */
+export async function setCachedWithError(
+  key: string,
+  value: unknown,
+  expiresInSeconds?: number
+): Promise<{ ok: boolean; error?: string }> {
+  const client = getRedis();
+  if (!client) return { ok: false, error: "Redis not configured" };
+
+  try {
+    const json = JSON.stringify(value);
+    if (expiresInSeconds) {
+      await client.setex(key, expiresInSeconds, json);
+    } else {
+      await client.set(key, json);
+    }
+    return { ok: true };
+  } catch (err: any) {
+    const message = err?.message || "Redis set failed";
+    console.error("Redis set error:", message);
+    return { ok: false, error: message };
+  }
+}
+
 // Cache key prefixes
 export const CACHE_KEYS = {
   TMDB_DATA: 'tmdb:v4:', // v4: include profile_path in cached TMDb data

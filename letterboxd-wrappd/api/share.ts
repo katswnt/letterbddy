@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "crypto";
-import { getRedis, setCached } from "./redis";
+import { getRedis, setCachedWithError } from "./redis.js";
 
 const SHARE_TTL_SECONDS = 60 * 60 * 24 * 180; // 180 days
 
@@ -35,9 +35,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const token = crypto.randomBytes(16).toString("hex");
     const key = `share:${token}`;
-    const stored = await setCached(key, snapshot, SHARE_TTL_SECONDS);
-    if (!stored) {
-      return res.status(500).json({ error: "Failed to store snapshot" });
+    const stored = await setCachedWithError(key, snapshot, SHARE_TTL_SECONDS);
+    if (!stored.ok) {
+      return res.status(500).json({
+        error: "Failed to store snapshot",
+        details: stored.error || "Unknown Redis error",
+      });
     }
 
     const url = `${getBaseUrl(req)}/p/${token}`;
