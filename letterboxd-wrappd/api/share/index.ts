@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "crypto";
-import { getRedis, setCachedWithError } from "./redis.js";
+import { getRedis, setCachedWithError } from "../redis.js";
 
 const SHARE_TTL_SECONDS = 60 * 60 * 24 * 180; // 180 days
 
