@@ -36,9 +36,7 @@ export function getRedis(): RedisType | null {
       },
       connectTimeout: 5000, // 5 second connection timeout
       commandTimeout: 5000, // 5 second command timeout
-      lazyConnect: true, // Don't connect until first command
       enableReadyCheck: false, // Skip ready check for faster startup
-      enableOfflineQueue: false, // Fail fast if disconnected
     });
 
     redis.on('error', (err) => {
