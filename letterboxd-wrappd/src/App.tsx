@@ -6076,7 +6076,8 @@ function App() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        throw new Error(body?.error || "Failed to create link");
+        const msg = body?.details ? `${body.error}: ${body.details}` : (body?.error || "Failed to create link");
+        throw new Error(msg);
       }
       const data = await res.json();
       setShareUrl(data.url || "");
