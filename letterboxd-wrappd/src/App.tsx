@@ -3024,9 +3024,6 @@ const PublicSharePage = ({ token }: { token: string }) => {
     );
   }
 
-  const percent = (value: number) =>
-    data.totals.filmsWithData > 0 ? Math.round((value / data.totals.filmsWithData) * 100) : 0;
-
   // Build heatmap Maps from serialized plain objects
   const heatmapMaps = data.heatmap ? (() => {
     const byYear = new Map<string, Map<string, number>>();
