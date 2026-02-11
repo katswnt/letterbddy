@@ -2954,7 +2954,7 @@ const PublicSharePage = ({ token }: { token: string }) => {
     const load = async () => {
       try {
         setLoading(true);
-        const res = await fetch(`/api/share/${token}`);
+        const res = await fetch(`/api/share?token=${token}`);
         if (!res.ok) {
           throw new Error("Share link not found");
         }
@@ -6098,7 +6098,7 @@ function App() {
       return;
     }
     try {
-      await fetch(`/api/share/${match[1]}`, { method: "DELETE" });
+      await fetch(`/api/share?token=${match[1]}`, { method: "DELETE" });
     } catch {
       // Ignore delete failures
     } finally {
@@ -8251,14 +8251,16 @@ function App() {
             {shareError && <div className="lb-modal-error">{shareError}</div>}
             {shareUrl && (
               <div className="lb-share-link">
-                <input type="text" readOnly value={shareUrl} />
+                <input id="share-url-input" type="text" readOnly value={shareUrl} />
                 <button
                   type="button"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(shareUrl);
-                    } catch {
-                      // Ignore clipboard errors
+                  onClick={() => {
+                    if (navigator.clipboard?.writeText) {
+                      navigator.clipboard.writeText(shareUrl).catch(() => {});
+                    } else {
+                      const input = document.getElementById("share-url-input") as HTMLInputElement;
+                      input?.select();
+                      document.execCommand("copy");
                     }
                   }}
                 >
