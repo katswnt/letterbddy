@@ -2979,6 +2979,21 @@ const PublicSharePage = ({ token }: { token: string }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [tasteCategory, setTasteCategory] = useState<string | null>(null);
+  const shareHeatmapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const container = shareHeatmapRef.current;
+    if (!container) return;
+    const scrollToEnd = () => {
+      container.scrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+    };
+    const frame = window.requestAnimationFrame(scrollToEnd);
+    const timeout = window.setTimeout(scrollToEnd, 50);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+    };
+  }, [data]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3076,7 +3091,7 @@ const PublicSharePage = ({ token }: { token: string }) => {
         {heatmapMaps && heatmapYears.length > 0 && (
           <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
             <h2 style={{ fontSize: "16px", color: "#fff", textAlign: "center", marginBottom: "12px" }}>Activity</h2>
-            <div className="lb-heatmap-scroll">
+            <div ref={shareHeatmapRef} className="lb-heatmap-scroll">
               {heatmapYears.map((year) => (
                 <HeatmapYear
                   key={year}
