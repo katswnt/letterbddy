@@ -31,7 +31,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "Missing snapshot" });
       }
 
-      const token = crypto.randomBytes(16).toString("hex");
+      const token = crypto.randomBytes(6).toString("base64url");
       const key = `share:${token}`;
       const stored = await setCachedWithError(key, snapshot, SHARE_TTL_SECONDS);
       if (!stored.ok) {
