@@ -2942,12 +2942,43 @@ type ShareSnapshot = {
   watchlist: {
     paceText: string | null;
   };
+  heatmap?: {
+    years: Record<string, Record<string, number>>;
+    globalMax: number;
+  };
+  rewatches?: {
+    firstWatchCount: number;
+    rewatchCount: number;
+  };
+  ratings?: {
+    chartData: Array<{ rating: string; count: number }>;
+    averageRating: number;
+    medianRating: number;
+    ratingCount: number;
+    fourPlusCount: number;
+  };
+  reviewStats?: {
+    reviewCount: number;
+    totalWords: number;
+    medianWordCount: number;
+    avgWordCount: number;
+    shortestReview: number;
+    longestReview: number;
+    percentOver200: number;
+    voiceLabel: string;
+    reviewDensity: number;
+    sentimentPoints: Array<{ month: string; sentiment: number; count: number }>;
+    scatterPoints: Array<{ rating: number | null; words: number }>;
+    mostLoved: { title: string; year?: string; rating: number | null; posterUrl?: string | null } | null;
+    mostHated: { title: string; year?: string; rating: number | null; posterUrl?: string | null } | null;
+  };
 };
 
 const PublicSharePage = ({ token }: { token: string }) => {
   const [data, setData] = useState<ShareSnapshot | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [tasteCategory, setTasteCategory] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -2959,7 +2990,12 @@ const PublicSharePage = ({ token }: { token: string }) => {
           throw new Error("Share link not found");
         }
         const json = await res.json();
-        if (!cancelled) setData(json);
+        if (!cancelled) {
+          setData(json);
+          if (json.taste?.categories?.length > 0) {
+            setTasteCategory(json.taste.categories[0].key);
+          }
+        }
       } catch (err: any) {
         if (!cancelled) setError(err.message || "Failed to load share");
       } finally {
@@ -2991,13 +3027,29 @@ const PublicSharePage = ({ token }: { token: string }) => {
   const percent = (value: number) =>
     data.totals.filmsWithData > 0 ? Math.round((value / data.totals.filmsWithData) * 100) : 0;
 
-  const highlightCategory =
-    data.taste.categories.find((c) => c.key === "trustedDirectors") ||
-    data.taste.categories[0];
+  // Build heatmap Maps from serialized plain objects
+  const heatmapMaps = data.heatmap ? (() => {
+    const byYear = new Map<string, Map<string, number>>();
+    for (const [year, obj] of Object.entries(data.heatmap!.years)) {
+      const yearMap = new Map<string, number>();
+      for (const [dateKey, count] of Object.entries(obj)) {
+        yearMap.set(dateKey, count);
+      }
+      byYear.set(year, yearMap);
+    }
+    return byYear;
+  })() : null;
+
+  const heatmapYears = heatmapMaps
+    ? Array.from(heatmapMaps.keys()).sort()
+    : [];
+
+  const activeTasteCat = data.taste.categories.find((c) => c.key === tasteCategory) || data.taste.categories[0];
 
   return (
     <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
       <div style={{ width: "100%", maxWidth: "980px", display: "flex", flexDirection: "column", gap: "24px" }}>
+        {/* 1. Header */}
         <header style={{ textAlign: "center" }}>
           <h1 style={{ fontSize: "28px", fontWeight: 700, color: "#fff", marginBottom: "6px", letterSpacing: "0.5px" }}>Letterbddy Recap</h1>
           <div style={{ fontSize: "12px", color: "#9ab" }}>
@@ -3005,6 +3057,7 @@ const PublicSharePage = ({ token }: { token: string }) => {
           </div>
         </header>
 
+        {/* 2. Totals */}
         <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
           <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", justifyContent: "center", textAlign: "center" }}>
             <div>
@@ -3022,18 +3075,191 @@ const PublicSharePage = ({ token }: { token: string }) => {
           </div>
         </section>
 
+        {/* 3. Activity Heatmap */}
+        {heatmapMaps && heatmapYears.length > 0 && (
+          <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
+            <h2 style={{ fontSize: "16px", color: "#fff", textAlign: "center", marginBottom: "12px" }}>Activity</h2>
+            <div className="lb-heatmap-scroll">
+              {heatmapYears.map((year) => (
+                <HeatmapYear
+                  key={year}
+                  year={year}
+                  counts={heatmapMaps.get(year)}
+                  compact
+                  maxCountOverride={data.heatmap!.globalMax}
+                />
+              ))}
+            </div>
+            <div className="lb-heatmap-legend">
+              <span>Less</span>
+              {HEAT_COLORS.map((color, idx) => (
+                <span key={`share-legend-${idx}`} className="lb-heatmap-legend-swatch" style={{ backgroundColor: color }} />
+              ))}
+              <span>More</span>
+            </div>
+          </section>
+        )}
+
+        {/* 4. Pie Charts */}
         <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
           <h2 style={{ fontSize: "16px", color: "#fff", textAlign: "center", marginBottom: "12px" }}>Film Breakdown</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", fontSize: "12px", color: "#9ab" }}>
-            <div>Directed by women: {percent(data.breakdown.directedByWoman)}%</div>
-            <div>Written by women: {percent(data.breakdown.writtenByWoman)}%</div>
-            <div>Films by Black directors: {percent(data.breakdown.byBlackDirector)}%</div>
-            <div>Non‑American: {percent(data.breakdown.notAmerican)}%</div>
-            <div>Not in English: {percent(data.breakdown.notEnglish)}%</div>
-            <div>In Criterion: {percent(data.breakdown.inCriterion)}%</div>
+          <div className="lb-pie-grid">
+            {data.rewatches && (
+              <StatPieChart
+                primaryValue={data.rewatches.firstWatchCount}
+                primaryLabel="New watches"
+                secondaryValue={data.rewatches.rewatchCount}
+                secondaryLabel="Rewatched"
+              />
+            )}
+            <StatPieChart
+              primaryValue={data.breakdown.directedByWoman}
+              primaryLabel="Directed by women"
+              secondaryValue={data.totals.filmsWithData - data.breakdown.directedByWoman}
+              secondaryLabel="Not women"
+            />
+            <StatPieChart
+              primaryValue={data.breakdown.writtenByWoman}
+              primaryLabel="Written by women"
+              secondaryValue={data.totals.filmsWithData - data.breakdown.writtenByWoman}
+              secondaryLabel="Not women"
+            />
+            <StatPieChart
+              primaryValue={data.breakdown.byBlackDirector}
+              primaryLabel="By Black directors"
+              secondaryValue={data.totals.filmsWithData - data.breakdown.byBlackDirector}
+              secondaryLabel="Not in list"
+            />
+            <StatPieChart
+              primaryValue={data.breakdown.notAmerican}
+              primaryLabel="Non-American"
+              secondaryValue={data.totals.filmsWithData - data.breakdown.notAmerican}
+              secondaryLabel="American"
+            />
+            <StatPieChart
+              primaryValue={data.breakdown.notEnglish}
+              primaryLabel="Not in English"
+              secondaryValue={data.totals.filmsWithData - data.breakdown.notEnglish}
+              secondaryLabel="English"
+            />
+            <StatPieChart
+              primaryValue={data.breakdown.inCriterion}
+              primaryLabel="In the Criterion Collection"
+              secondaryValue={data.totals.filmsWithData - data.breakdown.inCriterion}
+              secondaryLabel="Not in Criterion"
+            />
           </div>
         </section>
 
+        {/* 5. Ratings */}
+        {data.ratings && data.ratings.ratingCount > 0 && (
+          <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
+            <h2 style={{ fontSize: "16px", color: "#fff", textAlign: "center", marginBottom: "12px" }}>Ratings</h2>
+            <div style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center", flexWrap: "wrap", marginBottom: "16px" }}>
+              <div>
+                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>★{data.ratings.averageRating.toFixed(1)}</div>
+                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Average</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>★{data.ratings.medianRating.toFixed(1)}</div>
+                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Median</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.ratings.ratingCount}</div>
+                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Rated</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.ratings.fourPlusCount}</div>
+                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Rated 4+</div>
+              </div>
+            </div>
+            <div style={{ width: "100%", height: 180 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.ratings.chartData} margin={{ top: 10, right: 10, left: 0, bottom: 10 }}>
+                  <XAxis dataKey="rating" tick={{ fontSize: 11, fill: "#9ab" }} tickLine={false} axisLine={{ stroke: "#456" }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "#9ab" }} tickLine={false} axisLine={false} width={30} />
+                  <Tooltip
+                    cursor={{ fill: "rgba(68, 85, 102, 0.3)" }}
+                    contentStyle={{ backgroundColor: "#1b2026", border: "1px solid #345", color: "#ccd" }}
+                  />
+                  <Bar dataKey="count" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+                    {data.ratings.chartData.map((entry) => (
+                      <Cell key={`share-rating-${entry.rating}`} fill="#00e054" />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+        )}
+
+        {/* 6. Taste DNA */}
+        {data.taste.categories.length > 0 && activeTasteCat && (
+          <section className="lb-taste-dna">
+            <div className="lb-taste-header">
+              <div>
+                <h2>Taste DNA</h2>
+                <p>Top creators and trends in your diary</p>
+              </div>
+              <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>
+                Sorted by: {data.taste.sortMode === "rated" ? "highest rated" : "most watched"}
+              </div>
+            </div>
+            <div className="lb-taste-tabs">
+              {data.taste.categories.map((cat) => (
+                <button
+                  key={cat.key}
+                  type="button"
+                  className={`lb-taste-tab ${tasteCategory === cat.key ? "is-active" : ""}`}
+                  onClick={() => setTasteCategory(cat.key)}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+            <div className="lb-taste-body">
+              {activeTasteCat.type === "person" ? (
+                <div className="lb-taste-grid">
+                  {activeTasteCat.items.map((person) => (
+                    <div key={person.name} className="lb-taste-card">
+                      <div className="lb-taste-avatar">
+                        {person.profilePath ? (
+                          <img
+                            src={`${TMDB_PROFILE_BASE}${person.profilePath}`}
+                            alt={person.name || ""}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span>{(person.name || "").split(" ").slice(0, 2).map((p) => p[0]).join("").toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div className="lb-taste-name">{person.name}</div>
+                      <div className="lb-taste-meta">
+                        {person.avgRating ? `★${person.avgRating.toFixed(1)}` : "★—"} · {person.count} films
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="lb-taste-grid">
+                  {activeTasteCat.items.map((country) => (
+                    <div key={country.code || country.name} className="lb-taste-card">
+                      <div className="lb-taste-avatar lb-taste-country">
+                        <span>{country.code}</span>
+                      </div>
+                      <div className="lb-taste-name">{country.label || country.name}</div>
+                      <div className="lb-taste-meta">
+                        {country.avgRating ? `★${country.avgRating.toFixed(1)}` : "★—"} · {country.count} films
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* 7. Comfort Zone */}
         <section className="lb-comfort-zone">
           <div className="lb-comfort-header">
             <div className="lb-comfort-title">Comfort Zone Index</div>
@@ -3064,20 +3290,156 @@ const PublicSharePage = ({ token }: { token: string }) => {
           </div>
         </section>
 
-        {highlightCategory && (
+        {/* 8. Reviews */}
+        {data.reviewStats && (
           <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
-            <h2 style={{ fontSize: "16px", color: "#fff", textAlign: "center", marginBottom: "12px" }}>{highlightCategory.label}</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "12px", fontSize: "12px", color: "#9ab" }}>
-              {highlightCategory.items.slice(0, 5).map((item) => (
-                <div key={item.name || item.code}>
-                  <div style={{ color: "#e6f3ff", fontSize: "13px" }}>{item.name || item.label || item.code}</div>
-                  <div>{item.count} films</div>
+            <h2 style={{ fontSize: "16px", color: "#fff", textAlign: "center", marginBottom: "12px" }}>Reviews</h2>
+            <div style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center", flexWrap: "wrap", marginBottom: "16px" }}>
+              <div>
+                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.reviewStats.reviewCount}</div>
+                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Reviews</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.reviewStats.medianWordCount}</div>
+                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Median Words</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.reviewStats.avgWordCount}</div>
+                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Avg Words</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.reviewStats.totalWords.toLocaleString()}</div>
+                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Total Words</div>
+              </div>
+            </div>
+            <div className="lb-review-grid">
+              <div className="lb-review-card">
+                <div className="lb-review-card-title">Your voice</div>
+                <div className="lb-review-card-metric">{data.reviewStats.voiceLabel}</div>
+                <div className="lb-review-card-sub">Based on average review length.</div>
+                <div className="lb-review-card-sub">Shortest: {data.reviewStats.shortestReview} · Longest: {data.reviewStats.longestReview}</div>
+                <div className="lb-review-card-sub">{data.reviewStats.percentOver200}% of reviews are 200+ words</div>
+              </div>
+              <div className="lb-review-card">
+                <div className="lb-review-card-title">Review density</div>
+                <div className="lb-review-card-metric">{data.reviewStats.reviewDensity}%</div>
+                <div className="lb-review-card-sub">
+                  {data.reviewStats.reviewCount} reviews across {data.totals.filmsWithData} watched films
                 </div>
-              ))}
+              </div>
+            </div>
+            <div className="lb-review-grid lb-review-grid-2">
+              <div className="lb-review-card lb-review-card-chart">
+                <div className="lb-review-card-title">Sentiment over time</div>
+                {data.reviewStats.sentimentPoints.length > 0 ? (
+                  <div className="lb-review-chart">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={data.reviewStats.sentimentPoints} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+                        <CartesianGrid stroke="rgba(68, 85, 102, 0.35)" strokeDasharray="3 3" />
+                        <XAxis dataKey="month" tick={{ fill: "#9ab", fontSize: 10 }} minTickGap={20} />
+                        <YAxis tick={{ fill: "#9ab", fontSize: 10 }} width={32} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: "#1b2026", border: "1px solid #345", color: "#ccd" }}
+                          content={({ payload, label }) => {
+                            const point = payload?.[0]?.payload as any;
+                            if (!point) return null;
+                            return (
+                              <div style={{ fontSize: "12px", color: "#ccd", backgroundColor: "#1b2026", border: "1px solid #345", padding: "8px 10px", borderRadius: "6px" }}>
+                                <div style={{ fontWeight: 600 }}>Month: {label}</div>
+                                <div style={{ marginTop: "4px" }}>Sentiment: {Number(point.sentiment).toFixed(3)}</div>
+                                <div>Reviews: {point.count}</div>
+                              </div>
+                            );
+                          }}
+                        />
+                        <Line type="monotone" dataKey="sentiment" stroke="#3EBDF4" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="lb-review-card-sub">Not enough dated reviews yet.</div>
+                )}
+              </div>
+              <div className="lb-review-card lb-review-card-chart">
+                <div className="lb-review-card-title">Rating vs word count</div>
+                {data.reviewStats.scatterPoints.length > 0 ? (
+                  <div className="lb-review-chart">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ScatterChart margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+                        <CartesianGrid stroke="rgba(68, 85, 102, 0.35)" strokeDasharray="3 3" />
+                        <XAxis type="number" dataKey="rating" domain={[0, 5]} tick={{ fill: "#9ab", fontSize: 10 }} />
+                        <YAxis type="number" dataKey="words" tick={{ fill: "#9ab", fontSize: 10 }} width={36} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: "#1b2026", border: "1px solid #345", color: "#ccd" }}
+                          cursor={{ stroke: "#3EBDF4", strokeWidth: 1 }}
+                          content={({ payload }) => {
+                            const point = payload?.[0]?.payload as any;
+                            if (!point) return null;
+                            return (
+                              <div style={{ fontSize: "12px", color: "#ccd", backgroundColor: "#1b2026", border: "1px solid #345", padding: "8px 10px", borderRadius: "6px" }}>
+                                <div>Rating: ★{Number(point.rating).toFixed(1)}</div>
+                                <div>Words: {point.words}</div>
+                              </div>
+                            );
+                          }}
+                        />
+                        <Scatter data={data.reviewStats.scatterPoints} fill="#00e054" />
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="lb-review-card-sub">Add ratings to see the scatter.</div>
+                )}
+              </div>
+              {data.reviewStats.mostLoved && (
+                <div className="lb-review-card lb-review-card--feature">
+                  <div className="lb-review-card-title">Most loved</div>
+                  <div className="lb-review-body">
+                    {data.reviewStats.mostLoved.posterUrl && (
+                      <img
+                        className="lb-review-poster lb-review-poster-large"
+                        src={data.reviewStats.mostLoved.posterUrl}
+                        alt={`${data.reviewStats.mostLoved.title} poster`}
+                        loading="lazy"
+                      />
+                    )}
+                    <div className="lb-review-card-metric">
+                      <div>
+                        {data.reviewStats.mostLoved.title}
+                        {data.reviewStats.mostLoved.year ? ` (${data.reviewStats.mostLoved.year})` : ""}
+                        {data.reviewStats.mostLoved.rating != null ? ` · ★${data.reviewStats.mostLoved.rating}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {data.reviewStats.mostHated && (
+                <div className="lb-review-card lb-review-card--feature">
+                  <div className="lb-review-card-title">Most hated</div>
+                  <div className="lb-review-body">
+                    {data.reviewStats.mostHated.posterUrl && (
+                      <img
+                        className="lb-review-poster lb-review-poster-large"
+                        src={data.reviewStats.mostHated.posterUrl}
+                        alt={`${data.reviewStats.mostHated.title} poster`}
+                        loading="lazy"
+                      />
+                    )}
+                    <div className="lb-review-card-metric">
+                      <div>
+                        {data.reviewStats.mostHated.title}
+                        {data.reviewStats.mostHated.year ? ` (${data.reviewStats.mostHated.year})` : ""}
+                        {data.reviewStats.mostHated.rating != null ? ` · ★${data.reviewStats.mostHated.rating}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         )}
 
+        {/* 9. Watchlist Pace */}
         {data.watchlist.paceText && (
           <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px", textAlign: "center", fontSize: "13px", color: "#ccd" }}>
             {data.watchlist.paceText}
@@ -6043,6 +6405,53 @@ function App() {
     watchlist: {
       paceText: watchlistPacePlain,
     },
+    heatmap: (() => {
+      const years: Record<string, Record<string, number>> = {};
+      for (const [year, yearMap] of diaryDateCounts.entries()) {
+        const obj: Record<string, number> = {};
+        for (const [dateKey, count] of yearMap.entries()) {
+          obj[dateKey] = count;
+        }
+        years[year] = obj;
+      }
+      return { years, globalMax: heatmapGlobalMax };
+    })(),
+    rewatches: {
+      firstWatchCount: firstWatchEntryCount,
+      rewatchCount: rewatchEntryCount,
+    },
+    ratings: {
+      chartData: ratingChartData,
+      averageRating,
+      medianRating,
+      ratingCount,
+      fourPlusCount,
+    },
+    reviewStats: reviewStats.hasEntries ? {
+      reviewCount: reviewStats.reviewEntries.length,
+      totalWords: reviewStats.totalWords,
+      medianWordCount: reviewStats.medianWordCount,
+      avgWordCount: reviewStats.avgWordCount,
+      shortestReview: reviewStats.shortestReview,
+      longestReview: reviewStats.longestReview,
+      percentOver200: reviewStats.percentOver200,
+      voiceLabel: reviewStats.voiceLabel,
+      reviewDensity: reviewStats.reviewDensity,
+      sentimentPoints: reviewStats.sentimentPoints,
+      scatterPoints: reviewStats.scatterPoints.map((p) => ({ rating: p.rating, words: p.words })),
+      mostLoved: reviewStats.mostLoved ? {
+        title: reviewStats.mostLoved.review.Name,
+        year: reviewStats.mostLoved.review.Year,
+        rating: reviewStats.mostLoved.rating,
+        posterUrl: reviewStats.mostLoved.posterUrl,
+      } : null,
+      mostHated: reviewStats.mostHated ? {
+        title: reviewStats.mostHated.review.Name,
+        year: reviewStats.mostHated.review.Year,
+        rating: reviewStats.mostHated.rating,
+        posterUrl: reviewStats.mostHated.posterUrl,
+      } : null,
+    } : undefined,
   }), [
     totalEntries,
     totalMoviesWithData,
@@ -6057,6 +6466,16 @@ function App() {
     shareTasteData,
     comfortZoneStats,
     watchlistPacePlain,
+    diaryDateCounts,
+    heatmapGlobalMax,
+    firstWatchEntryCount,
+    rewatchEntryCount,
+    ratingChartData,
+    averageRating,
+    medianRating,
+    ratingCount,
+    fourPlusCount,
+    reviewStats,
   ]);
 
   const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
