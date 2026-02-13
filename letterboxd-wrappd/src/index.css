@@ -18,10 +18,11 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100dvh;
-  background-color: #14181c;
-  color: #9ab;
+  background: var(--gradient-bg, #14181c);
+  color: var(--text-secondary, #9ab);
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  color: #fff;
+  color: var(--text-heading, #fff);
 }

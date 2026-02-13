@@ -35,6 +35,13 @@ import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import "./App.css";
 
+const CHART_TOOLTIP_STYLE = {
+  backgroundColor: "var(--surface-overlay)",
+  border: "1px solid var(--border-strong)",
+  color: "var(--text-primary)",
+  borderRadius: "8px",
+};
+
 // Shape of one row in diary.csv
 type DiaryRow = {
   Date: string;
@@ -260,6 +267,29 @@ const getContinentLabel = (code: string) =>
 
 const getCountryName = (code: string, fallback?: string) =>
   (countries as Record<string, any>)[code]?.name || fallback || code;
+
+const ISO_639_ENGLISH: Record<string, string> = {
+  ab:"Abkhazian",af:"Afrikaans",am:"Amharic",ar:"Arabic",an:"Aragonese",hy:"Armenian",
+  az:"Azerbaijani",eu:"Basque",be:"Belarusian",bn:"Bengali",bs:"Bosnian",br:"Breton",
+  bg:"Bulgarian",my:"Burmese",ca:"Catalan",zh:"Chinese",hr:"Croatian",cs:"Czech",
+  da:"Danish",nl:"Dutch",en:"English",eo:"Esperanto",et:"Estonian",fi:"Finnish",
+  fr:"French",gl:"Galician",ka:"Georgian",de:"German",el:"Greek",gu:"Gujarati",
+  ht:"Haitian Creole",ha:"Hausa",he:"Hebrew",hi:"Hindi",hu:"Hungarian",is:"Icelandic",
+  id:"Indonesian",ga:"Irish",it:"Italian",ja:"Japanese",jv:"Javanese",kn:"Kannada",
+  kk:"Kazakh",km:"Khmer",ko:"Korean",ku:"Kurdish",ky:"Kyrgyz",lo:"Lao",la:"Latin",
+  lv:"Latvian",lt:"Lithuanian",lb:"Luxembourgish",mk:"Macedonian",mg:"Malagasy",
+  ms:"Malay",ml:"Malayalam",mt:"Maltese",mi:"Maori",mr:"Marathi",mn:"Mongolian",
+  ne:"Nepali",no:"Norwegian",nb:"Norwegian Bokmål",nn:"Norwegian Nynorsk",oc:"Occitan",
+  or:"Odia",ps:"Pashto",fa:"Persian",pl:"Polish",pt:"Portuguese",pa:"Punjabi",
+  ro:"Romanian",rm:"Romansh",ru:"Russian",sm:"Samoan",gd:"Scottish Gaelic",sr:"Serbian",
+  sn:"Shona",sd:"Sindhi",si:"Sinhala",sk:"Slovak",sl:"Slovenian",so:"Somali",
+  es:"Spanish",su:"Sundanese",sw:"Swahili",sv:"Swedish",tl:"Tagalog",tg:"Tajik",
+  ta:"Tamil",tt:"Tatar",te:"Telugu",th:"Thai",bo:"Tibetan",ti:"Tigrinya",tr:"Turkish",
+  tk:"Turkmen",uk:"Ukrainian",ur:"Urdu",ug:"Uyghur",uz:"Uzbek",vi:"Vietnamese",
+  cy:"Welsh",fy:"Western Frisian",wo:"Wolof",xh:"Xhosa",yi:"Yiddish",yo:"Yoruba",
+  zu:"Zulu",cn:"Cantonese",xx:"No Language",sh:"Serbo-Croatian",
+};
+
 
 const CONTINENT_COLORS: Record<string, string> = {
   AF: "#FF8002",
@@ -488,19 +518,25 @@ const WorldMap = memo(function WorldMap({
   const [geoHover, setGeoHover] = useState<{ label: string; count: number; x: number; y: number } | null>(null);
   const worldMap = world as any;
 
+  const getMapBg = () => {
+    if (typeof document === "undefined") return "#14181c";
+    return getComputedStyle(document.documentElement).getPropertyValue("--map-bg").trim() || "#14181c";
+  };
+
   const getFillForLocation = useCallback((codeLower: string) => {
+    const bg = getMapBg();
     const code = codeLower.toUpperCase();
     const cont = getContinentCode(code);
     if (geoView === "continent") {
-      if (!cont) return "#14181c";
+      if (!cont) return bg;
       const base = CONTINENT_COLORS[cont] || "#334";
       const intensity = (continentCounts[cont] || 0) / maxContinentCount;
-      return mixHex("#14181c", base, Math.min(1, 0.2 + intensity * 0.8));
+      return mixHex(bg, base, Math.min(1, 0.2 + intensity * 0.8));
     }
     const count = countryCounts[code] || 0;
-    if (count === 0) return "#14181c";
+    if (count === 0) return bg;
     const intensity = count / maxCountryCount;
-    return mixHex("#14181c", "#00e054", Math.min(1, 0.2 + intensity * 0.8));
+    return mixHex(bg, "#00e054", Math.min(1, 0.2 + intensity * 0.8));
   }, [geoView, continentCounts, maxContinentCount, countryCounts, maxCountryCount]);
 
   const isSelectedLocation = useCallback((codeLower: string) => {
@@ -516,7 +552,7 @@ const WorldMap = memo(function WorldMap({
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-        <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#9ab" }}>World Map</h3>
+        <h3 style={{ fontSize: "14px", fontWeight: 600, color: "var(--stat-label-color)" }}>World Map</h3>
         <div style={{ display: "flex", gap: "8px" }}>
           {(["continent", "country"] as const).map((view) => (
             <button
@@ -526,9 +562,9 @@ const WorldMap = memo(function WorldMap({
               style={{
                 padding: "4px 8px",
                 borderRadius: "6px",
-                border: "1px solid #456",
-                backgroundColor: geoView === view ? "#00e054" : "transparent",
-                color: geoView === view ? "#14181c" : "#9ab",
+                border: "1px solid var(--border-strong)",
+                backgroundColor: geoView === view ? "var(--accent-green)" : "transparent",
+                color: geoView === view ? "var(--active-btn-text)" : "var(--text-secondary)",
                 fontSize: "11px",
                 fontWeight: 600,
                 cursor: "pointer",
@@ -541,7 +577,7 @@ const WorldMap = memo(function WorldMap({
       </div>
 
       {geoFilter && (
-        <div style={{ fontSize: "12px", color: "#9ab", textAlign: "center" }}>
+        <div style={{ fontSize: "12px", color: "var(--stat-label-color)", textAlign: "center" }}>
           Filtering diary list and pie charts for {geoFilter.type === "continent"
             ? getContinentLabel(geoFilter.value)
             : getCountryName(geoFilter.value)} — check Film Breakdown above.
@@ -555,9 +591,9 @@ const WorldMap = memo(function WorldMap({
               padding: "2px 6px",
               fontSize: "11px",
               backgroundColor: "transparent",
-              border: "1px solid #456",
+              border: "1px solid var(--border-strong)",
               borderRadius: "4px",
-              color: "#9ab",
+              color: "var(--stat-label-color)",
               cursor: "pointer",
             }}
           >
@@ -570,9 +606,9 @@ const WorldMap = memo(function WorldMap({
               padding: "2px 6px",
               fontSize: "11px",
               backgroundColor: "transparent",
-              border: "1px solid #456",
+              border: "1px solid var(--border-strong)",
               borderRadius: "4px",
-              color: "#9ab",
+              color: "var(--stat-label-color)",
               cursor: "pointer",
             }}
           >
@@ -583,7 +619,7 @@ const WorldMap = memo(function WorldMap({
 
       <div
         ref={mapWrapperRef}
-        style={{ position: "relative", width: "100%", backgroundColor: "#14181c", borderRadius: "8px", padding: "8px" }}
+        style={{ position: "relative", width: "100%", backgroundColor: "var(--surface-base)", borderRadius: "8px", padding: "8px" }}
       >
         {geoHover && (
           <div
@@ -592,12 +628,12 @@ const WorldMap = memo(function WorldMap({
               left: geoHover.x,
               top: geoHover.y,
               transform: "translate(-50%, -120%)",
-              backgroundColor: "rgba(20, 24, 28, 0.95)",
-              border: "1px solid #345",
+              backgroundColor: "var(--surface-overlay)",
+              border: "1px solid var(--border-strong)",
               borderRadius: "6px",
               padding: "4px 8px",
               fontSize: "12px",
-              color: "#ccd",
+              color: "var(--text-primary)",
               pointerEvents: "none",
               whiteSpace: "nowrap",
               boxShadow: "0 6px 16px rgba(0,0,0,0.35)",
@@ -629,7 +665,7 @@ const WorldMap = memo(function WorldMap({
                 key={loc.id}
                 d={loc.path}
                 fill={getFillForLocation(codeLower)}
-                stroke={isSelectedLocation(codeLower) ? "#00e054" : "#222831"}
+                stroke={isSelectedLocation(codeLower) ? "#00e054" : "var(--map-stroke)"}
                 strokeWidth={isSelectedLocation(codeLower) ? 0.8 : 0.4}
                 style={{ cursor: clickable ? "pointer" : "default", transition: "fill 0.2s ease" }}
                 onMouseEnter={(e) => {
@@ -680,9 +716,9 @@ const WorldMap = memo(function WorldMap({
               style={{
                 padding: "4px 8px",
                 borderRadius: "999px",
-                border: "1px solid #456",
-                backgroundColor: isActive ? "#00e054" : "transparent",
-                color: isActive ? "#14181c" : "#9ab",
+                border: "1px solid var(--border-strong)",
+                backgroundColor: isActive ? "var(--accent-green)" : "transparent",
+                color: isActive ? "var(--active-btn-text)" : "var(--text-secondary)",
                 fontSize: "11px",
                 fontWeight: 600,
                 cursor: count > 0 ? "pointer" : "default",
@@ -728,6 +764,67 @@ const formatRuntime = (runtime: number | null) => {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 };
 
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+const formatDateRange = (start: string, end: string): string => {
+  const s = new Date(start + "T00:00:00");
+  const e = new Date(end + "T00:00:00");
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const sameYear = s.getFullYear() === e.getFullYear();
+  const sm = monthNames[s.getMonth()];
+  const em = monthNames[e.getMonth()];
+  if (sameYear) {
+    return `${sm} ${s.getDate()} – ${em} ${e.getDate()}, ${e.getFullYear()}`;
+  }
+  return `${sm} ${s.getDate()}, ${s.getFullYear()} – ${em} ${e.getDate()}, ${e.getFullYear()}`;
+};
+
+const GAP_COPY_LONG = [
+  "The dark ages. What happened??",
+  "Gone. Vanished. The couch gathered dust.",
+  "A cinematic drought of epic proportions.",
+  "Were you okay? Blink twice if you need help.",
+  "Your Letterboxd account filed a missing persons report.",
+  "The longest intermission in recorded history.",
+];
+const GAP_COPY_MEDIUM = [
+  "A significant intermission.",
+  "A sabbatical from cinema. Bold.",
+  "The projector cooled off for a bit.",
+  "Taking a break — the watchlist wasn't.",
+];
+const GAP_COPY_SHORT = [
+  "Just a breather. The watchlist was still growing.",
+  "A brief pause. Nothing to worry about.",
+  "Life got in the way. Briefly.",
+];
+const generateGapCopy = (_start: string, end: string, days: number, index: number = 0): string => {
+  const month = new Date(end + "T00:00:00").getMonth();
+  if (days >= 365) return GAP_COPY_LONG[index % GAP_COPY_LONG.length];
+  if (month >= 5 && month <= 7 && index === 0) return "Touched grass? Found love? Either way, the movies missed you.";
+  if (month === 11 && index === 0) return "Family obligations. We get it.";
+  if (days >= 60) return GAP_COPY_LONG[index % GAP_COPY_LONG.length];
+  if (days >= 30) return GAP_COPY_MEDIUM[index % GAP_COPY_MEDIUM.length];
+  return GAP_COPY_SHORT[index % GAP_COPY_SHORT.length];
+};
+
+const generateDayOfWeekCopy = (peakDay: number, weekendPct: number, counts: number[]): string => {
+  const max = Math.max(...counts);
+  const min = Math.min(...counts);
+  const spread = max - min;
+  const avg = counts.reduce((a, b) => a + b, 0) / 7;
+  if (spread < avg * 0.3) return "You watch movies like you breathe — constantly.";
+  if (weekendPct > 50) {
+    if (peakDay === 5) return "Saturday is your cinema day. Shocking absolutely no one.";
+    if (peakDay === 6) return "Sunday scaries? More like Sunday screenings.";
+    return "Weekend warrior — your couch knows.";
+  }
+  if (peakDay === 2) return "Wednesday? That's unhinged. We respect it.";
+  if (peakDay === 4) return "Friday night film club, party of one.";
+  if (peakDay === 0) return "Monday movies. Bold strategy for a weeknight.";
+  return "Who needs a social life when you have a watchlist?";
+};
+
 // Cute loading spinner component
 const LoadingSpinner = ({ message }: { message?: string }) => (
   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", padding: "24px" }}>
@@ -737,8 +834,8 @@ const LoadingSpinner = ({ message }: { message?: string }) => (
         style={{
           position: "absolute",
           inset: 0,
-          border: "3px solid #456",
-          borderTopColor: "#00e054",
+          border: "3px solid var(--border-strong)",
+          borderTopColor: "var(--accent-green)",
           borderRadius: "50%",
           animation: "spin 1s linear infinite",
         }}
@@ -748,15 +845,15 @@ const LoadingSpinner = ({ message }: { message?: string }) => (
         style={{
           position: "absolute",
           inset: "8px",
-          border: "3px solid #345",
-          borderBottomColor: "#00e054",
+          border: "3px solid var(--border-default)",
+          borderBottomColor: "var(--accent-green)",
           borderRadius: "50%",
           animation: "spin 0.6s linear infinite reverse",
         }}
       />
     </div>
     {message && (
-      <p style={{ color: "#9ab", fontSize: "14px", textAlign: "center" }}>{message}</p>
+      <p style={{ color: "var(--stat-label-color)", fontSize: "14px", textAlign: "center" }}>{message}</p>
     )}
     <style>{`
       @keyframes spin {
@@ -775,15 +872,15 @@ const RatingTooltip = ({ active, payload, label }: any) => {
     <div
       style={{
         fontSize: "12px",
-        color: "#9ab",
-        backgroundColor: "rgba(20, 24, 28, 0.95)",
-        border: "1px solid #345",
+        color: "var(--stat-label-color)",
+        backgroundColor: "var(--surface-overlay)",
+        border: "1px solid var(--border-strong)",
         borderRadius: "4px",
         padding: "6px 10px",
         boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
       }}
     >
-      <div style={{ fontWeight: 600, color: "#fff", marginBottom: "2px" }}>{label}★</div>
+      <div style={{ fontWeight: 600, color: "var(--text-heading)", marginBottom: "2px" }}>{label}★</div>
       <div>
         {count} {count === 1 ? "entry" : "entries"}
       </div>
@@ -794,7 +891,7 @@ const RatingTooltip = ({ active, payload, label }: any) => {
 // Letterboxd-style pie chart colors
 const PIE_COLORS = {
   primary: "#00e054",    // Letterboxd green
-  secondary: "#456",     // Muted slate for "other" segment
+  secondary: "#8899aa",  // Muted slate for "other" segment (works in both themes)
 };
 
 const shouldLogDebug = () =>
@@ -817,15 +914,15 @@ const PieTooltip = ({ active, payload }: any) => {
     <div
       style={{
         fontSize: "12px",
-        color: "#9ab",
-        backgroundColor: "rgba(20, 24, 28, 0.95)",
-        border: "1px solid #345",
+        color: "var(--stat-label-color)",
+        backgroundColor: "var(--surface-overlay)",
+        border: "1px solid var(--border-strong)",
         borderRadius: "4px",
         padding: "6px 10px",
         boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
       }}
     >
-      <div style={{ fontWeight: 600, color: "#fff", marginBottom: "2px" }}>{name}</div>
+      <div style={{ fontWeight: 600, color: "var(--text-heading)", marginBottom: "2px" }}>{name}</div>
       <div>
         {value} {value === 1 ? "film" : "films"} ({percent}%)
       </div>
@@ -880,8 +977,8 @@ const StatPieChart = ({
     >
       {/* Secondary label at top */}
       <div style={{ textAlign: "center", marginBottom: "4px" }}>
-        <span style={{ fontSize: "13px", color: "#9ab" }}>{secondaryLabel}</span>
-        <span style={{ fontSize: "13px", color: "#9ab", marginLeft: "4px" }}>{secondaryPercent}%</span>
+        <span style={{ fontSize: "13px", color: "var(--stat-label-color)" }}>{secondaryLabel}</span>
+        <span style={{ fontSize: "13px", color: "var(--stat-label-color)", marginLeft: "4px" }}>{secondaryPercent}%</span>
       </div>
 
       {/* Donut chart */}
@@ -911,7 +1008,7 @@ const StatPieChart = ({
 
       {/* Primary label at bottom */}
       <div style={{ textAlign: "center", marginTop: "4px" }}>
-        <span style={{ fontSize: "13px", fontWeight: 500, color: "#ccd" }}>
+        <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-primary)" }}>
           {primaryLabel}
         </span>
         {primaryInfo && <span style={{ marginLeft: "6px" }}>{primaryInfo}</span>}
@@ -1016,7 +1113,13 @@ const VirtualList = memo(({ items, height, itemHeight, heights, overscan = 6, cl
   );
 });
 
-const HEAT_COLORS = ["#1c232a", "#21462c", "#2f6f3a", "#3fbf5a", "#00e054"];
+const HEAT_COLORS = [
+  "var(--heat-0)",
+  "var(--heat-1)",
+  "var(--heat-2)",
+  "var(--heat-3)",
+  "var(--heat-4)",
+];
 const TMDB_PROFILE_BASE = "https://image.tmdb.org/t/p/w185";
 const TMDB_POSTER_BASE = "https://image.tmdb.org/t/p/w200";
 const TASTE_DIVERSIFY_NOTES = [
@@ -1177,7 +1280,7 @@ const HeatmapYear = memo(({
                 <div
                   key={cell.dateKey}
                   className={`lb-heatmap-cell ${cell.inYear ? "" : "is-muted"}`}
-                  style={{ backgroundColor: cell.inYear ? getHeatColor(cell.count, colorMax) : "#151b20" }}
+                  style={{ backgroundColor: cell.inYear ? getHeatColor(cell.count, colorMax) : "var(--heat-empty)" }}
                   onMouseEnter={(event) => {
                     if (!onHoverCell) return;
                     onHoverCell(formatHeatmapLabel(cell.date, cell.count), cell.dateKey, event.clientX, event.clientY);
@@ -1485,22 +1588,22 @@ const DiaryTable = memo(({
           {movie.rating != null ? `★${movie.rating.toFixed(1)}` : "—"}
         </div>
         <div className="lb-cell lb-cell-center">{movie.year}</div>
-        <div className="lb-cell lb-cell-flag" style={{ color: movie.directedByWoman ? "#00e054" : "#456" }}>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.directedByWoman ? "var(--accent-green)" : "var(--border-strong)" }}>
           {movie.directedByWoman ? "✓" : "✗"}
         </div>
-        <div className="lb-cell lb-cell-flag" style={{ color: movie.writtenByWoman ? "#00e054" : "#456" }}>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.writtenByWoman ? "var(--accent-green)" : "var(--border-strong)" }}>
           {movie.writtenByWoman ? "✓" : "✗"}
         </div>
-        <div className="lb-cell lb-cell-flag" style={{ color: movie.byBlackDirector ? "#00e054" : "#456" }}>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.byBlackDirector ? "var(--accent-green)" : "var(--border-strong)" }}>
           {movie.byBlackDirector ? "✓" : "✗"}
         </div>
-        <div className="lb-cell lb-cell-flag" style={{ color: movie.notAmerican ? "#00e054" : "#456" }}>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.notAmerican ? "var(--accent-green)" : "var(--border-strong)" }}>
           {movie.notAmerican ? "✓" : "✗"}
         </div>
-        <div className="lb-cell lb-cell-flag" style={{ color: movie.notEnglish ? "#00e054" : "#456" }}>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.notEnglish ? "var(--accent-green)" : "var(--border-strong)" }}>
           {movie.notEnglish ? "✓" : "✗"}
         </div>
-        <div className="lb-cell lb-cell-flag" style={{ color: movie.inCriterion ? "#00e054" : "#456" }}>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.inCriterion ? "var(--accent-green)" : "var(--border-strong)" }}>
           {movie.inCriterion ? "✓" : "✗"}
         </div>
       </div>
@@ -1760,7 +1863,7 @@ const WatchlistBuilder = memo(({
 
   if (curatedLoading) {
     return (
-      <div style={{ textAlign: "center", padding: "32px 0", color: "#9ab" }}>
+      <div style={{ textAlign: "center", padding: "32px 0", color: "var(--stat-label-color)" }}>
         Loading curated list data…
       </div>
     );
@@ -2729,22 +2832,22 @@ const WatchlistTable = memo(({
         <div className="lb-cell lb-cell-center lb-cell-small">
           {movie.continents.length > 0 ? movie.continents.map(getContinentLabel).join(", ") : "—"}
         </div>
-        <div className="lb-cell lb-cell-flag" style={{ color: movie.directedByWoman ? "#00e054" : "#456" }}>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.directedByWoman ? "var(--accent-green)" : "var(--border-strong)" }}>
           {movie.directedByWoman ? "✓" : "✗"}
         </div>
-        <div className="lb-cell lb-cell-flag" style={{ color: movie.writtenByWoman ? "#00e054" : "#456" }}>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.writtenByWoman ? "var(--accent-green)" : "var(--border-strong)" }}>
           {movie.writtenByWoman ? "✓" : "✗"}
         </div>
-        <div className="lb-cell lb-cell-flag" style={{ color: movie.byBlackDirector ? "#00e054" : "#456" }}>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.byBlackDirector ? "var(--accent-green)" : "var(--border-strong)" }}>
           {movie.byBlackDirector ? "✓" : "✗"}
         </div>
-        <div className="lb-cell lb-cell-flag" style={{ color: movie.notAmerican ? "#00e054" : "#456" }}>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.notAmerican ? "var(--accent-green)" : "var(--border-strong)" }}>
           {movie.notAmerican ? "✓" : "✗"}
         </div>
-        <div className="lb-cell lb-cell-flag" style={{ color: movie.notEnglish ? "#00e054" : "#456" }}>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.notEnglish ? "var(--accent-green)" : "var(--border-strong)" }}>
           {movie.notEnglish ? "✓" : "✗"}
         </div>
-        <div className="lb-cell lb-cell-flag" style={{ color: movie.inCriterion ? "#00e054" : "#456" }}>
+        <div className="lb-cell lb-cell-flag" style={{ color: movie.inCriterion ? "var(--accent-green)" : "var(--border-strong)" }}>
           {movie.inCriterion ? "✓" : "✗"}
         </div>
       </div>
@@ -2938,6 +3041,14 @@ type ShareSnapshot = {
     directors: { percent: number; topLabels: Array<{ label: string; count: number }> };
     genres: { percent: number; topLabels: Array<{ label: string; count: number }> };
     countries: { percent: number; topLabels: Array<{ label: string; count: number }> };
+    tasteScore?: number;
+    tasteInsights?: string[];
+    tasteDetails?: {
+      directors: Array<{ label: string; count: number }>;
+      decades: Array<{ label: string; count: number; pct: number }>;
+      genres: Array<{ label: string; count: number }>;
+      countries: Array<{ label: string; count: number }>;
+    };
   };
   watchlist: {
     paceText: string | null;
@@ -2972,6 +3083,38 @@ type ShareSnapshot = {
     mostLoved: { title: string; year?: string; rating: number | null; posterUrl?: string | null } | null;
     mostHated: { title: string; year?: string; rating: number | null; posterUrl?: string | null } | null;
   };
+  streaks?: { longestDaily: number; longestWeekly: number; currentDaily: number; currentWeekly: number; biggestGap: { start: string; end: string; days: number; copy: string } | null; medDaysBetween: number };
+  runtimeStats?: { totalMinutes: number; avgRuntime: number; longest: { name: string; runtime: number } | null; shortest: { name: string; runtime: number } | null };
+  dayOfWeek?: { counts: number[]; peakDay: number; valleyDay: number; copy: string };
+  heatmapGaps?: Array<{ start: string; end: string; days: number; copy: string }>;
+  ratingDrift?: { direction: "up" | "down" | "stable"; magnitude: number; copy: string };
+  mostRewatched?: Array<{ name: string; year: string; count: number }>;
+  watchlistVelocity?: { addsPerMonth: number; watchesPerMonth: number; netPerMonth: number; copy: string };
+};
+
+/* ─── Theme Toggle ─── */
+const ThemeToggle = () => {
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    if (typeof window === "undefined") return "dark";
+    const saved = localStorage.getItem("lb-theme");
+    if (saved === "light" || saved === "dark") return saved;
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("lb-theme", theme);
+  }, [theme]);
+
+  return (
+    <button
+      className="lb-theme-toggle"
+      onClick={() => setTheme(t => (t === "dark" ? "light" : "dark"))}
+      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+    >
+      {theme === "dark" ? "☀️" : "🌙"}
+    </button>
+  );
 };
 
 const PublicSharePage = ({ token }: { token: string }) => {
@@ -3025,7 +3168,7 @@ const PublicSharePage = ({ token }: { token: string }) => {
 
   if (loading) {
     return (
-      <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <main className="lb-app-main" style={{ justifyContent: "center" }}>
         Loading recap…
       </main>
     );
@@ -3033,7 +3176,7 @@ const PublicSharePage = ({ token }: { token: string }) => {
 
   if (error || !data) {
     return (
-      <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <main className="lb-app-main" style={{ justifyContent: "center" }}>
         {error || "Share link not found."}
       </main>
     );
@@ -3059,38 +3202,94 @@ const PublicSharePage = ({ token }: { token: string }) => {
   const activeTasteCat = data.taste.categories.find((c) => c.key === tasteCategory) || data.taste.categories[0];
 
   return (
-    <main style={{ minHeight: "100vh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
+    <main className="lb-app-main">
+      <ThemeToggle />
       <div style={{ width: "100%", maxWidth: "980px", display: "flex", flexDirection: "column", gap: "24px" }}>
         {/* 1. Header */}
         <header style={{ textAlign: "center" }}>
-          <h1 style={{ fontSize: "28px", fontWeight: 700, color: "#fff", marginBottom: "6px", letterSpacing: "0.5px" }}>Letterbddy Recap</h1>
-          <div style={{ fontSize: "12px", color: "#9ab" }}>
+          <h1 className="lb-gradient-text" style={{ fontSize: "28px", fontWeight: 700, marginBottom: "6px", letterSpacing: "0.5px" }}>Letterbddy Recap</h1>
+          <div style={{ fontSize: "12px", color: "var(--stat-label-color)" }}>
             Generated {new Date(data.generatedAt).toLocaleDateString()}
           </div>
         </header>
 
         {/* 2. Totals */}
-        <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
+        <section className="lb-glass-section">
           <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", justifyContent: "center", textAlign: "center" }}>
             <div>
-              <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.totals.diaryEntries}</div>
-              <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Diary entries</div>
+              <div className="lb-stat-value-lg lb-gradient-text">{data.totals.diaryEntries}</div>
+              <div className="lb-stat-label">Diary entries</div>
             </div>
             <div>
-              <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.totals.filmsWithData}</div>
-              <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Films with TMDb data</div>
+              <div className="lb-stat-value-lg lb-gradient-text">{data.totals.filmsWithData}</div>
+              <div className="lb-stat-label">Films with TMDb data</div>
             </div>
             <div>
-              <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.totals.watchlistCount}</div>
-              <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Watchlist</div>
+              <div className="lb-stat-value-lg lb-gradient-text">{data.totals.watchlistCount}</div>
+              <div className="lb-stat-label">Watchlist</div>
             </div>
+            {data.runtimeStats && (
+              <>
+                <div>
+                  <div className="lb-stat-value-lg lb-gradient-text">{Math.round(data.runtimeStats.totalMinutes / 60)}</div>
+                  <div className="lb-stat-label">Hours</div>
+                </div>
+                <div>
+                  <div className="lb-stat-value-lg lb-gradient-text">{data.runtimeStats.avgRuntime}</div>
+                  <div className="lb-stat-label">Avg Min</div>
+                </div>
+              </>
+            )}
           </div>
+          {data.runtimeStats && (data.runtimeStats.longest || data.runtimeStats.shortest) && (
+            <div style={{ fontSize: "11px", color: "var(--stat-label-color)", textAlign: "center", marginTop: "8px" }}>
+              {data.runtimeStats.longest && `Longest: ${data.runtimeStats.longest.name} (${formatRuntime(data.runtimeStats.longest.runtime)})`}
+              {data.runtimeStats.longest && data.runtimeStats.shortest && " · "}
+              {data.runtimeStats.shortest && `Shortest: ${data.runtimeStats.shortest.name} (${formatRuntime(data.runtimeStats.shortest.runtime)})`}
+            </div>
+          )}
         </section>
+
+        {/* Streaks */}
+        {data.streaks && (data.streaks.longestDaily > 1 || data.streaks.longestWeekly > 1) && (
+          <section className="lb-glass-section" style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "center" }}>
+              <div className="lb-streak-pill">
+                <div className="lb-stat-value-sm">{data.streaks.longestDaily}d</div>
+                <div className="lb-stat-label" style={{ fontSize: "9px" }}>Best Streak</div>
+              </div>
+              <div className="lb-streak-pill">
+                <div className="lb-stat-value-sm">{data.streaks.currentDaily}d</div>
+                <div className="lb-stat-label" style={{ fontSize: "9px" }}>Current</div>
+              </div>
+              <div className="lb-streak-pill">
+                <div className="lb-stat-value-sm">{data.streaks.longestWeekly}w</div>
+                <div className="lb-stat-label" style={{ fontSize: "9px" }}>Best Week Streak</div>
+              </div>
+              <div className="lb-streak-pill">
+                <div className="lb-stat-value-sm">{data.streaks.currentWeekly}w</div>
+                <div className="lb-stat-label" style={{ fontSize: "9px" }}>Current</div>
+              </div>
+              <div className="lb-streak-pill">
+                <div className="lb-stat-value-sm">{data.streaks.medDaysBetween}</div>
+                <div className="lb-stat-label" style={{ fontSize: "9px" }}>Med Days Between</div>
+              </div>
+            </div>
+            {data.streaks.biggestGap && (
+              <div className="lb-gap-card">
+                <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-heading)", marginBottom: "2px" }}>
+                  {formatDateRange(data.streaks.biggestGap.start, data.streaks.biggestGap.end)} · {data.streaks.biggestGap.days} days
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--stat-label-color)", fontStyle: "italic" }}>{data.streaks.biggestGap.copy}</div>
+              </div>
+            )}
+          </section>
+        )}
 
         {/* 3. Activity Heatmap */}
         {heatmapMaps && heatmapYears.length > 0 && (
-          <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
-            <h2 style={{ fontSize: "16px", color: "#fff", textAlign: "center", marginBottom: "12px" }}>Activity</h2>
+          <section className="lb-glass-section">
+            <h2 className="lb-section-heading" style={{ marginBottom: "12px" }}>Activity</h2>
             <div ref={shareHeatmapRef} className="lb-heatmap-scroll">
               {heatmapYears.map((year) => (
                 <HeatmapYear
@@ -3112,9 +3311,43 @@ const PublicSharePage = ({ token }: { token: string }) => {
           </section>
         )}
 
+        {/* Day-of-Week */}
+        {data.dayOfWeek && (
+          <section className="lb-glass-section" style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
+            <h2 className="lb-section-heading">When You Watch</h2>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", height: "100px" }}>
+              {data.dayOfWeek.counts.map((count: number, i: number) => {
+                const maxC = Math.max(...data.dayOfWeek!.counts);
+                const h = maxC > 0 ? Math.max(4, (count / maxC) * 80) : 4;
+                return (
+                  <div key={DAY_NAMES[i]} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+                    <div className="lb-dow-bar" style={{ width: "28px", height: `${h}px`, backgroundColor: i === data.dayOfWeek!.peakDay ? "var(--accent-green)" : "var(--border-strong)" }} />
+                    <span style={{ fontSize: "9px", color: "var(--stat-label-color)" }}>{DAY_NAMES[i]}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: "11px", color: "var(--stat-label-color)", fontStyle: "italic", textAlign: "center" }}>{data.dayOfWeek.copy}</div>
+          </section>
+        )}
+
+        {/* Heatmap Gaps */}
+        {data.heatmapGaps && data.heatmapGaps.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "center" }}>
+            {data.heatmapGaps.map((gap: { start: string; end: string; days: number; copy: string }, i: number) => (
+              <div key={`share-gap-${i}`} className="lb-gap-card">
+                <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-heading)", marginBottom: "2px" }}>
+                  {formatDateRange(gap.start, gap.end)} · {gap.days} days
+                </div>
+                <div style={{ fontSize: "10px", color: "var(--stat-label-color)", fontStyle: "italic" }}>{gap.copy}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* 4. Pie Charts */}
-        <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
-          <h2 style={{ fontSize: "16px", color: "#fff", textAlign: "center", marginBottom: "12px" }}>Film Breakdown</h2>
+        <section className="lb-glass-section">
+          <h2 className="lb-section-heading" style={{ marginBottom: "12px" }}>Film Breakdown</h2>
           <div className="lb-pie-grid">
             {data.rewatches && (
               <StatPieChart
@@ -3161,38 +3394,52 @@ const PublicSharePage = ({ token }: { token: string }) => {
               secondaryLabel="Not in Criterion"
             />
           </div>
+          {/* Most Rewatched */}
+          {data.mostRewatched && data.mostRewatched.length > 0 && (
+            <div style={{ marginTop: "16px" }}>
+              <h3 style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-heading)", textAlign: "center", marginBottom: "8px" }}>Most Rewatched</h3>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", justifyContent: "center" }}>
+                {data.mostRewatched.map((film: { name: string; year: string; count: number }) => (
+                  <div key={`${film.name}-${film.year}`} className="lb-glass-section" style={{ borderRadius: "6px", padding: "6px 10px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ fontSize: "11px", color: "var(--text-primary)" }}>{film.name}{film.year ? ` (${film.year})` : ""}</span>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#00e054", background: "rgba(0, 224, 84, 0.1)", borderRadius: "10px", padding: "1px 6px" }}>{film.count}x</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* 5. Ratings */}
         {data.ratings && data.ratings.ratingCount > 0 && (
-          <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
-            <h2 style={{ fontSize: "16px", color: "#fff", textAlign: "center", marginBottom: "12px" }}>Ratings</h2>
+          <section className="lb-glass-section">
+            <h2 className="lb-section-heading" style={{ marginBottom: "12px" }}>Ratings</h2>
             <div style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center", flexWrap: "wrap", marginBottom: "16px" }}>
               <div>
-                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>★{data.ratings.averageRating.toFixed(1)}</div>
-                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Average</div>
+                <div className="lb-stat-value-lg lb-gradient-text">★{data.ratings.averageRating.toFixed(1)}</div>
+                <div className="lb-stat-label">Average</div>
               </div>
               <div>
-                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>★{data.ratings.medianRating.toFixed(1)}</div>
-                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Median</div>
+                <div className="lb-stat-value-lg lb-gradient-text">★{data.ratings.medianRating.toFixed(1)}</div>
+                <div className="lb-stat-label">Median</div>
               </div>
               <div>
-                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.ratings.ratingCount}</div>
-                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Rated</div>
+                <div className="lb-stat-value-lg lb-gradient-text">{data.ratings.ratingCount}</div>
+                <div className="lb-stat-label">Rated</div>
               </div>
               <div>
-                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.ratings.fourPlusCount}</div>
-                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Rated 4+</div>
+                <div className="lb-stat-value-lg lb-gradient-text">{data.ratings.fourPlusCount}</div>
+                <div className="lb-stat-label">Rated 4+</div>
               </div>
             </div>
             <div style={{ width: "100%", height: 180 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.ratings.chartData} margin={{ top: 10, right: 10, left: 0, bottom: 10 }}>
-                  <XAxis dataKey="rating" tick={{ fontSize: 11, fill: "#9ab" }} tickLine={false} axisLine={{ stroke: "#456" }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "#9ab" }} tickLine={false} axisLine={false} width={30} />
+                  <XAxis dataKey="rating" tick={{ fontSize: 11, fill: "var(--stat-label-color)" }} tickLine={false} axisLine={{ stroke: "var(--border-strong)" }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "var(--stat-label-color)" }} tickLine={false} axisLine={false} width={30} />
                   <Tooltip
                     cursor={{ fill: "rgba(68, 85, 102, 0.3)" }}
-                    contentStyle={{ backgroundColor: "#1b2026", border: "1px solid #345", color: "#ccd" }}
+                    contentStyle={CHART_TOOLTIP_STYLE}
                   />
                   <Bar dataKey="count" radius={[3, 3, 0, 0]} isAnimationActive={false}>
                     {data.ratings.chartData.map((entry) => (
@@ -3202,6 +3449,11 @@ const PublicSharePage = ({ token }: { token: string }) => {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            {data.ratingDrift && (
+              <div style={{ fontSize: "12px", color: "var(--stat-label-color)", textAlign: "center", marginTop: "8px" }}>
+                {data.ratingDrift.direction === "up" ? "📈" : data.ratingDrift.direction === "down" ? "📉" : "⚖️"} {data.ratingDrift.copy}
+              </div>
+            )}
           </section>
         )}
 
@@ -3213,7 +3465,7 @@ const PublicSharePage = ({ token }: { token: string }) => {
                 <h2>Taste DNA</h2>
                 <p>Top creators and trends in your diary</p>
               </div>
-              <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>
+              <div className="lb-stat-label">
                 Sorted by: {data.taste.sortMode === "rated" ? "highest rated" : "most watched"}
               </div>
             </div>
@@ -3271,14 +3523,30 @@ const PublicSharePage = ({ token }: { token: string }) => {
           </section>
         )}
 
-        {/* 7. Comfort Zone */}
+        {/* 7. Viewing Identity */}
         <section className="lb-comfort-zone">
           <div className="lb-comfort-header">
-            <div className="lb-comfort-title">Comfort Zone Index</div>
-            <div className="lb-comfort-score">{Math.round(data.comfortZone.index)}%</div>
+            <div className="lb-comfort-title">Viewing Identity</div>
           </div>
-          <div className="lb-comfort-subnote">
-            Share of your watches that come from your top 3 directors, genres, and countries.
+
+          {data.comfortZone?.tasteDetails && data.comfortZone.tasteDetails.directors && data.comfortZone.tasteDetails.directors.length > 0 && (
+            <>
+              <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px", textAlign: "center" }}>Top 10 Directors</div>
+              <div className="lb-taste-detail" style={{ justifyContent: "center" }}>
+                {data.comfortZone.tasteDetails.directors.map((d: { label: string; count: number }, j: number) => (
+                  <span key={j} className="lb-taste-detail-item">{d.label} ({d.count})</span>
+                ))}
+              </div>
+              <hr className="lb-taste-divider" />
+            </>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+            <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px" }}>Comfort Zone</div>
+            <div className="lb-comfort-subnote" style={{ margin: 0, flex: 1, textAlign: "center" }}>
+              Share of your watches from your top 3 directors, genres, and countries.
+            </div>
+            <div className="lb-comfort-score">{Math.round(data.comfortZone.index)}%</div>
           </div>
           <div className="lb-comfort-bars">
             {[
@@ -3304,24 +3572,24 @@ const PublicSharePage = ({ token }: { token: string }) => {
 
         {/* 8. Reviews */}
         {data.reviewStats && (
-          <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px" }}>
-            <h2 style={{ fontSize: "16px", color: "#fff", textAlign: "center", marginBottom: "12px" }}>Reviews</h2>
+          <section className="lb-glass-section">
+            <h2 className="lb-section-heading" style={{ marginBottom: "12px" }}>Reviews</h2>
             <div style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center", flexWrap: "wrap", marginBottom: "16px" }}>
               <div>
-                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.reviewStats.reviewCount}</div>
-                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Reviews</div>
+                <div className="lb-stat-value-lg lb-gradient-text">{data.reviewStats.reviewCount}</div>
+                <div className="lb-stat-label">Reviews</div>
               </div>
               <div>
-                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.reviewStats.medianWordCount}</div>
-                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Median Words</div>
+                <div className="lb-stat-value-lg lb-gradient-text">{data.reviewStats.medianWordCount}</div>
+                <div className="lb-stat-label">Median Words</div>
               </div>
               <div>
-                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.reviewStats.avgWordCount}</div>
-                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Avg Words</div>
+                <div className="lb-stat-value-lg lb-gradient-text">{data.reviewStats.avgWordCount}</div>
+                <div className="lb-stat-label">Avg Words</div>
               </div>
               <div>
-                <div style={{ fontSize: "28px", fontWeight: 600, color: "#fff" }}>{data.reviewStats.totalWords.toLocaleString()}</div>
-                <div style={{ fontSize: "11px", color: "#9ab", textTransform: "uppercase", letterSpacing: "1px" }}>Total Words</div>
+                <div className="lb-stat-value-lg lb-gradient-text">{data.reviewStats.totalWords.toLocaleString()}</div>
+                <div className="lb-stat-label">Total Words</div>
               </div>
             </div>
             <div className="lb-review-grid">
@@ -3347,16 +3615,16 @@ const PublicSharePage = ({ token }: { token: string }) => {
                   <div className="lb-review-chart">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={data.reviewStats.sentimentPoints} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
-                        <CartesianGrid stroke="rgba(68, 85, 102, 0.35)" strokeDasharray="3 3" />
-                        <XAxis dataKey="month" tick={{ fill: "#9ab", fontSize: 10 }} minTickGap={20} />
-                        <YAxis tick={{ fill: "#9ab", fontSize: 10 }} width={32} />
+                        <CartesianGrid stroke="var(--border-subtle)" strokeDasharray="3 3" />
+                        <XAxis dataKey="month" tick={{ fill: "var(--stat-label-color)", fontSize: 10 }} minTickGap={20} />
+                        <YAxis tick={{ fill: "var(--stat-label-color)", fontSize: 10 }} width={32} />
                         <Tooltip
-                          contentStyle={{ backgroundColor: "#1b2026", border: "1px solid #345", color: "#ccd" }}
+                          contentStyle={CHART_TOOLTIP_STYLE}
                           content={({ payload, label }) => {
                             const point = payload?.[0]?.payload as any;
                             if (!point) return null;
                             return (
-                              <div style={{ fontSize: "12px", color: "#ccd", backgroundColor: "#1b2026", border: "1px solid #345", padding: "8px 10px", borderRadius: "6px" }}>
+                              <div style={{ fontSize: "12px", color: "var(--text-primary)", backgroundColor: "var(--surface-overlay)", border: "1px solid var(--border-strong)", padding: "8px 10px", borderRadius: "6px" }}>
                                 <div style={{ fontWeight: 600 }}>Month: {label}</div>
                                 <div style={{ marginTop: "4px" }}>Sentiment: {Number(point.sentiment).toFixed(3)}</div>
                                 <div>Reviews: {point.count}</div>
@@ -3378,17 +3646,17 @@ const PublicSharePage = ({ token }: { token: string }) => {
                   <div className="lb-review-chart">
                     <ResponsiveContainer width="100%" height="100%">
                       <ScatterChart margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
-                        <CartesianGrid stroke="rgba(68, 85, 102, 0.35)" strokeDasharray="3 3" />
-                        <XAxis type="number" dataKey="rating" domain={[0, 5]} tick={{ fill: "#9ab", fontSize: 10 }} />
-                        <YAxis type="number" dataKey="words" tick={{ fill: "#9ab", fontSize: 10 }} width={36} />
+                        <CartesianGrid stroke="var(--border-subtle)" strokeDasharray="3 3" />
+                        <XAxis type="number" dataKey="rating" domain={[0, 5]} tick={{ fill: "var(--stat-label-color)", fontSize: 10 }} />
+                        <YAxis type="number" dataKey="words" tick={{ fill: "var(--stat-label-color)", fontSize: 10 }} width={36} />
                         <Tooltip
-                          contentStyle={{ backgroundColor: "#1b2026", border: "1px solid #345", color: "#ccd" }}
+                          contentStyle={CHART_TOOLTIP_STYLE}
                           cursor={{ stroke: "#3EBDF4", strokeWidth: 1 }}
                           content={({ payload }) => {
                             const point = payload?.[0]?.payload as any;
                             if (!point) return null;
                             return (
-                              <div style={{ fontSize: "12px", color: "#ccd", backgroundColor: "#1b2026", border: "1px solid #345", padding: "8px 10px", borderRadius: "6px" }}>
+                              <div style={{ fontSize: "12px", color: "var(--text-primary)", backgroundColor: "var(--surface-overlay)", border: "1px solid var(--border-strong)", padding: "8px 10px", borderRadius: "6px" }}>
                                 <div>Rating: ★{Number(point.rating).toFixed(1)}</div>
                                 <div>Words: {point.words}</div>
                               </div>
@@ -3451,9 +3719,30 @@ const PublicSharePage = ({ token }: { token: string }) => {
           </section>
         )}
 
+        {/* Watchlist Velocity */}
+        {data.watchlistVelocity && (
+          <section className="lb-glass-section" style={{ display: "flex", flexDirection: "column", gap: "10px", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: "24px", textAlign: "center", flexWrap: "wrap", justifyContent: "center" }}>
+              <div>
+                <div style={{ fontSize: "24px", fontWeight: 600, color: "var(--text-heading)" }}>{data.watchlistVelocity.addsPerMonth}</div>
+                <div className="lb-stat-label" style={{ fontSize: "9px" }}>Added/Month</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "24px", fontWeight: 600, color: "var(--text-heading)" }}>{data.watchlistVelocity.watchesPerMonth}</div>
+                <div className="lb-stat-label" style={{ fontSize: "9px" }}>Watched/Month</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "24px", fontWeight: 600, color: "var(--text-heading)" }}>{data.watchlistVelocity.netPerMonth > 0 ? "+" : ""}{data.watchlistVelocity.netPerMonth}</div>
+                <div className="lb-stat-label" style={{ fontSize: "9px" }}>Net/Month</div>
+              </div>
+            </div>
+            <div style={{ fontSize: "11px", color: "var(--stat-label-color)", fontStyle: "italic", textAlign: "center" }}>{data.watchlistVelocity.copy}</div>
+          </section>
+        )}
+
         {/* 9. Watchlist Pace */}
         {data.watchlist.paceText && (
-          <section style={{ background: "rgba(20, 24, 28, 0.6)", border: "1px solid rgba(68, 85, 102, 0.35)", borderRadius: "12px", padding: "18px", textAlign: "center", fontSize: "13px", color: "#ccd" }}>
+          <section className="lb-glass-section" style={{ textAlign: "center", fontSize: "13px" }}>
             {data.watchlist.paceText}
           </section>
         )}
@@ -5396,6 +5685,232 @@ function App() {
     return max;
   }, [diaryDateCounts]);
 
+  // 2A: Watch dates from filtered rows (respects year filter for streaks/gaps)
+  const allWatchDates = useMemo(() => {
+    const dates = new Set<string>();
+    for (const row of filteredRows) {
+      const raw = getWatchedDate(row);
+      if (!raw) continue;
+      const dateKey = raw.slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) dates.add(dateKey);
+    }
+    return Array.from(dates).sort();
+  }, [filteredRows]);
+
+  // 2B: Streak stats (daily, weekly, gaps)
+  const streakStats = useMemo(() => {
+    if (allWatchDates.length < 2) return { longestDaily: allWatchDates.length, longestWeekly: allWatchDates.length ? 1 : 0, currentDaily: allWatchDates.length, currentWeekly: allWatchDates.length ? 1 : 0, biggestGap: null, medDaysBetween: 0 };
+    const toDay = (d: string) => Math.floor(new Date(d + "T00:00:00").getTime() / 86400000);
+    const dayNums = allWatchDates.map(toDay);
+
+    // Daily streaks
+    let longestDaily = 1, currentDaily = 1, run = 1;
+    for (let i = 1; i < dayNums.length; i++) {
+      if (dayNums[i] === dayNums[i - 1] + 1) { run++; } else if (dayNums[i] !== dayNums[i - 1]) { run = 1; }
+      if (run > longestDaily) longestDaily = run;
+    }
+    // Current daily streak (from end)
+    currentDaily = 1;
+    for (let i = dayNums.length - 1; i > 0; i--) {
+      if (dayNums[i] === dayNums[i - 1] + 1) currentDaily++;
+      else break;
+    }
+
+    // Weekly streaks (ISO week)
+    const toWeekKey = (d: string) => {
+      const dt = new Date(d + "T00:00:00");
+      const jan4 = new Date(dt.getFullYear(), 0, 4);
+      const dayOfYear = Math.floor((dt.getTime() - jan4.getTime()) / 86400000) + 4;
+      const week = Math.ceil(dayOfYear / 7);
+      return dt.getFullYear() * 100 + week;
+    };
+    const weekKeys = Array.from(new Set(allWatchDates.map(toWeekKey))).sort((a, b) => a - b);
+    let longestWeekly = 1, wRun = 1;
+    for (let i = 1; i < weekKeys.length; i++) {
+      const prev = weekKeys[i - 1], curr = weekKeys[i];
+      const prevY = Math.floor(prev / 100), prevW = prev % 100;
+      const currY = Math.floor(curr / 100), currW = curr % 100;
+      const consecutive = (currY === prevY && currW === prevW + 1) || (currY === prevY + 1 && currW === 1 && prevW >= 51);
+      if (consecutive) { wRun++; } else { wRun = 1; }
+      if (wRun > longestWeekly) longestWeekly = wRun;
+    }
+    // Current weekly streak (from end)
+    let currentWeekly = 1;
+    for (let i = weekKeys.length - 1; i > 0; i--) {
+      const prev = weekKeys[i - 1], curr = weekKeys[i];
+      const prevY = Math.floor(prev / 100), prevW = prev % 100;
+      const currY = Math.floor(curr / 100), currW = curr % 100;
+      const consecutive = (currY === prevY && currW === prevW + 1) || (currY === prevY + 1 && currW === 1 && prevW >= 51);
+      if (consecutive) currentWeekly++;
+      else break;
+    }
+
+    // Biggest gap (only from "active" period — skip early sparse entries)
+    // Find active start: last gap > 180 days marks the boundary
+    let activeStart = 0;
+    for (let i = 1; i < dayNums.length; i++) {
+      if (dayNums[i] - dayNums[i - 1] > 180) activeStart = i;
+    }
+    let biggestGap: { start: string; end: string; days: number; copy: string } | null = null;
+    let maxGapDays = 0;
+    for (let i = activeStart + 1; i < allWatchDates.length; i++) {
+      const gapDays = dayNums[i] - dayNums[i - 1];
+      if (gapDays > maxGapDays) {
+        maxGapDays = gapDays;
+        biggestGap = { start: allWatchDates[i - 1], end: allWatchDates[i], days: gapDays, copy: generateGapCopy(allWatchDates[i - 1], allWatchDates[i], gapDays, 0) };
+      }
+    }
+
+    // Median days between watches (active period only)
+    const activeGaps: number[] = [];
+    for (let i = activeStart + 1; i < dayNums.length; i++) {
+      activeGaps.push(dayNums[i] - dayNums[i - 1]);
+    }
+    activeGaps.sort((a, b) => a - b);
+    const medDaysBetween = activeGaps.length > 0
+      ? activeGaps.length % 2 === 1
+        ? activeGaps[Math.floor(activeGaps.length / 2)]
+        : (activeGaps[activeGaps.length / 2 - 1] + activeGaps[activeGaps.length / 2]) / 2
+      : 0;
+
+    return { longestDaily, longestWeekly, currentDaily, currentWeekly, biggestGap: biggestGap && biggestGap.days > 14 ? biggestGap : null, medDaysBetween: Math.round(medDaysBetween * 10) / 10 };
+  }, [allWatchDates]);
+
+  // 2D: Day-of-week stats (respects year filter)
+  const dayOfWeekStats = useMemo(() => {
+    const counts = [0, 0, 0, 0, 0, 0, 0]; // Mon-Sun
+    let total = 0;
+    // When a year is selected, only use that year's data
+    const yearsToUse = dateFilter === "all"
+      ? Array.from(diaryDateCounts.values())
+      : [diaryDateCounts.get(dateFilter)].filter(Boolean) as Map<string, number>[];
+    for (const yearMap of yearsToUse) {
+      for (const [dateKey, cnt] of yearMap.entries()) {
+        const d = new Date(dateKey + "T00:00:00").getDay(); // 0=Sun
+        const idx = d === 0 ? 6 : d - 1; // remap: Mon=0, Sun=6
+        counts[idx] += cnt;
+        total += cnt;
+      }
+    }
+    if (total === 0) return null;
+    let peakDay = 0, valleyDay = 0;
+    for (let i = 1; i < 7; i++) {
+      if (counts[i] > counts[peakDay]) peakDay = i;
+      if (counts[i] < counts[valleyDay]) valleyDay = i;
+    }
+    const weekendPct = ((counts[5] + counts[6]) / total) * 100;
+    const copy = generateDayOfWeekCopy(peakDay, weekendPct, counts);
+    return { counts, peakDay, valleyDay, copy };
+  }, [diaryDateCounts, dateFilter]);
+
+  // 2E: Heatmap gaps (top 3 gaps > 14 days, active period only, excluding biggest which is in streaks)
+  const heatmapGaps = useMemo(() => {
+    if (allWatchDates.length < 2) return [];
+    const toDay = (d: string) => Math.floor(new Date(d + "T00:00:00").getTime() / 86400000);
+    const dayNums = allWatchDates.map(toDay);
+    // Find active period start (after last >180-day gap)
+    let activeStart = 0;
+    for (let i = 1; i < dayNums.length; i++) {
+      if (dayNums[i] - dayNums[i - 1] > 180) activeStart = i;
+    }
+    const gaps: Array<{ start: string; end: string; days: number; copy: string }> = [];
+    const biggestStart = streakStats.biggestGap?.start;
+    const biggestEnd = streakStats.biggestGap?.end;
+    for (let i = activeStart + 1; i < allWatchDates.length; i++) {
+      const days = dayNums[i] - dayNums[i - 1];
+      // Skip the biggest gap — it's already shown in the streaks section
+      if (days > 14 && !(allWatchDates[i - 1] === biggestStart && allWatchDates[i] === biggestEnd)) {
+        gaps.push({ start: allWatchDates[i - 1], end: allWatchDates[i], days, copy: "" });
+      }
+    }
+    // Sort by duration, then assign copy with unique index to avoid repeats
+    gaps.sort((a, b) => b.days - a.days);
+    return gaps.slice(0, 3).map((gap, idx) => ({
+      ...gap,
+      copy: generateGapCopy(gap.start, gap.end, gap.days, idx),
+    }));
+  }, [allWatchDates, streakStats]);
+
+  // 2F: Rating drift (3-month moving average)
+  const ratingDrift = useMemo(() => {
+    const monthRatings = new Map<string, number[]>();
+    for (const row of filteredRows) {
+      const r = parseFloat(row.Rating);
+      if (Number.isNaN(r)) continue;
+      const date = getWatchedDate(row);
+      if (!date) continue;
+      const monthKey = date.slice(0, 7);
+      if (!monthRatings.has(monthKey)) monthRatings.set(monthKey, []);
+      monthRatings.get(monthKey)!.push(r);
+    }
+    const months = Array.from(monthRatings.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    if (months.length < 3) return null;
+    const monthAvgs = months.map(([, ratings]) => ratings.reduce((s, v) => s + v, 0) / ratings.length);
+
+    // 3-month moving average
+    const smoothed: number[] = [];
+    for (let i = 0; i <= monthAvgs.length - 3; i++) {
+      smoothed.push((monthAvgs[i] + monthAvgs[i + 1] + monthAvgs[i + 2]) / 3);
+    }
+    if (smoothed.length < 2) return null;
+
+    const first = smoothed[0];
+    const last = smoothed[smoothed.length - 1];
+    const magnitude = Math.round((last - first) * 10) / 10;
+    const overallAvg = (monthAvgs.reduce((s, v) => s + v, 0) / monthAvgs.length).toFixed(1);
+    const fmtMonth = (ym: string) => {
+      const [y, m] = ym.split("-");
+      const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      return `${names[parseInt(m, 10) - 1]} ${y}`;
+    };
+    const span = `${fmtMonth(months[0][0])} – ${fmtMonth(months[months.length - 1][0])}`;
+
+    if (Math.abs(magnitude) < 0.15) return { direction: "stable" as const, magnitude: 0, copy: `Remarkably consistent — your 3-month moving average held around ★${overallAvg} (${span}).` };
+    if (magnitude > 0) return { direction: "up" as const, magnitude, copy: `Your 3-month moving average drifted up +${magnitude.toFixed(1)}★ (★${first.toFixed(1)} → ★${last.toFixed(1)}, ${span}).` };
+    return { direction: "down" as const, magnitude, copy: `Your 3-month moving average dropped ${Math.abs(magnitude).toFixed(1)}★ (★${first.toFixed(1)} → ★${last.toFixed(1)}, ${span}).` };
+  }, [filteredRows]);
+
+  // 2G: Most rewatched (top 10)
+  const mostRewatched = useMemo(() => {
+    return films
+      .filter((f) => f.entryCount > 1)
+      .sort((a, b) => b.entryCount - a.entryCount)
+      .slice(0, 10)
+      .map((f) => ({ name: f.name, year: f.year, count: f.entryCount }));
+  }, [films]);
+
+  // 2H: Watchlist velocity
+  const watchlistVelocity = useMemo(() => {
+    if (watchlistRows.length === 0 && filteredRows.length === 0) return null;
+    // Watchlist adds per month
+    const addMonths = new Map<string, number>();
+    for (const row of watchlistRows) {
+      const d = (row.Date || "").trim().slice(0, 7);
+      if (d) addMonths.set(d, (addMonths.get(d) || 0) + 1);
+    }
+    const addMonthCount = Math.max(1, addMonths.size);
+    const addsPerMonth = Math.round((watchlistRows.length / addMonthCount) * 10) / 10;
+
+    // Watches in last 6 months
+    const now = new Date();
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+    const sixMonthStr = `${sixMonthsAgo.getFullYear()}-${String(sixMonthsAgo.getMonth() + 1).padStart(2, "0")}-${String(sixMonthsAgo.getDate()).padStart(2, "0")}`;
+    let recentCount = 0;
+    for (const row of filteredRows) {
+      const d = getWatchedDate(row);
+      if (d && d >= sixMonthStr) recentCount++;
+    }
+    const watchesPerMonth = Math.round((recentCount / 6) * 10) / 10;
+    const netPerMonth = Math.round((addsPerMonth - watchesPerMonth) * 10) / 10;
+
+    let copy: string;
+    if (netPerMonth > 1) copy = `You add ~${addsPerMonth}/month but watch ~${watchesPerMonth}. Your watchlist grows forever.`;
+    else if (netPerMonth < -1) copy = `You're actually keeping up! Watchlist shrinks by ~${Math.abs(netPerMonth)}/month.`;
+    else copy = "Roughly breaking even.";
+
+    return { addsPerMonth, watchesPerMonth, netPerMonth, copy };
+  }, [watchlistRows, filteredRows]);
+
   const diaryDateMovies = useMemo(() => {
     const map = new Map<string, Array<{ name: string; year: string }>>();
     for (const row of filteredDiaryRowsForHeatmap) {
@@ -5435,6 +5950,25 @@ function App() {
       }),
     [matchedMovies, matchesDecadeFilter]
   );
+
+  // 2C: Runtime stats
+  const runtimeStats = useMemo(() => {
+    if (!moviesWithDataBase || moviesWithDataBase.length === 0) return null;
+    let totalMinutes = 0, count = 0;
+    let longest: { name: string; runtime: number } | null = null;
+    let shortest: { name: string; runtime: number } | null = null;
+    for (const movie of moviesWithDataBase) {
+      const rt = movie.tmdb_data?.runtime;
+      if (!rt || rt <= 0) continue;
+      totalMinutes += rt;
+      count++;
+      const name = movie.tmdb_data?.title || movie.csv_name || "Unknown";
+      if (!longest || rt > longest.runtime) longest = { name, runtime: rt };
+      if (!shortest || rt < shortest.runtime) shortest = { name, runtime: rt };
+    }
+    if (count === 0) return null;
+    return { totalMinutes, avgRuntime: Math.round(totalMinutes / count), longest, shortest };
+  }, [moviesWithDataBase]);
 
   const moviesWithData = useMemo(
     () => moviesWithDataBase.filter(matchesGeoFilter),
@@ -6345,6 +6879,14 @@ function App() {
         directors: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
         genres: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
         countries: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
+        tasteScore: 0,
+        tasteInsights: [] as string[],
+        tasteDetails: undefined as undefined | {
+          directors: Array<{ label: string; count: number }>;
+          decades: Array<{ label: string; count: number; pct: number }>;
+          genres: Array<{ label: string; count: number }>;
+          countries: Array<{ label: string; count: number }>;
+        },
       };
     }
 
@@ -6362,9 +6904,24 @@ function App() {
       };
     };
 
+    const concentration = (counts: Map<string, number>) => {
+      const t = Array.from(counts.values()).reduce((s, v) => s + v, 0);
+      if (t === 0) return 0;
+      const maxEntropy = Math.log2(counts.size);
+      if (maxEntropy === 0) return 1;
+      let entropy = 0;
+      for (const count of counts.values()) {
+        const p = count / t;
+        if (p > 0) entropy -= p * Math.log2(p);
+      }
+      return 1 - entropy / maxEntropy;
+    };
+
     const directorCounts = new Map<string, number>();
+    const writerCounts = new Map<string, number>();
     const genreCounts = new Map<string, number>();
     const countryCounts = new Map<string, number>();
+    const decadeCounts = new Map<string, number>();
 
     for (const movie of moviesWithDataBase) {
       const tmdb = movie.tmdb_data || {};
@@ -6373,6 +6930,11 @@ function App() {
       directors.forEach((d: any) => d?.name && directorNames.add(d.name));
       directorNames.forEach((name) => directorCounts.set(name, (directorCounts.get(name) || 0) + 1));
 
+      const writers = tmdb.writers || [];
+      const writerNames = new Set<string>();
+      (writers as any[]).forEach((w: any) => w?.name && writerNames.add(w.name));
+      writerNames.forEach((name) => writerCounts.set(name, (writerCounts.get(name) || 0) + 1));
+
       const genre = tmdb.genres?.[0];
       if (genre) genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
 
@@ -6380,6 +6942,12 @@ function App() {
       const primaryCountry = countries[0];
       if (primaryCountry) {
         countryCounts.set(primaryCountry, (countryCounts.get(primaryCountry) || 0) + 1);
+      }
+
+      const year = parseInt(tmdb.release_date?.slice(0, 4), 10);
+      if (year) {
+        const decade = Math.floor(year / 10) * 10 + "s";
+        decadeCounts.set(decade, (decadeCounts.get(decade) || 0) + 1);
       }
     }
 
@@ -6392,7 +6960,53 @@ function App() {
     const countries = countTop3Share(countryCounts, countryLabelMap);
     const index = (directors.percent + genres.percent + countries.percent) / 3;
 
-    return { total, index, directors, genres, countries };
+    // Taste concentration score
+    const tasteScore = Math.round(
+      (concentration(directorCounts) * 0.30 +
+       concentration(writerCounts) * 0.20 +
+       concentration(genreCounts) * 0.20 +
+       concentration(countryCounts) * 0.15 +
+       concentration(decadeCounts) * 0.15) * 100
+    );
+
+    // Generate insight bullets
+    const tasteInsights: string[] = [];
+
+    // Highest-concentration axis — director loyalty
+    const dirConc = concentration(directorCounts);
+    if (dirConc > 0) {
+      const dirSorted = Array.from(directorCounts.entries()).sort((a, b) => b[1] - a[1]);
+      const top3Sum = dirSorted.slice(0, 3).reduce((s, [, v]) => s + v, 0);
+      const dirTotal = dirSorted.reduce((s, [, v]) => s + v, 0);
+      const top3Pct = Math.round((top3Sum / dirTotal) * 100);
+      tasteInsights.push(`Strong director loyalty (top 3 = ${top3Pct}%)`);
+    }
+
+    // Dominant decade
+    if (decadeCounts.size > 0) {
+      const topDecade = Array.from(decadeCounts.entries()).sort((a, b) => b[1] - a[1])[0];
+      tasteInsights.push(`Heart lives in the ${topDecade[0]}`);
+    }
+
+    // Lowest-concentration axis — spin positive
+    const countryConc = concentration(countryCounts);
+    if (countryCounts.size > 1 && countryConc < dirConc) {
+      tasteInsights.push(`Globally curious (${countryCounts.size} countries)`);
+    } else if (genreCounts.size > 1) {
+      tasteInsights.push(`Genre explorer (${genreCounts.size} genres)`);
+    }
+
+    const tasteDetails = {
+      directors: Array.from(directorCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([label, count]) => ({ label, count })),
+      decades: (() => {
+        const decTotal = Array.from(decadeCounts.values()).reduce((s, v) => s + v, 0);
+        return Array.from(decadeCounts.entries()).sort((a, b) => b[1] - a[1]).map(([label, count]) => ({ label, count, pct: decTotal ? Math.round((count / decTotal) * 100) : 0 }));
+      })(),
+      genres: Array.from(genreCounts.entries()).sort((a, b) => b[1] - a[1]).map(([label, count]) => ({ label, count })),
+      countries: Array.from(countryCounts.entries()).sort((a, b) => b[1] - a[1]).map(([code, count]) => ({ label: countryLabelMap.get(code) || code, count })),
+    };
+
+    return { total, index, directors, genres, countries, tasteScore, tasteInsights, tasteDetails };
   }, [moviesWithDataBase]);
 
   const shareSnapshot = useMemo<ShareSnapshot>(() => ({
@@ -6465,6 +7079,13 @@ function App() {
         posterUrl: reviewStats.mostHated.posterUrl,
       } : null,
     } : undefined,
+    streaks: streakStats,
+    runtimeStats: runtimeStats || undefined,
+    dayOfWeek: dayOfWeekStats || undefined,
+    heatmapGaps: heatmapGaps.length > 0 ? heatmapGaps : undefined,
+    ratingDrift: ratingDrift || undefined,
+    mostRewatched: mostRewatched.length > 0 ? mostRewatched : undefined,
+    watchlistVelocity: watchlistVelocity || undefined,
   }), [
     totalEntries,
     totalMoviesWithData,
@@ -6489,6 +7110,13 @@ function App() {
     ratingCount,
     fourPlusCount,
     reviewStats,
+    streakStats,
+    runtimeStats,
+    dayOfWeekStats,
+    heatmapGaps,
+    ratingDrift,
+    mostRewatched,
+    watchlistVelocity,
   ]);
 
   const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
@@ -6618,21 +7246,22 @@ function App() {
   }
 
   return (
-    <main style={{ minHeight: "100dvh", backgroundColor: "#14181c", color: "#ccd", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 16px" }}>
+    <main className="lb-app-main">
+      <ThemeToggle />
       <Analytics />
       <SpeedInsights />
       <div style={{ width: "100%", maxWidth: "980px", display: "flex", flexDirection: "column", gap: "24px" }}>
         <header style={{ textAlign: "center" }}>
-          <h1 style={{ fontSize: "28px", fontWeight: 700, color: "#fff", marginBottom: "6px" }}>
+          <h1 className="lb-gradient-text" style={{ fontSize: "28px", fontWeight: 700, marginBottom: "6px" }}>
             Letterbddy
           </h1>
-          <div style={{ fontSize: "12px", color: "#9ab", marginBottom: "10px" }}>
+          <div style={{ fontSize: "12px", color: "var(--stat-label-color)", marginBottom: "10px" }}>
             by{" "}
             <a
               href="https://x.com/katswint"
               target="_blank"
               rel="noopener noreferrer"
-              style={{ color: "#c6d2de", textDecoration: "none" }}
+              style={{ color: "var(--text-link)", textDecoration: "none" }}
             >
               Kat Swint
             </a>
@@ -6783,9 +7412,9 @@ function App() {
               marginBottom: "16px",
               textAlign: "center",
               fontSize: "12px",
-              color: "#9ab",
-              backgroundColor: "rgba(68, 85, 102, 0.2)",
-              border: "1px solid rgba(68, 85, 102, 0.4)",
+              color: "var(--stat-label-color)",
+              backgroundColor: "var(--surface-subtle)",
+              border: "1px solid var(--border-default)",
               borderRadius: "8px",
               padding: "10px 14px",
             }}
@@ -6799,25 +7428,25 @@ function App() {
           {(manualUploadOpen || pendingUploadTarget === "diary" || pendingUploadTarget === "reviews" || !diaryLoaded || isLoading) && (
             <section
               ref={diarySectionRef}
-              style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px" }}
+              style={{ backgroundColor: "var(--surface-subtle)", borderRadius: "8px", padding: "24px" }}
             >
           <div>
-            <label style={{ fontSize: "18px", fontWeight: 600, color: "#fff", display: "block", marginBottom: "4px" }}>
+            <label style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-heading)", display: "block", marginBottom: "4px" }}>
               Diary Analysis
             </label>
-            <p style={{ fontSize: "12px", color: "#9ab", marginBottom: "12px" }}>
+            <p style={{ fontSize: "12px", color: "var(--stat-label-color)", marginBottom: "12px" }}>
               Drop your diary CSV here. Find it in Letterboxd → Settings → Data → Export.
             </p>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "13px", color: "#9ab" }}>Choose file:</span>
+              <span style={{ fontSize: "13px", color: "var(--stat-label-color)" }}>Choose file:</span>
               <label
                 htmlFor="diary-file-input"
                 style={{
                   padding: "8px 12px",
                   borderRadius: "6px",
-                  border: "1px solid #456",
-                  backgroundColor: "#2c3440",
-                  color: "#ccd",
+                  border: "1px solid var(--border-strong)",
+                  backgroundColor: "var(--surface-input)",
+                  color: "var(--text-primary)",
                   fontSize: "13px",
                   fontWeight: 600,
                   cursor: "pointer",
@@ -6841,9 +7470,9 @@ function App() {
                 style={{
                   padding: "8px 10px",
                   borderRadius: "6px",
-                  border: "1px solid #456",
+                  border: "1px solid var(--border-strong)",
                   backgroundColor: "transparent",
-                  color: "#9ab",
+                  color: "var(--stat-label-color)",
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
@@ -6898,7 +7527,7 @@ function App() {
                 <div style={{
                   height: "6px",
                   width: "100%",
-                  backgroundColor: "rgba(68, 85, 102, 0.3)",
+                  backgroundColor: "var(--surface-subtle)",
                   borderRadius: "3px",
                   overflow: "hidden"
                 }}>
@@ -6927,11 +7556,11 @@ function App() {
                   )}
                 </div>
                 {scrapeProgress && scrapeProgress.total > 0 ? (
-                  <p style={{ fontSize: "12px", color: "#9ab", marginTop: "8px", textAlign: "center" }}>
+                  <p style={{ fontSize: "12px", color: "var(--stat-label-color)", marginTop: "8px", textAlign: "center" }}>
                     {scrapeProgress.current} / {scrapeProgress.total} ({Math.round((scrapeProgress.current / scrapeProgress.total) * 100)}%)
                   </p>
                 ) : (
-                  <p style={{ fontSize: "12px", color: "#9ab", marginTop: "8px", textAlign: "center" }}>
+                  <p style={{ fontSize: "12px", color: "var(--stat-label-color)", marginTop: "8px", textAlign: "center" }}>
                     Connecting to server...
                   </p>
                 )}
@@ -6941,7 +7570,7 @@ function App() {
 
           {!isLoading && isLocalDev && (
             <div style={{ display: "flex", justifyContent: "center", marginTop: "8px" }}>
-              <label style={{ fontSize: "12px", color: "#9ab", display: "flex", alignItems: "center", gap: "8px" }}>
+              <label style={{ fontSize: "12px", color: "var(--stat-label-color)", display: "flex", alignItems: "center", gap: "8px" }}>
                 <input
                   type="checkbox"
                   checked={diaryUseVercelApi}
@@ -6966,12 +7595,12 @@ function App() {
                 ✓ Loaded {rows.length} diary entries
               </p>
               {movieIndex && (
-                <p style={{ color: "#9ab", fontSize: "12px", marginTop: "4px" }}>
+                <p style={{ color: "var(--stat-label-color)", fontSize: "12px", marginTop: "4px" }}>
                   {Object.keys(movieIndex).length} unique films indexed
                 </p>
               )}
               {isLocalDev && (
-                <p style={{ color: "#9ab", fontSize: "11px", marginTop: "6px" }}>
+                <p style={{ color: "var(--stat-label-color)", fontSize: "11px", marginTop: "6px" }}>
                   Debug: movieIndex {movieIndex ? Object.keys(movieIndex).length : 0} · uriMap {uriMap ? Object.keys(uriMap).length : 0}
                 </p>
               )}
@@ -6990,22 +7619,22 @@ function App() {
               ref={reviewsSectionRef}
               style={{ marginTop: "20px", paddingTop: "16px", borderTop: "1px solid #345" }}
             >
-              <label style={{ fontSize: "14px", color: "#ccd", display: "block", marginBottom: "8px" }}>
+              <label style={{ fontSize: "14px", color: "var(--text-primary)", display: "block", marginBottom: "8px" }}>
                 Upload Reviews CSV (optional)
               </label>
-              <p style={{ fontSize: "12px", color: "#9ab", marginBottom: "12px" }}>
+              <p style={{ fontSize: "12px", color: "var(--stat-label-color)", marginBottom: "12px" }}>
                 For review word count analysis
               </p>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "13px", color: "#9ab" }}>Choose file:</span>
+                <span style={{ fontSize: "13px", color: "var(--stat-label-color)" }}>Choose file:</span>
                 <label
                   htmlFor="reviews-file-input"
                   style={{
                     padding: "8px 12px",
                     borderRadius: "6px",
-                    border: "1px solid #456",
-                    backgroundColor: "#2c3440",
-                    color: "#ccd",
+                    border: "1px solid var(--border-strong)",
+                    backgroundColor: "var(--surface-input)",
+                    color: "var(--text-primary)",
                     fontSize: "13px",
                     fontWeight: 600,
                     cursor: "pointer",
@@ -7037,9 +7666,9 @@ function App() {
                   style={{
                     padding: "8px 10px",
                     borderRadius: "6px",
-                    border: "1px solid #456",
+                    border: "1px solid var(--border-strong)",
                     backgroundColor: "transparent",
-                    color: "#9ab",
+                    color: "var(--stat-label-color)",
                     fontSize: "12px",
                     fontWeight: 600,
                     cursor: "pointer",
@@ -7081,8 +7710,8 @@ function App() {
                 fontWeight: 500,
                 border: "none",
                 cursor: "pointer",
-                backgroundColor: dateFilter === "all" ? "#00e054" : "rgba(68, 85, 102, 0.3)",
-                color: dateFilter === "all" ? "#14181c" : "#9ab",
+                backgroundColor: dateFilter === "all" ? "var(--accent-green)" : "var(--surface-subtle)",
+                color: dateFilter === "all" ? "var(--active-btn-text)" : "var(--text-secondary)",
               }}
             >
               All time
@@ -7099,8 +7728,8 @@ function App() {
                   fontWeight: 500,
                   border: "none",
                   cursor: "pointer",
-                  backgroundColor: dateFilter === year ? "#00e054" : "rgba(68, 85, 102, 0.3)",
-                  color: dateFilter === year ? "#14181c" : "#9ab",
+                  backgroundColor: dateFilter === year ? "var(--accent-green)" : "var(--surface-subtle)",
+                  color: dateFilter === year ? "var(--active-btn-text)" : "var(--text-secondary)",
                 }}
               >
                 {year}
@@ -7115,19 +7744,74 @@ function App() {
             {/* Key metrics row */}
             <div className="stats-row" style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center", flexWrap: "wrap" }}>
               <div>
-                <div style={{ fontSize: "36px", fontWeight: 600, color: "#fff" }}>{totalEntries}</div>
-                <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Films</div>
+                <div className="lb-stat-value lb-gradient-text">{totalEntries}</div>
+                <div className="lb-stat-label" style={{ marginTop: "4px" }}>Films</div>
               </div>
               <div>
-                <div style={{ fontSize: "36px", fontWeight: 600, color: "#fff" }}>{uniqueFilmCount}</div>
-                <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Unique</div>
+                <div className="lb-stat-value lb-gradient-text">{uniqueFilmCount}</div>
+                <div className="lb-stat-label" style={{ marginTop: "4px" }}>Unique</div>
               </div>
               <div>
-                <div style={{ fontSize: "36px", fontWeight: 600, color: "#fff" }}>{rewatchedFilmCount}</div>
-                <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Rewatched</div>
+                <div className="lb-stat-value lb-gradient-text">{rewatchedFilmCount}</div>
+                <div className="lb-stat-label" style={{ marginTop: "4px" }}>Rewatched</div>
+              </div>
+              {runtimeStats && (
+                <>
+                  <div>
+                    <div className="lb-stat-value lb-gradient-text">{Math.round(runtimeStats.totalMinutes / 60)}</div>
+                    <div className="lb-stat-label" style={{ marginTop: "4px" }}>Hours Watched</div>
+                  </div>
+                  <div>
+                    <div className="lb-stat-value lb-gradient-text">{runtimeStats.avgRuntime}</div>
+                    <div className="lb-stat-label" style={{ marginTop: "4px" }}>Avg Min</div>
+                  </div>
+                </>
+              )}
+            </div>
+            {runtimeStats && (runtimeStats.longest || runtimeStats.shortest) && (
+              <div style={{ fontSize: "12px", color: "var(--stat-label-color)", textAlign: "center" }}>
+                {runtimeStats.longest && `Longest: ${runtimeStats.longest.name} (${formatRuntime(runtimeStats.longest.runtime)})`}
+                {runtimeStats.longest && runtimeStats.shortest && " · "}
+                {runtimeStats.shortest && `Shortest: ${runtimeStats.shortest.name} (${formatRuntime(runtimeStats.shortest.runtime)})`}
+              </div>
+            )}
+
+          </section>
+        )}
+
+        {/* Streaks & Rhythm */}
+        {films.length > 0 && streakStats && (streakStats.longestDaily > 1 || streakStats.longestWeekly > 1) && (
+          <section style={{ display: "flex", flexDirection: "column", gap: "16px", alignItems: "center" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", justifyContent: "center" }}>
+              <div className="lb-streak-pill">
+                <div style={{ fontSize: "24px", fontWeight: 600, color: "var(--text-heading)" }}>{streakStats.longestDaily}d</div>
+                <div style={{ fontSize: "10px", color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px" }}>Best Streak</div>
+              </div>
+              <div className="lb-streak-pill">
+                <div style={{ fontSize: "24px", fontWeight: 600, color: "var(--text-heading)" }}>{streakStats.currentDaily}d</div>
+                <div style={{ fontSize: "10px", color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px" }}>Current</div>
+              </div>
+              <div className="lb-streak-pill">
+                <div style={{ fontSize: "24px", fontWeight: 600, color: "var(--text-heading)" }}>{streakStats.longestWeekly}w</div>
+                <div style={{ fontSize: "10px", color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px" }}>Best Week Streak</div>
+              </div>
+              <div className="lb-streak-pill">
+                <div style={{ fontSize: "24px", fontWeight: 600, color: "var(--text-heading)" }}>{streakStats.currentWeekly}w</div>
+                <div style={{ fontSize: "10px", color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px" }}>Current</div>
+              </div>
+              <div className="lb-streak-pill">
+                <div style={{ fontSize: "24px", fontWeight: 600, color: "var(--text-heading)" }}>{streakStats.medDaysBetween}</div>
+                <div style={{ fontSize: "10px", color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px" }}>Med Days Between</div>
               </div>
             </div>
-
+            {streakStats.biggestGap && (
+              <div className="lb-gap-card">
+                <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-heading)", marginBottom: "4px" }}>
+                  {formatDateRange(streakStats.biggestGap.start, streakStats.biggestGap.end)} · {streakStats.biggestGap.days} days
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--stat-label-color)", fontStyle: "italic" }}>{streakStats.biggestGap.copy}</div>
+              </div>
+            )}
           </section>
         )}
 
@@ -7209,10 +7893,10 @@ function App() {
                   : heatmapTooltip.align === "right"
                   ? "translate(-100%, -100%)"
                   : "translate(-50%, -100%)",
-              background: "rgba(20, 24, 28, 0.95)",
-              color: "#ccd",
-              border: "1px solid #345",
-              borderRadius: "6px",
+              background: "var(--surface-overlay)",
+              color: "var(--text-primary)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: "8px",
               padding: "8px 10px",
               fontSize: "11px",
               whiteSpace: "nowrap",
@@ -7237,11 +7921,52 @@ function App() {
           </div>
         )}
 
+        {/* Day-of-Week */}
+        {dayOfWeekStats && (
+          <section style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
+            <h2 className="lb-section-heading">When You Watch</h2>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", height: "120px" }}>
+              {dayOfWeekStats.counts.map((count, i) => {
+                const maxCount = Math.max(...dayOfWeekStats.counts);
+                const height = maxCount > 0 ? Math.max(4, (count / maxCount) * 100) : 4;
+                return (
+                  <div key={DAY_NAMES[i]} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+                    <div
+                      className="lb-dow-bar"
+                      style={{
+                        width: "32px",
+                        height: `${height}px`,
+                        backgroundColor: i === dayOfWeekStats.peakDay ? "var(--accent-green)" : "var(--border-strong)",
+                      }}
+                    />
+                    <span style={{ fontSize: "10px", color: "var(--stat-label-color)" }}>{DAY_NAMES[i]}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--stat-label-color)", fontStyle: "italic", textAlign: "center", maxWidth: "400px" }}>{dayOfWeekStats.copy}</div>
+          </section>
+        )}
+
+        {/* Heatmap Gaps */}
+        {heatmapGaps.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", justifyContent: "center" }}>
+            {heatmapGaps.map((gap, i) => (
+              <div key={`gap-${i}`} className="lb-gap-card">
+                <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-heading)", marginBottom: "2px" }}>
+                  {formatDateRange(gap.start, gap.end)} · {gap.days} days
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--stat-label-color)", fontStyle: "italic" }}>{gap.copy}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* TMDb enrichment stats - Always show if movieIndex exists or if we should debug */}
         {(movieIndex || scrapeStatus?.includes("ready")) && (
           <section id="film-breakdown" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-            <div style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%", textAlign: "center" }}>
-              <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#fff", marginBottom: "4px" }}>Film Breakdown</h2>
+            <div style={{ borderTop: "1px solid var(--border-default)", paddingTop: "24px", width: "100%", textAlign: "center" }}>
+              <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-heading)", marginBottom: "4px" }}>Film Breakdown</h2>
               {isLocalDev && !movieIndex && (
                 <p style={{ fontSize: "14px", color: "#f87171", textAlign: "center" }}>
                   Warning: movieIndex is null/undefined. Check console for errors.
@@ -7250,16 +7975,16 @@ function App() {
             </div>
             {totalMoviesWithData > 0 ? (
               <>
-                <p style={{ fontSize: "12px", color: "#9ab", textAlign: "center" }}>
+                <p style={{ fontSize: "12px", color: "var(--stat-label-color)", textAlign: "center" }}>
                   Based on {totalMoviesWithData} films with TMDb data
                 </p>
                 {isLocalDev && (
                   <>
-                    <p style={{ fontSize: "11px", color: "#9ab", textAlign: "center" }}>
+                    <p style={{ fontSize: "11px", color: "var(--stat-label-color)", textAlign: "center" }}>
                       Debug: {filteredUris.size} filtered URIs, {movieLookup ? Object.keys(movieLookup).length : 0} in lookup, {matchedMovies.filter((m: any) => m.tmdb_movie_id).length} tmdb_movie_id, {matchedMovies.filter((m: any) => m.tmdb_data).length} tmdb_data, {matchedMovies.filter((m: any) => m.tmdb_error || m.tmdb_api_error).length} TMDb errors
                     </p>
                     {topTmdbErrors.length > 0 && (
-                      <p style={{ fontSize: "11px", color: "#9ab", textAlign: "center" }}>
+                      <p style={{ fontSize: "11px", color: "var(--stat-label-color)", textAlign: "center" }}>
                         Top errors: {topTmdbErrors.map(([msg, count]) => `${msg} (${count})`).join(", ")}
                       </p>
                     )}
@@ -7324,6 +8049,21 @@ function App() {
                     isSelected={diaryFilters.inCriterion}
                   />
                 </div>
+
+                {/* Most Rewatched */}
+                {mostRewatched.length > 0 && (
+                  <div style={{ width: "100%" }}>
+                    <h3 style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-heading)", textAlign: "center", marginBottom: "8px" }}>Most Rewatched</h3>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "center" }}>
+                      {mostRewatched.map((film) => (
+                        <div key={`${film.name}-${film.year}`} className="lb-glass-section" style={{ borderRadius: "8px", padding: "8px 12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontSize: "12px", color: "var(--text-primary)" }}>{film.name}{film.year ? ` (${film.year})` : ""}</span>
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: "#00e054", background: "rgba(0, 224, 84, 0.1)", borderRadius: "12px", padding: "2px 8px" }}>{film.count}x</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {trendSummary.length > 0 && (
                   <div className="lb-trends">
@@ -7393,15 +8133,15 @@ function App() {
         {/* Rating breakdown for this range */}
         {rows.length > 0 && (
           <section style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-            <div style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%", textAlign: "center" }}>
-              <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#fff", marginBottom: "4px" }}>Ratings</h2>
+            <div style={{ borderTop: "1px solid var(--border-default)", paddingTop: "24px", width: "100%", textAlign: "center" }}>
+              <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-heading)", marginBottom: "4px" }}>Ratings</h2>
               {ratingCount === 0 && (
-                <p style={{ fontSize: "12px", color: "#9ab", marginTop: "-8px" }}>
+                <p style={{ fontSize: "12px", color: "var(--stat-label-color)", marginTop: "-8px" }}>
                   No ratings found in this file.
                 </p>
               )}
               {ratingFilter && (
-                <div style={{ fontSize: "12px", color: "#9ab", marginTop: "-8px" }}>
+                <div style={{ fontSize: "12px", color: "var(--stat-label-color)", marginTop: "-8px" }}>
                   Filtering diary list and pie charts for rating {ratingFilter}★ — check Film Breakdown above.
                   <button
                     onClick={() => {
@@ -7413,9 +8153,9 @@ function App() {
                       padding: "2px 6px",
                       fontSize: "11px",
                       backgroundColor: "transparent",
-                      border: "1px solid #456",
+                      border: "1px solid var(--border-strong)",
                       borderRadius: "4px",
-                      color: "#9ab",
+                      color: "var(--stat-label-color)",
                       cursor: "pointer",
                     }}
                   >
@@ -7428,9 +8168,9 @@ function App() {
                       padding: "2px 6px",
                       fontSize: "11px",
                       backgroundColor: "transparent",
-                      border: "1px solid #456",
+                      border: "1px solid var(--border-strong)",
                       borderRadius: "4px",
-                      color: "#9ab",
+                      color: "var(--stat-label-color)",
                       cursor: "pointer",
                     }}
                   >
@@ -7443,24 +8183,24 @@ function App() {
             {/* Rating stats row */}
             <div className="stats-row" style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center", flexWrap: "wrap" }}>
               <div>
-                <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>
+                <div style={{ fontSize: "32px", fontWeight: 600, color: "var(--text-heading)" }}>
                   {ratingCount > 0 ? averageRating.toFixed(1) : "—"}
                 </div>
-                <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Average</div>
+                <div className="lb-stat-label" style={{ marginTop: "4px" }}>Average</div>
               </div>
               <div>
-                <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>
+                <div style={{ fontSize: "32px", fontWeight: 600, color: "var(--text-heading)" }}>
                   {ratingCount > 0 ? medianRating.toFixed(1) : "—"}
                 </div>
-                <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Median</div>
+                <div className="lb-stat-label" style={{ marginTop: "4px" }}>Median</div>
               </div>
               <div>
-                <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{ratingCount}</div>
-                <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Rated</div>
+                <div style={{ fontSize: "32px", fontWeight: 600, color: "var(--text-heading)" }}>{ratingCount}</div>
+                <div className="lb-stat-label" style={{ marginTop: "4px" }}>Rated</div>
               </div>
               <div>
-                <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{fourPlusCount}</div>
-                <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>4★+</div>
+                <div style={{ fontSize: "32px", fontWeight: 600, color: "var(--text-heading)" }}>{fourPlusCount}</div>
+                <div className="lb-stat-label" style={{ marginTop: "4px" }}>4★+</div>
               </div>
             </div>
 
@@ -7473,13 +8213,13 @@ function App() {
                 >
                   <XAxis
                     dataKey="rating"
-                    tick={{ fontSize: 11, fill: "#9ab" }}
+                    tick={{ fontSize: 11, fill: "var(--stat-label-color)" }}
                     tickLine={false}
-                    axisLine={{ stroke: "#456" }}
+                    axisLine={{ stroke: "var(--border-strong)" }}
                   />
                   <YAxis
                     allowDecimals={false}
-                    tick={{ fontSize: 10, fill: "#9ab" }}
+                    tick={{ fontSize: 10, fill: "var(--stat-label-color)" }}
                     tickLine={false}
                     axisLine={false}
                     width={30}
@@ -7500,13 +8240,19 @@ function App() {
                     {ratingChartData.map((entry) => (
                       <Cell
                         key={`rating-${entry.rating}`}
-                        fill={ratingFilter && ratingFilter !== entry.rating ? "#345" : "#00e054"}
+                        fill={ratingFilter && ratingFilter !== entry.rating ? "var(--border-strong)" : "var(--accent-green)"}
                       />
                     ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
+
+            {ratingDrift && (
+              <div style={{ fontSize: "13px", color: "var(--stat-label-color)", textAlign: "center" }}>
+                {ratingDrift.direction === "up" ? "📈" : ratingDrift.direction === "down" ? "📉" : "⚖️"} {ratingDrift.copy}
+              </div>
+            )}
 
           </section>
         )}
@@ -7515,7 +8261,7 @@ function App() {
         {totalMoviesWithData > 0 && (
           <section style={{ display: "flex", flexDirection: "column", gap: "20px", width: "100%" }}>
             {decadeFilter && (
-              <div style={{ fontSize: "12px", color: "#9ab", textAlign: "center" }}>
+              <div style={{ fontSize: "12px", color: "var(--stat-label-color)", textAlign: "center" }}>
                 Filtering diary list and pie charts for {decadeFilter.label} — check Film Breakdown above.
                 <button
                   onClick={() => {
@@ -7527,9 +8273,9 @@ function App() {
                     padding: "2px 6px",
                     fontSize: "11px",
                     backgroundColor: "transparent",
-                    border: "1px solid #456",
+                    border: "1px solid var(--border-strong)",
                     borderRadius: "4px",
-                    color: "#9ab",
+                    color: "var(--stat-label-color)",
                     cursor: "pointer",
                   }}
                 >
@@ -7542,9 +8288,9 @@ function App() {
                     padding: "2px 6px",
                     fontSize: "11px",
                     backgroundColor: "transparent",
-                    border: "1px solid #456",
+                    border: "1px solid var(--border-strong)",
                     borderRadius: "4px",
-                    color: "#9ab",
+                    color: "var(--stat-label-color)",
                     cursor: "pointer",
                   }}
                 >
@@ -7602,7 +8348,7 @@ function App() {
 
               return (
                 <div style={{ width: "100%" }}>
-                  <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "6px", textAlign: "center" }}>
+                  <h3 style={{ fontSize: "14px", fontWeight: 500, color: "var(--stat-label-color)", marginBottom: "6px", textAlign: "center" }}>
                     Films by Decade
                   </h3>
                   <div style={{ position: "relative" }}>
@@ -7614,9 +8360,9 @@ function App() {
                           left: `${decadeHover.midPercent}%`,
                           transform: "translateX(-50%)",
                           fontSize: "12px",
-                          color: "#9ab",
-                          backgroundColor: "rgba(20, 24, 28, 0.9)",
-                          border: "1px solid #345",
+                          color: "var(--stat-label-color)",
+                          backgroundColor: "var(--surface-overlay)",
+                          border: "1px solid var(--border-strong)",
                           borderRadius: "4px",
                           padding: "2px 6px",
                           whiteSpace: "nowrap",
@@ -7634,7 +8380,7 @@ function App() {
                         height: "32px",
                         borderRadius: "6px",
                         overflow: "hidden",
-                        backgroundColor: "#345",
+                        backgroundColor: "var(--border-strong)",
                       }}
                     >
                       {decadeSegments.map(({ decade, count, percent, startPercent }) => {
@@ -7664,7 +8410,7 @@ function App() {
                             }}
                           >
                             {percent >= 8 && (
-                              <span style={{ fontSize: "11px", fontWeight: 600, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
+                              <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-heading)", textShadow: "0 1px 3px var(--surface-base)" }}>
                                 {decade.slice(0, 4)}
                               </span>
                             )}
@@ -7680,7 +8426,7 @@ function App() {
                       return (
                         <div key={decade} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                           <div style={{ width: "12px", height: "12px", borderRadius: "2px", backgroundColor: getDecadeColor(decade) }} />
-                          <span style={{ fontSize: "11px", color: "#9ab" }}>{decade} ({percent}%)</span>
+                          <span style={{ fontSize: "11px", color: "var(--stat-label-color)" }}>{decade} ({percent}%)</span>
                         </div>
                       );
                     })}
@@ -7744,7 +8490,7 @@ function App() {
 
               return (
                 <div style={{ width: "100%" }}>
-                  <h3 style={{ fontSize: "14px", fontWeight: 500, color: "#9ab", marginBottom: "6px", textAlign: "center" }}>
+                  <h3 style={{ fontSize: "14px", fontWeight: 500, color: "var(--stat-label-color)", marginBottom: "6px", textAlign: "center" }}>
                     Films by Offset Decade
                   </h3>
                   <div style={{ position: "relative" }}>
@@ -7756,9 +8502,9 @@ function App() {
                           left: `${offsetDecadeHover.midPercent}%`,
                           transform: "translateX(-50%)",
                           fontSize: "12px",
-                          color: "#9ab",
-                          backgroundColor: "rgba(20, 24, 28, 0.9)",
-                          border: "1px solid #345",
+                          color: "var(--stat-label-color)",
+                          backgroundColor: "var(--surface-overlay)",
+                          border: "1px solid var(--border-strong)",
                           borderRadius: "4px",
                           padding: "2px 6px",
                           whiteSpace: "nowrap",
@@ -7776,7 +8522,7 @@ function App() {
                         height: "32px",
                         borderRadius: "6px",
                         overflow: "hidden",
-                        backgroundColor: "#345",
+                        backgroundColor: "var(--border-strong)",
                       }}
                     >
                       {offsetSegments.map(({ decade, count, percent, startPercent }) => {
@@ -7806,7 +8552,7 @@ function App() {
                             }}
                           >
                             {percent >= 10 && (
-                              <span style={{ fontSize: "10px", fontWeight: 600, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
+                              <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-heading)", textShadow: "0 1px 3px var(--surface-base)" }}>
                                 {decade.slice(2, 4)}-{decade.slice(-2)}
                               </span>
                             )}
@@ -7822,7 +8568,7 @@ function App() {
                       return (
                         <div key={decade} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                           <div style={{ width: "12px", height: "12px", borderRadius: "2px", backgroundColor: getOffsetDecadeColor(decade) }} />
-                          <span style={{ fontSize: "11px", color: "#9ab" }}>{decade} ({percent}%)</span>
+                          <span style={{ fontSize: "11px", color: "var(--stat-label-color)" }}>{decade} ({percent}%)</span>
                         </div>
                       );
                     })}
@@ -7943,7 +8689,26 @@ function App() {
         {moviesWithDataBase.length > 0 && (
           <section className="lb-comfort-zone">
             <div className="lb-comfort-header">
-              <div className="lb-comfort-title">Comfort Zone Index</div>
+              <div className="lb-comfort-title">Viewing Identity</div>
+            </div>
+
+            {comfortZoneStats.tasteDetails && comfortZoneStats.tasteDetails.directors.length > 0 && (
+              <>
+                <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px", textAlign: "center" }}>Top 10 Directors</div>
+                <div className="lb-taste-detail" style={{ justifyContent: "center" }}>
+                  {comfortZoneStats.tasteDetails.directors.map((d, j) => (
+                    <span key={j} className="lb-taste-detail-item">{d.label} ({d.count})</span>
+                  ))}
+                </div>
+                <hr className="lb-taste-divider" />
+              </>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+              <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px" }}>Comfort Zone</div>
+              <div className="lb-comfort-subnote" style={{ margin: 0, flex: 1, textAlign: "center" }}>
+                Share of your watches from your top 3 directors, genres, and countries.
+              </div>
               <div className={`lb-comfort-score${(() => {
                 const idx = comfortZoneStats.index;
                 if (idx < 30) return " lb-comfort-score--adventurous";
@@ -7951,9 +8716,6 @@ function App() {
                 if (idx < 70) return " lb-comfort-score--comfortable";
                 return " lb-comfort-score--cozy";
               })()}`}>{Math.round(comfortZoneStats.index)}%</div>
-              <div className="lb-comfort-subnote">
-                Share of your watches from your top 3 directors, genres, and countries.
-              </div>
             </div>
             <div className="lb-comfort-bars">
               {[
@@ -7997,31 +8759,73 @@ function App() {
           />
         )}
 
+        {/* Geo-filtered movie table — appears when a country/continent is selected */}
+        {geoFilter && moviesWithDataBase.length > 0 && (() => {
+          const geoMovies = moviesWithDataBase.filter(matchesGeoFilter);
+          const label = geoFilter.type === "continent"
+            ? getContinentLabel(geoFilter.value)
+            : getCountryName(geoFilter.value);
+          return geoMovies.length > 0 ? (
+            <section style={{ width: "100%" }}>
+              <h3 className="lb-section-heading" style={{ marginBottom: "12px" }}>
+                Films from {label} ({geoMovies.length})
+              </h3>
+              <div className="lb-geo-table-wrap">
+                <table className="lb-geo-table">
+                  <thead>
+                    <tr>
+                      <th>Title</th>
+                      <th>Year</th>
+                      <th>Director</th>
+                      <th>Countries</th>
+                      <th>Languages</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {geoMovies.map((movie: any, i: number) => {
+                      const tmdb = movie.tmdb_data || {};
+                      return (
+                        <tr key={i}>
+                          <td>{tmdb.title || movie.csv_name || "—"}</td>
+                          <td>{(tmdb.release_date || "").slice(0, 4) || movie.csv_year || "—"}</td>
+                          <td>{(tmdb.directors || []).map((d: any) => d.name).join(", ") || "—"}</td>
+                          <td>{(tmdb.production_countries?.names || []).join(", ") || "—"}</td>
+                          <td>{(tmdb.spoken_languages?.codes || []).map((c: string, j: number) => ISO_639_ENGLISH[c] || tmdb.spoken_languages?.names?.[j] || c).join(", ") || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null;
+        })()}
+
         {/* Review stats - only show if reviews have been uploaded */}
         {reviews.length > 0 && (
           reviewStats.hasEntries ? (
-            <section style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%" }}>
-              <h3 style={{ fontSize: "16px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
+            <section style={{ borderTop: "1px solid var(--border-default)", paddingTop: "24px", width: "100%" }}>
+              <h3 className="lb-section-heading" style={{ marginBottom: "16px" }}>
                 Reviews
               </h3>
               <div className="stats-row" style={{ display: "flex", justifyContent: "center", gap: "48px", textAlign: "center", flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{reviews.length}</div>
-                  <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Reviews</div>
+                  <div style={{ fontSize: "32px", fontWeight: 600, color: "var(--text-heading)" }}>{reviews.length}</div>
+                  <div className="lb-stat-label" style={{ marginTop: "4px" }}>Reviews</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{reviewStats.medianWordCount}</div>
-                  <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Median Words</div>
+                  <div style={{ fontSize: "32px", fontWeight: 600, color: "var(--text-heading)" }}>{reviewStats.medianWordCount}</div>
+                  <div className="lb-stat-label" style={{ marginTop: "4px" }}>Median Words</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>{reviewStats.avgWordCount}</div>
-                  <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Avg Words</div>
+                  <div style={{ fontSize: "32px", fontWeight: 600, color: "var(--text-heading)" }}>{reviewStats.avgWordCount}</div>
+                  <div className="lb-stat-label" style={{ marginTop: "4px" }}>Avg Words</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: "32px", fontWeight: 600, color: "#fff" }}>
+                  <div style={{ fontSize: "32px", fontWeight: 600, color: "var(--text-heading)" }}>
                     {reviewStats.hasEntries ? reviewStats.totalWords.toLocaleString() : "—"}
                   </div>
-                  <div style={{ fontSize: "11px", color: "#9ab", marginTop: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>Total Words</div>
+                  <div className="lb-stat-label" style={{ marginTop: "4px" }}>Total Words</div>
                 </div>
               </div>
               <div className="lb-review-grid">
@@ -8047,16 +8851,16 @@ function App() {
                     <div className="lb-review-chart">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={reviewStats.sentimentPoints} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
-                          <CartesianGrid stroke="rgba(68, 85, 102, 0.35)" strokeDasharray="3 3" />
-                          <XAxis dataKey="month" tick={{ fill: "#9ab", fontSize: 10 }} minTickGap={20} />
-                          <YAxis tick={{ fill: "#9ab", fontSize: 10 }} width={32} />
+                          <CartesianGrid stroke="var(--border-subtle)" strokeDasharray="3 3" />
+                          <XAxis dataKey="month" tick={{ fill: "var(--stat-label-color)", fontSize: 10 }} minTickGap={20} />
+                          <YAxis tick={{ fill: "var(--stat-label-color)", fontSize: 10 }} width={32} />
                           <Tooltip
-                            contentStyle={{ backgroundColor: "#1b2026", border: "1px solid #345", color: "#ccd" }}
+                            contentStyle={CHART_TOOLTIP_STYLE}
                             content={({ payload, label }) => {
                               const point = payload?.[0]?.payload as any;
                               if (!point) return null;
                               return (
-                                <div style={{ fontSize: "12px", color: "#ccd", backgroundColor: "#1b2026", border: "1px solid #345", padding: "8px 10px", borderRadius: "6px" }}>
+                                <div style={{ fontSize: "12px", color: "var(--text-primary)", backgroundColor: "var(--surface-overlay)", border: "1px solid var(--border-strong)", padding: "8px 10px", borderRadius: "6px" }}>
                                   <div style={{ fontWeight: 600 }}>Month: {label}</div>
                                   <div style={{ marginTop: "4px" }}>Sentiment: {Number(point.sentiment).toFixed(3)}</div>
                                   <div>Reviews: {point.count}</div>
@@ -8078,21 +8882,21 @@ function App() {
                     <div className="lb-review-chart">
                       <ResponsiveContainer width="100%" height="100%">
                         <ScatterChart margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
-                          <CartesianGrid stroke="rgba(68, 85, 102, 0.35)" strokeDasharray="3 3" />
-                          <XAxis type="number" dataKey="rating" domain={[0, 5]} tick={{ fill: "#9ab", fontSize: 10 }} />
-                          <YAxis type="number" dataKey="words" tick={{ fill: "#9ab", fontSize: 10 }} width={36} />
+                          <CartesianGrid stroke="var(--border-subtle)" strokeDasharray="3 3" />
+                          <XAxis type="number" dataKey="rating" domain={[0, 5]} tick={{ fill: "var(--stat-label-color)", fontSize: 10 }} />
+                          <YAxis type="number" dataKey="words" tick={{ fill: "var(--stat-label-color)", fontSize: 10 }} width={36} />
                           <Tooltip
-                            contentStyle={{ backgroundColor: "#1b2026", border: "1px solid #345", color: "#ccd" }}
+                            contentStyle={CHART_TOOLTIP_STYLE}
                             cursor={{ stroke: "#3EBDF4", strokeWidth: 1 }}
                             content={({ payload }) => {
                               const point = payload?.[0]?.payload as any;
                               if (!point) return null;
                               return (
-                                <div style={{ fontSize: "12px", color: "#ccd", backgroundColor: "#1b2026", border: "1px solid #345", padding: "8px 10px", borderRadius: "6px" }}>
+                                <div style={{ fontSize: "12px", color: "var(--text-primary)", backgroundColor: "var(--surface-overlay)", border: "1px solid var(--border-strong)", padding: "8px 10px", borderRadius: "6px" }}>
                                   <div style={{ fontWeight: 600 }}>{point.title}{point.year ? ` (${point.year})` : ""}</div>
                                   <div style={{ marginTop: "4px" }}>Rating: ★{Number(point.rating).toFixed(1)}</div>
                                   <div>Words: {point.words}</div>
-                                  {point.date && <div style={{ color: "#9ab", marginTop: "4px" }}>{point.date}</div>}
+                                  {point.date && <div style={{ color: "var(--stat-label-color)", marginTop: "4px" }}>{point.date}</div>}
                                 </div>
                               );
                             }}
@@ -8217,11 +9021,11 @@ function App() {
               </div>
             </section>
           ) : (
-            <section style={{ borderTop: "1px solid rgba(68, 85, 102, 0.5)", paddingTop: "24px", width: "100%" }}>
-              <h3 style={{ fontSize: "16px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
+            <section style={{ borderTop: "1px solid var(--border-default)", paddingTop: "24px", width: "100%" }}>
+              <h3 className="lb-section-heading" style={{ marginBottom: "16px" }}>
                 Reviews
               </h3>
-              <div style={{ textAlign: "center", color: "#9ab", fontSize: "13px" }}>
+              <div style={{ textAlign: "center", color: "var(--stat-label-color)", fontSize: "13px" }}>
                 {reviewStats.hasReviews ? "No reviews in this time range yet." : "Add written reviews to unlock insights here."}
               </div>
             </section>
@@ -8231,14 +9035,14 @@ function App() {
         {/* Watchlist Analysis Section - always visible, inner parts conditionally shown */}
         <section
           ref={watchlistSectionRef}
-          style={{ backgroundColor: "rgba(68, 85, 102, 0.2)", borderRadius: "8px", padding: "24px" }}
+          style={{ backgroundColor: "var(--surface-subtle)", borderRadius: "8px", padding: "24px" }}
         >
-          <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#fff", marginBottom: "16px", textAlign: "center" }}>
+          <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-heading)", marginBottom: "16px", textAlign: "center" }}>
             Watchlist Analysis
           </h2>
           {/* Only show upload description when upload UI is visible */}
           {(manualUploadOpen || pendingUploadTarget === "watchlist" || !watchlistLoaded || isWatchlistLoading) && (
-            <p style={{ fontSize: "12px", color: "#9ab", marginBottom: "16px", textAlign: "center" }}>
+            <p style={{ fontSize: "12px", color: "var(--stat-label-color)", marginBottom: "16px", textAlign: "center" }}>
               Upload your watchlist.csv to find films matching your criteria
             </p>
           )}
@@ -8247,15 +9051,15 @@ function App() {
           {(manualUploadOpen || pendingUploadTarget === "watchlist" || !watchlistLoaded || isWatchlistLoading) && (
             <div style={{ marginBottom: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "13px", color: "#9ab" }}>Choose file:</span>
+                <span style={{ fontSize: "13px", color: "var(--stat-label-color)" }}>Choose file:</span>
                 <label
                   htmlFor="watchlist-file-input"
                   style={{
                     padding: "8px 12px",
                     borderRadius: "6px",
-                    border: "1px solid #456",
-                    backgroundColor: "#2c3440",
-                    color: "#ccd",
+                    border: "1px solid var(--border-strong)",
+                    backgroundColor: "var(--surface-input)",
+                    color: "var(--text-primary)",
                     fontSize: "13px",
                     fontWeight: 600,
                     cursor: isWatchlistLoading ? "not-allowed" : "pointer",
@@ -8280,9 +9084,9 @@ function App() {
                   style={{
                     padding: "8px 10px",
                     borderRadius: "6px",
-                    border: "1px solid #456",
+                    border: "1px solid var(--border-strong)",
                     backgroundColor: "transparent",
-                    color: "#9ab",
+                    color: "var(--stat-label-color)",
                     fontSize: "12px",
                     fontWeight: 600,
                     cursor: isWatchlistLoading ? "not-allowed" : "pointer",
@@ -8303,7 +9107,7 @@ function App() {
                 <div style={{
                   height: "6px",
                   width: "100%",
-                  backgroundColor: "rgba(68, 85, 102, 0.3)",
+                  backgroundColor: "var(--surface-subtle)",
                   borderRadius: "3px",
                   overflow: "hidden"
                 }}>
@@ -8332,11 +9136,11 @@ function App() {
                   )}
                 </div>
                 {watchlistProgress && watchlistProgress.total > 0 ? (
-                  <p style={{ fontSize: "12px", color: "#9ab", textAlign: "center", marginTop: "4px" }}>
+                  <p style={{ fontSize: "12px", color: "var(--stat-label-color)", textAlign: "center", marginTop: "4px" }}>
                     {watchlistProgress.current} / {watchlistProgress.total} ({Math.round((watchlistProgress.current / watchlistProgress.total) * 100)}%)
                   </p>
                 ) : (
-                  <p style={{ fontSize: "12px", color: "#9ab", textAlign: "center", marginTop: "4px" }}>
+                  <p style={{ fontSize: "12px", color: "var(--stat-label-color)", textAlign: "center", marginTop: "4px" }}>
                     Connecting to server...
                   </p>
                 )}
@@ -8346,14 +9150,14 @@ function App() {
 
           {/* Status message when not loading */}
           {!isWatchlistLoading && watchlistStatus && (
-            <p style={{ fontSize: "14px", color: "#9ab", textAlign: "center", marginBottom: "16px" }}>
+            <p style={{ fontSize: "14px", color: "var(--stat-label-color)", textAlign: "center", marginBottom: "16px" }}>
               {watchlistStatus}
             </p>
           )}
 
           {!isWatchlistLoading && isLocalDev && (
             <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px" }}>
-              <label style={{ fontSize: "12px", color: "#9ab", display: "flex", alignItems: "center", gap: "8px" }}>
+              <label style={{ fontSize: "12px", color: "var(--stat-label-color)", display: "flex", alignItems: "center", gap: "8px" }}>
                 <input
                   type="checkbox"
                   checked={watchlistUseVercelApi}
@@ -8365,21 +9169,21 @@ function App() {
           )}
 
           {!isWatchlistLoading && isLocalDev && watchlistMissingCount > 0 && (
-            <div style={{ marginBottom: "16px", backgroundColor: "rgba(20, 24, 28, 0.7)", border: "1px solid #345", borderRadius: "6px", padding: "12px" }}>
-              <div style={{ fontSize: "12px", color: "#9ab", marginBottom: "8px" }}>
+            <div style={{ marginBottom: "16px", backgroundColor: "var(--surface-overlay)", border: "1px solid var(--border-strong)", borderRadius: "6px", padding: "12px" }}>
+              <div style={{ fontSize: "12px", color: "var(--stat-label-color)", marginBottom: "8px" }}>
                 Debug: {watchlistMissingCount} watchlist entries missing TMDb data (showing {watchlistMissingSamples.length}) • uriMap: {watchlistUriMapSize} entries
               </div>
               <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "6px" }}>
                 {watchlistMissingDebug.map((row, idx) => (
-                  <li key={`${row.originalUri}-${idx}`} style={{ fontSize: "12px", color: "#ccd" }}>
-                    <span style={{ color: "#ccd" }}>{row.name || "Untitled"}</span>
+                  <li key={`${row.originalUri}-${idx}`} style={{ fontSize: "12px", color: "var(--text-primary)" }}>
+                    <span style={{ color: "var(--text-primary)" }}>{row.name || "Untitled"}</span>
                     {row.year ? ` (${row.year})` : ""}
-                    <span style={{ color: "#9ab", marginLeft: "6px" }}>{row.originalUri}</span>
-                    <span style={{ color: "#9ab", marginLeft: "6px" }}>
+                    <span style={{ color: "var(--stat-label-color)", marginLeft: "6px" }}>{row.originalUri}</span>
+                    <span style={{ color: "var(--stat-label-color)", marginLeft: "6px" }}>
                       map:{row.hadUriMap ? "yes" : "no"} lookup:{row.foundInLookup ? "yes" : "no"}
                     </span>
                     {row.tmdbId ? (
-                      <span style={{ color: "#9ab", marginLeft: "6px" }}>tmdbId:{row.tmdbId}</span>
+                      <span style={{ color: "var(--stat-label-color)", marginLeft: "6px" }}>tmdbId:{row.tmdbId}</span>
                     ) : null}
                     {row.tmdbError ? (
                       <span style={{ color: "#c77", marginLeft: "6px" }}>error:{String(row.tmdbError).slice(0, 80)}</span>
@@ -8409,6 +9213,28 @@ function App() {
               setWatchlistContinentFilter={setWatchlistContinentFilter}
             />
           )}
+
+          {/* Watchlist Velocity */}
+          {watchlistVelocity && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center", padding: "16px 0" }}>
+              <div style={{ display: "flex", gap: "32px", textAlign: "center", flexWrap: "wrap", justifyContent: "center" }}>
+                <div>
+                  <div className="lb-stat-value-lg lb-gradient-text">{watchlistVelocity.addsPerMonth}</div>
+                  <div style={{ fontSize: "10px", color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px" }}>Added/Month</div>
+                </div>
+                <div>
+                  <div className="lb-stat-value-lg lb-gradient-text">{watchlistVelocity.watchesPerMonth}</div>
+                  <div style={{ fontSize: "10px", color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px" }}>Watched/Month</div>
+                </div>
+                <div>
+                  <div className="lb-stat-value-lg lb-gradient-text">{watchlistVelocity.netPerMonth > 0 ? "+" : ""}{watchlistVelocity.netPerMonth}</div>
+                  <div style={{ fontSize: "10px", color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px" }}>Net/Month</div>
+                </div>
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--stat-label-color)", fontStyle: "italic", textAlign: "center", maxWidth: "400px" }}>{watchlistVelocity.copy}</div>
+            </div>
+          )}
+
           {watchlistOverdue.length > 0 && (
             <div className="lb-watchlist-overdue">
               <div className="lb-watchlist-overdue-header">
@@ -8461,7 +9287,7 @@ function App() {
         {/* Watchlist Builder section — always visible */}
         <section
           style={{
-            backgroundColor: "rgba(68, 85, 102, 0.2)",
+            backgroundColor: "var(--surface-subtle)",
             borderRadius: "8px",
             padding: "24px",
           }}
@@ -8474,11 +9300,11 @@ function App() {
               textAlign: "center",
             }}
           >
-            <h2 style={{ color: "#fff", fontSize: "18px", fontWeight: 600, margin: 0 }}>
+            <h2 style={{ color: "var(--text-heading)", fontSize: "18px", fontWeight: 600, margin: 0 }}>
               Watchlist Builder
-              {builderExpanded && <span style={{ fontSize: "12px", color: "#9ab", fontWeight: 400, marginLeft: "8px" }}>▴</span>}
+              {builderExpanded && <span style={{ fontSize: "12px", color: "var(--stat-label-color)", fontWeight: 400, marginLeft: "8px" }}>▴</span>}
             </h2>
-            <p style={{ color: "#9ab", fontSize: "12px", margin: "6px 0 0" }}>
+            <p style={{ color: "var(--stat-label-color)", fontSize: "12px", margin: "6px 0 0" }}>
               Build a custom watchlist from{" "}
               {curatedPayload?.films?.length
                 ? `${curatedPayload.films.length.toLocaleString()} acclaimed films`
@@ -8524,7 +9350,7 @@ function App() {
         </section>
         <section
           style={{
-            backgroundColor: "rgba(68, 85, 102, 0.2)",
+            backgroundColor: "var(--surface-subtle)",
             borderRadius: "8px",
             padding: "24px",
           }}
@@ -8535,10 +9361,10 @@ function App() {
               textAlign: "center",
             }}
           >
-            <h2 style={{ color: "#fff", fontSize: "18px", fontWeight: 600, margin: 0 }}>
+            <h2 style={{ color: "var(--text-heading)", fontSize: "18px", fontWeight: 600, margin: 0 }}>
               Double Feature Builder
             </h2>
-            <p style={{ color: "#9ab", fontSize: "12px", margin: "6px 0 0" }}>
+            <p style={{ color: "var(--stat-label-color)", fontSize: "12px", margin: "6px 0 0" }}>
               Pick a pairing rule and get instant double features.
             </p>
           </div>
