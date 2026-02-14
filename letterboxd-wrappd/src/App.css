@@ -55,6 +55,7 @@
   --surface-card: rgba(20, 24, 28, 0.6);
   --surface-card-hover: rgba(28, 34, 42, 0.7);
   --surface-subtle: rgba(44, 52, 64, 0.4);
+  --surface-hover: rgba(44, 52, 64, 0.6);
   --surface-input: #2c3440;
 
   /* Borders */
@@ -133,67 +134,74 @@
 
 /* ─── Light Theme Overrides ─── */
 [data-theme="light"] {
-  --text-primary: #1a1f25;
-  --text-secondary: #5a6672;
-  --text-heading: #0d1117;
-  --text-muted: #8b95a1;
+  /* ─── Text: cooler slate tones ─── */
+  --text-primary: #1b2332;
+  --text-secondary: #4a5568;
+  --text-heading: #0f172a;
+  --text-muted: #94a3b8;
   --text-inverse: #ffffff;
-  --text-link: #3a4550;
-  --text-link-hover: #1a1f25;
+  --text-link: #334155;
+  --text-link-hover: #0f172a;
 
-  --accent-green: #00b847;
-  --accent-green-dim: rgba(0, 184, 71, 0.10);
-  --accent-blue: #2196c7;
-  --accent-blue-dim: rgba(33, 150, 199, 0.10);
-  --accent-orange: #e07000;
-  --accent-orange-dim: rgba(224, 112, 0, 0.10);
-  --accent-yellow: #c98a00;
-  --accent-yellow-dim: rgba(201, 138, 0, 0.10);
-  --accent-red: #d94444;
-  --accent-red-dim: rgba(217, 68, 68, 0.10);
+  /* ─── Accents: punchy & vibrant on white ─── */
+  --accent-green: #00c853;
+  --accent-green-dim: rgba(0, 200, 83, 0.12);
+  --accent-blue: #0ea5e9;
+  --accent-blue-dim: rgba(14, 165, 233, 0.12);
+  --accent-orange: #f97316;
+  --accent-orange-dim: rgba(249, 115, 22, 0.12);
+  --accent-yellow: #eab308;
+  --accent-yellow-dim: rgba(234, 179, 8, 0.14);
+  --accent-red: #ef4444;
+  --accent-red-dim: rgba(239, 68, 68, 0.10);
 
-  --surface-base: #f6f8fa;
+  /* ─── Surfaces: cool blue-tinted whites ─── */
+  --surface-base: #f0f4f8;
   --surface-raised: #ffffff;
-  --surface-overlay: rgba(255, 255, 255, 0.95);
-  --surface-card: rgba(255, 255, 255, 0.7);
-  --surface-card-hover: rgba(240, 242, 245, 0.8);
-  --surface-subtle: rgba(0, 0, 0, 0.04);
+  --surface-overlay: rgba(255, 255, 255, 0.97);
+  --surface-card: rgba(255, 255, 255, 0.82);
+  --surface-card-hover: rgba(241, 245, 249, 0.9);
+  --surface-subtle: rgba(15, 23, 42, 0.05);
+  --surface-hover: rgba(15, 23, 42, 0.07);
   --surface-input: #ffffff;
-  --surface-glass: rgba(255, 255, 255, 0.5);
-  --surface-glass-hover: rgba(255, 255, 255, 0.65);
-  --surface-section: rgba(255, 255, 255, 0.6);
+  --surface-glass: rgba(255, 255, 255, 0.6);
+  --surface-glass-hover: rgba(255, 255, 255, 0.78);
+  --surface-section: rgba(255, 255, 255, 0.72);
 
-  --border-default: rgba(0, 0, 0, 0.10);
-  --border-subtle: rgba(0, 0, 0, 0.06);
-  --border-hover: rgba(0, 0, 0, 0.18);
-  --border-strong: rgba(0, 0, 0, 0.15);
-  --border-glass: rgba(0, 0, 0, 0.06);
+  /* ─── Borders: visible but not harsh ─── */
+  --border-default: rgba(15, 23, 42, 0.12);
+  --border-subtle: rgba(15, 23, 42, 0.08);
+  --border-hover: rgba(15, 23, 42, 0.20);
+  --border-strong: rgba(15, 23, 42, 0.18);
+  --border-glass: rgba(15, 23, 42, 0.08);
 
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.10);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-  --shadow-glow-green: 0 0 20px rgba(0, 184, 71, 0.12);
-  --shadow-glow-orange: 0 0 20px rgba(224, 112, 0, 0.12);
+  /* ─── Shadows: cool-tinted for depth ─── */
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 14px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 10px 30px rgba(15, 23, 42, 0.10), 0 4px 10px rgba(15, 23, 42, 0.05);
+  --shadow-glow-green: 0 0 24px rgba(0, 200, 83, 0.18);
+  --shadow-glow-orange: 0 0 24px rgba(249, 115, 22, 0.18);
 
-  --gradient-bg: linear-gradient(135deg, #f6f8fa 0%, #f0f2f5 50%, #f6f8fa 100%);
-  --gradient-hero: linear-gradient(135deg, #00b847, #2196c7);
+  /* ─── Gradients: cool blue-slate sweep ─── */
+  --gradient-bg: linear-gradient(135deg, #f0f4f8 0%, #e8eef6 40%, #f0f4f8 100%);
+  --gradient-hero: linear-gradient(135deg, #00c853, #0ea5e9);
 
-  --stat-label-color: #5a6672;
+  --stat-label-color: #4a5568;
 
   --radius-xl: 20px;
   --radius-2xl: 24px;
 
-  /* ─── Heatmap (GitHub-inspired) ─── */
-  --heat-0: #ebedf0;
-  --heat-1: #9be9a8;
-  --heat-2: #40c463;
-  --heat-3: #30a14e;
-  --heat-4: #216e39;
-  --heat-empty: #ebedf0;
+  /* ─── Heatmap (GitHub-inspired, crisper) ─── */
+  --heat-0: #e2e8f0;
+  --heat-1: #86efac;
+  --heat-2: #22c55e;
+  --heat-3: #16a34a;
+  --heat-4: #15803d;
+  --heat-empty: #e2e8f0;
 
   /* ─── Map ─── */
-  --map-bg: #e8eaed;
-  --map-stroke: #c0c8d0;
+  --map-bg: #e2e8f0;
+  --map-stroke: #b8c5d3;
 
   /* ─── Active Button Text ─── */
   --active-btn-text: #ffffff;
@@ -1160,6 +1168,7 @@
   flex-direction: column;
   gap: var(--space-sm);
   margin-top: var(--space-xs);
+  width: 100%;
 }
 
 .lb-comfort-row {
@@ -1232,6 +1241,76 @@
   border: 1px solid var(--border-subtle);
 }
 
+/* Taste Score Card */
+.lb-taste-score-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 16px;
+  margin-bottom: 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.lb-taste-score-meter {
+  text-align: center;
+  flex-shrink: 0;
+}
+.lb-taste-score-value {
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1;
+}
+.lb-taste-score-denominator {
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.lb-taste-score-value--adventurous { color: var(--accent-blue); }
+.lb-taste-score-value--balanced { color: var(--accent-green); }
+.lb-taste-score-value--comfortable { color: var(--accent-yellow, #e6a817); }
+.lb-taste-score-value--cozy { color: var(--accent-orange, #e67e22); }
+.lb-taste-insights {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.lb-taste-insights li {
+  font-size: var(--font-small);
+  color: var(--text-secondary);
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.lb-taste-insights li:hover {
+  border-color: var(--text-muted);
+}
+.lb-taste-insights li.lb-taste-insight--active {
+  background: var(--surface-hover);
+  border-color: var(--text-muted);
+}
+.lb-taste-insight-detail {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+}
+.lb-taste-card-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 4px 0;
+}
+
 /* Taste Score Header + Insight Pills */
 .lb-taste-score-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .lb-taste-score-label { font-size: var(--font-micro); color: var(--text-muted); text-align: right; }
@@ -1239,7 +1318,6 @@
 .lb-comfort-score--moderate { color: var(--accent-green); }
 .lb-comfort-score--focused { color: var(--accent-yellow); }
 .lb-comfort-score--laser { color: var(--accent-orange); }
-.lb-taste-insights { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .lb-taste-insight-pill { font-size: var(--font-small); padding: 5px 12px; border-radius: var(--radius-full); background: var(--surface-subtle); color: var(--text-secondary); border: 1px solid var(--border-subtle); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
 .lb-taste-insight-pill:hover { border-color: var(--text-muted); }
 .lb-taste-insight-pill--active { background: var(--surface-hover); border-color: var(--text-muted); }

@@ -3042,7 +3042,7 @@ type ShareSnapshot = {
     genres: { percent: number; topLabels: Array<{ label: string; count: number }> };
     countries: { percent: number; topLabels: Array<{ label: string; count: number }> };
     tasteScore?: number;
-    tasteInsights?: string[];
+    tasteInsights?: Array<{ text: string; key: string }> | string[];
     tasteDetails?: {
       directors: Array<{ label: string; count: number }>;
       decades: Array<{ label: string; count: number; pct: number }>;
@@ -3529,44 +3529,50 @@ const PublicSharePage = ({ token }: { token: string }) => {
             <div className="lb-comfort-title">Viewing Identity</div>
           </div>
 
-          {data.comfortZone?.tasteDetails && data.comfortZone.tasteDetails.directors && data.comfortZone.tasteDetails.directors.length > 0 && (
-            <>
-              <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px", textAlign: "center" }}>Top 10 Directors</div>
-              <div className="lb-taste-detail" style={{ justifyContent: "center" }}>
-                {data.comfortZone.tasteDetails.directors.map((d: { label: string; count: number }, j: number) => (
-                  <span key={j} className="lb-taste-detail-item">{d.label} ({d.count})</span>
-                ))}
-              </div>
-              <hr className="lb-taste-divider" />
-            </>
-          )}
-
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-            <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px" }}>Comfort Zone</div>
-            <div className="lb-comfort-subnote" style={{ margin: 0, flex: 1, textAlign: "center" }}>
-              Share of your watches from your top 3 directors, genres, and countries.
+          <div className="lb-taste-score-card">
+            {/* Score */}
+            <div className="lb-taste-score-meter">
+              <div className={`lb-taste-score-value${(() => {
+                const s = data.comfortZone.tasteScore ?? 0;
+                if (s < 30) return " lb-taste-score-value--adventurous";
+                if (s < 50) return " lb-taste-score-value--balanced";
+                if (s < 70) return " lb-taste-score-value--comfortable";
+                return " lb-taste-score-value--cozy";
+              })()}`}>{data.comfortZone.tasteScore ?? 0}<span className="lb-taste-score-denominator"> / 100</span></div>
+              <div className="lb-taste-score-label">Taste Score</div>
             </div>
-            <div className="lb-comfort-score">{Math.round(data.comfortZone.index)}%</div>
-          </div>
-          <div className="lb-comfort-bars">
-            {[
-              { label: "Top 3 directors", value: data.comfortZone.directors.percent, top: data.comfortZone.directors.topLabels },
-              { label: "Top 3 genres", value: data.comfortZone.genres.percent, top: data.comfortZone.genres.topLabels },
-              { label: "Top 3 countries", value: data.comfortZone.countries.percent, top: data.comfortZone.countries.topLabels },
-            ].map((row) => (
-              <div key={row.label} className="lb-comfort-row">
-                <div className="lb-comfort-label">{row.label}</div>
-                <div className="lb-comfort-bar">
-                  <div className="lb-comfort-fill" style={{ width: `${Math.min(100, row.value)}%` }} />
-                </div>
-                <div className="lb-comfort-value">{Math.round(row.value)}%</div>
-                {row.top.length > 0 && (
-                  <div className="lb-comfort-top">
-                    Top: {row.top.map((item) => `${item.label} (${item.count})`).join(", ")}
+
+            {/* Insight pills (static on share page) */}
+            {(data.comfortZone.tasteInsights ?? []).length > 0 && (
+              <ul className="lb-taste-insights">
+                {(data.comfortZone.tasteInsights ?? []).map((insight: any, i: number) => (
+                  <li key={i}>{typeof insight === "string" ? insight : insight.text}</li>
+                ))}
+              </ul>
+            )}
+
+            {/* Comfort zone bars */}
+            <div className="lb-taste-card-divider" />
+            <div className="lb-comfort-bars">
+              {[
+                { label: "Directors", value: data.comfortZone.directors.percent, top: data.comfortZone.directors.topLabels },
+                { label: "Genres", value: data.comfortZone.genres.percent, top: data.comfortZone.genres.topLabels },
+                { label: "Countries", value: data.comfortZone.countries.percent, top: data.comfortZone.countries.topLabels },
+              ].map((row) => (
+                <div key={row.label} className="lb-comfort-row">
+                  <div className="lb-comfort-label">{row.label}</div>
+                  <div className="lb-comfort-bar">
+                    <div className="lb-comfort-fill" style={{ width: `${Math.min(100, row.value)}%` }} />
                   </div>
-                )}
-              </div>
-            ))}
+                  <div className="lb-comfort-value">{Math.round(row.value)}%</div>
+                  {row.top.length > 0 && (
+                    <div className="lb-comfort-top">
+                      Top: {row.top.map((item) => `${item.label} (${item.count})`).join(", ")}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
@@ -3809,6 +3815,7 @@ function App() {
   const [tasteSortMode, setTasteSortMode] = useState<"rated" | "watched">("rated");
   const [tasteCategory, setTasteCategory] = useState<string>("womenDirectors");
   const [tasteExpandedPerson, setTasteExpandedPerson] = useState<string | null>(null);
+  const [expandedInsight, setExpandedInsight] = useState<string | null>(null);
   const [watchlistUseVercelApi, setWatchlistUseVercelApi] = useState<boolean>(() =>
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
@@ -6880,7 +6887,7 @@ function App() {
         genres: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
         countries: { percent: 0, topLabels: [] as Array<{ label: string; count: number }> },
         tasteScore: 0,
-        tasteInsights: [] as string[],
+        tasteInsights: [] as Array<{ text: string; key: string }>,
         tasteDetails: undefined as undefined | {
           directors: Array<{ label: string; count: number }>;
           decades: Array<{ label: string; count: number; pct: number }>;
@@ -6958,42 +6965,52 @@ function App() {
       countryLabelMap.set(code, getCountryName(code));
     }
     const countries = countTop3Share(countryCounts, countryLabelMap);
-    const index = (directors.percent + genres.percent + countries.percent) / 3;
+    const rewatchPercent = totalEntries > 0 ? (rewatchEntryCount / totalEntries) * 100 : 0;
+    const index = (directors.percent + genres.percent + countries.percent + rewatchPercent) / 4;
+
+    // Rewatch concentration: how concentrated are rewatches on a few films?
+    const rewatchCounts = new Map<string, number>();
+    for (const film of films) {
+      if (film.entryCount > 1) {
+        rewatchCounts.set(film.key, film.entryCount);
+      }
+    }
 
     // Taste concentration score
     const tasteScore = Math.round(
-      (concentration(directorCounts) * 0.30 +
-       concentration(writerCounts) * 0.20 +
+      (concentration(directorCounts) * 0.25 +
+       concentration(writerCounts) * 0.15 +
        concentration(genreCounts) * 0.20 +
        concentration(countryCounts) * 0.15 +
-       concentration(decadeCounts) * 0.15) * 100
+       concentration(decadeCounts) * 0.10 +
+       concentration(rewatchCounts) * 0.15) * 100
     );
 
-    // Generate insight bullets
-    const tasteInsights: string[] = [];
+    // Generate insight bullets (each has a key mapping to tasteDetails)
+    const tasteInsights: Array<{ text: string; key: string }> = [];
 
     // Highest-concentration axis — director loyalty
     const dirConc = concentration(directorCounts);
     if (dirConc > 0) {
       const dirSorted = Array.from(directorCounts.entries()).sort((a, b) => b[1] - a[1]);
-      const top3Sum = dirSorted.slice(0, 3).reduce((s, [, v]) => s + v, 0);
+      const top10Sum = dirSorted.slice(0, 10).reduce((s, [, v]) => s + v, 0);
       const dirTotal = dirSorted.reduce((s, [, v]) => s + v, 0);
-      const top3Pct = Math.round((top3Sum / dirTotal) * 100);
-      tasteInsights.push(`Strong director loyalty (top 3 = ${top3Pct}%)`);
+      const top10Pct = Math.round((top10Sum / dirTotal) * 100);
+      tasteInsights.push({ text: `Strong director loyalty (top 10 = ${top10Pct}%)`, key: "directors" });
     }
 
     // Dominant decade
     if (decadeCounts.size > 0) {
       const topDecade = Array.from(decadeCounts.entries()).sort((a, b) => b[1] - a[1])[0];
-      tasteInsights.push(`Heart lives in the ${topDecade[0]}`);
+      tasteInsights.push({ text: `Heart lives in the ${topDecade[0]}`, key: "decades" });
     }
 
     // Lowest-concentration axis — spin positive
     const countryConc = concentration(countryCounts);
     if (countryCounts.size > 1 && countryConc < dirConc) {
-      tasteInsights.push(`Globally curious (${countryCounts.size} countries)`);
+      tasteInsights.push({ text: `Globally curious (${countryCounts.size} countries)`, key: "countries" });
     } else if (genreCounts.size > 1) {
-      tasteInsights.push(`Genre explorer (${genreCounts.size} genres)`);
+      tasteInsights.push({ text: `Genre explorer (${genreCounts.size} genres)`, key: "genres" });
     }
 
     const tasteDetails = {
@@ -7007,7 +7024,7 @@ function App() {
     };
 
     return { total, index, directors, genres, countries, tasteScore, tasteInsights, tasteDetails };
-  }, [moviesWithDataBase]);
+  }, [moviesWithDataBase, films, rewatchEntryCount, totalEntries]);
 
   const shareSnapshot = useMemo<ShareSnapshot>(() => ({
     generatedAt: new Date().toISOString(),
@@ -8366,7 +8383,7 @@ function App() {
                           borderRadius: "4px",
                           padding: "2px 6px",
                           whiteSpace: "nowrap",
-                          boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+                          boxShadow: "var(--shadow-md)",
                           pointerEvents: "none",
                         }}
                       >
@@ -8410,7 +8427,7 @@ function App() {
                             }}
                           >
                             {percent >= 8 && (
-                              <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-heading)", textShadow: "0 1px 3px var(--surface-base)" }}>
+                              <span style={{ fontSize: "11px", fontWeight: 600, color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>
                                 {decade.slice(0, 4)}
                               </span>
                             )}
@@ -8508,7 +8525,7 @@ function App() {
                           borderRadius: "4px",
                           padding: "2px 6px",
                           whiteSpace: "nowrap",
-                          boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+                          boxShadow: "var(--shadow-md)",
                           pointerEvents: "none",
                         }}
                       >
@@ -8552,7 +8569,7 @@ function App() {
                             }}
                           >
                             {percent >= 10 && (
-                              <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-heading)", textShadow: "0 1px 3px var(--surface-base)" }}>
+                              <span style={{ fontSize: "10px", fontWeight: 600, color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>
                                 {decade.slice(2, 4)}-{decade.slice(-2)}
                               </span>
                             )}
@@ -8692,55 +8709,76 @@ function App() {
               <div className="lb-comfort-title">Viewing Identity</div>
             </div>
 
-            {comfortZoneStats.tasteDetails && comfortZoneStats.tasteDetails.directors.length > 0 && (
-              <>
-                <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px", textAlign: "center" }}>Top 10 Directors</div>
-                <div className="lb-taste-detail" style={{ justifyContent: "center" }}>
-                  {comfortZoneStats.tasteDetails.directors.map((d, j) => (
-                    <span key={j} className="lb-taste-detail-item">{d.label} ({d.count})</span>
-                  ))}
-                </div>
-                <hr className="lb-taste-divider" />
-              </>
-            )}
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-              <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--stat-label-color)", textTransform: "uppercase", letterSpacing: "1px" }}>Comfort Zone</div>
-              <div className="lb-comfort-subnote" style={{ margin: 0, flex: 1, textAlign: "center" }}>
-                Share of your watches from your top 3 directors, genres, and countries.
+            <div className="lb-taste-score-card">
+              {/* Score */}
+              <div className="lb-taste-score-meter">
+                <div className={`lb-taste-score-value${(() => {
+                  const s = comfortZoneStats.tasteScore;
+                  if (s < 30) return " lb-taste-score-value--adventurous";
+                  if (s < 50) return " lb-taste-score-value--balanced";
+                  if (s < 70) return " lb-taste-score-value--comfortable";
+                  return " lb-taste-score-value--cozy";
+                })()}`}>{comfortZoneStats.tasteScore}<span className="lb-taste-score-denominator"> / 100</span></div>
+                <div className="lb-taste-score-label">Taste Score</div>
               </div>
-              <div className={`lb-comfort-score${(() => {
-                const idx = comfortZoneStats.index;
-                if (idx < 30) return " lb-comfort-score--adventurous";
-                if (idx < 50) return " lb-comfort-score--balanced";
-                if (idx < 70) return " lb-comfort-score--comfortable";
-                return " lb-comfort-score--cozy";
-              })()}`}>{Math.round(comfortZoneStats.index)}%</div>
-            </div>
-            <div className="lb-comfort-bars">
-              {[
-                { label: "Directors", value: comfortZoneStats.directors.percent, top: comfortZoneStats.directors.topLabels },
-                { label: "Genres", value: comfortZoneStats.genres.percent, top: comfortZoneStats.genres.topLabels },
-                { label: "Countries", value: comfortZoneStats.countries.percent, top: comfortZoneStats.countries.topLabels },
-              ].map((row: { label: string; value: number; top: Array<{ label: string; count: number }> }) => (
-                <div key={row.label} className="lb-comfort-row">
-                  <div className="lb-comfort-label">{row.label}</div>
-                  <div className="lb-comfort-bar">
-                    <div className="lb-comfort-fill" style={{ transform: `scaleX(${Math.min(100, row.value) / 100})` }} />
+
+              {/* Insight pills */}
+              {comfortZoneStats.tasteInsights.length > 0 && (
+                <ul className="lb-taste-insights">
+                  {comfortZoneStats.tasteInsights.map((insight) => (
+                    <li
+                      key={insight.key}
+                      className={expandedInsight === insight.key ? "lb-taste-insight--active" : ""}
+                      onClick={() => setExpandedInsight(expandedInsight === insight.key ? null : insight.key)}
+                    >
+                      {insight.text}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Expanded detail panel */}
+              {expandedInsight && comfortZoneStats.tasteDetails && (() => {
+                const details = comfortZoneStats.tasteDetails[expandedInsight as keyof typeof comfortZoneStats.tasteDetails];
+                if (!details || !Array.isArray(details) || details.length === 0) return null;
+                return (
+                  <div className="lb-taste-insight-detail">
+                    {details.map((item: any, j: number) => (
+                      <span key={j} className="lb-taste-detail-item">
+                        {item.label} ({item.pct ? `${item.pct}%` : item.count})
+                      </span>
+                    ))}
                   </div>
-                  <div className="lb-comfort-value">{Math.round(row.value)}%</div>
-                  {row.top.length > 0 && (
-                    <div className="lb-comfort-top">
-                      <span className="lb-comfort-top-label">Top 3:</span>
-                      {row.top.map((item) => (
-                        <span key={item.label} className="lb-comfort-top-item">
-                          {item.label} ({item.count})
-                        </span>
-                      ))}
+                );
+              })()}
+
+              {/* Comfort zone bars */}
+              <div className="lb-taste-card-divider" />
+              <div className="lb-comfort-bars">
+                {[
+                  { label: "Directors", value: comfortZoneStats.directors.percent, top: comfortZoneStats.directors.topLabels },
+                  { label: "Genres", value: comfortZoneStats.genres.percent, top: comfortZoneStats.genres.topLabels },
+                  { label: "Countries", value: comfortZoneStats.countries.percent, top: comfortZoneStats.countries.topLabels },
+                ].map((row: { label: string; value: number; top: Array<{ label: string; count: number }> }) => (
+                  <div key={row.label} className="lb-comfort-row">
+                    <div className="lb-comfort-label">{row.label}</div>
+                    <div className="lb-comfort-bar">
+                      <div className="lb-comfort-fill" style={{ transform: `scaleX(${Math.min(100, row.value) / 100})` }} />
                     </div>
-                  )}
-                </div>
-              ))}
+                    <div className="lb-comfort-value">{Math.round(row.value)}%</div>
+                    {row.top.length > 0 && (
+                      <div className="lb-comfort-top">
+                        <span className="lb-comfort-top-label">Top 3:</span>
+                        {row.top.map((item) => (
+                          <span key={item.label} className="lb-comfort-top-item">
+                            {item.label} ({item.count})
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
         )}
